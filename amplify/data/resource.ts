@@ -1,52 +1,92 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 
-/*== STEP 1 ===============================================================
-The section below creates a Todo database table with a "content" field. Try
-adding a new "isDone" field as a boolean. The authorization rule below
-specifies that any user authenticated via an API key can "create", "read",
-"update", and "delete" any "Todo" records.
-=========================================================================*/
-const schema = a.schema({
-  Todo: a
-    .model({
-      content: a.string(),
-  }).authorization(allow => [allow.owner()]),
-});
+const schema = a
+  .schema({
+    // User model
+    User: a
+      .model({
+        userId: a.id().required(),
+        username: a.string().required(),
+        email: a.string().required(),
+        createdAt: a.datetime().required(),
+        files: a.hasMany("File", "ownerId"), // Define reciprocal relationship with File
+        messages: a.hasMany("Message", "userId"),
+        whitelist: a.hasMany("Whitelist","userIds"),
+      })
+      .identifier(["userId"]),
+      
+
+    // File model
+    File: a
+      .model({
+        fileId: a.id().required(),
+        filename: a.string().required(),
+        isDirectory: a.boolean().default(false),
+        ownerId: a.id().required(), // Foreign key linking to User
+        createdAt: a.datetime().required(),
+        updatedAt: a.datetime().required(),
+        messages: a.hasMany("Message", "fileId"), // Relationship with Message
+        whitelist: a.hasMany("Whitelist", "fileId"),
+        tag: a.hasMany("Tag","fileId"),
+        ownerDetails: a.belongsTo("User", "ownerId"), // Rename to avoid conflict with implicit owner field
+      })
+      .identifier(["fileId"]),
+
+    // Message model
+    Message: a
+      .model({
+        messageId: a.id().required(),
+        fileId: a.id().required(), // Foreign key linking to File
+        userId: a.id().required(), // Foreign key linking to User
+        content: a.string().required(),
+        createdAt: a.datetime().required(),
+        tag: a.hasMany("Tag","messageId"),
+        file: a.belongsTo("File", "fileId"), // Define belongsTo relationship with File
+        sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
+      })
+      .identifier(["messageId"]),
+
+    // Tag model
+    Tag: a
+      .model({
+        tagId: a.id().required(),
+        tagType: a.enum(["file", "message"]), // Enum for Tag type
+        fileId: a.id(), // Foreign key linking to File or Message
+        messageId: a.id(),
+        tagName: a.string().required(),
+        createdAt: a.datetime().required(),
+
+        // Relationships
+        file: a.belongsTo("File", "fileId"),
+        message: a.belongsTo("Message", "messageId"),})
+    .identifier(["tagId"]),
+
+    // Whitelist model
+    Whitelist: a
+      .model({
+        whitelistId: a.id().required(),
+        userIds: a.id().required(), // Associates users to file to whitelist. sort key?
+        fileId: a.id().required(), // Foreign key linking to File
+        createdAt: a.datetime().required(),
+        user: a.belongsTo("User","userIds"),
+        file: a.belongsTo("File","fileId"),
+      })
+      .identifier(["whitelistId"]),
+  })
+  .authorization((allow) => [
+    allow.publicApiKey(),
+    allow.owner("userPools"), // Correctly use "userPools" as the provider
+    allow.groups(["whitelistedUserIds"]), // Use an array for groups
+  ]);
 
 export type Schema = ClientSchema<typeof schema>;
 
 export const data = defineData({
   schema,
   authorizationModes: {
-    defaultAuthorizationMode: 'userPool',
+    defaultAuthorizationMode: "apiKey", // Use API key for testing
+    apiKeyAuthorizationMode: {
+      expiresInDays: 30, // API key validity period
+    },
   },
 });
-
-/*== STEP 2 ===============================================================
-Go to your frontend source code. From your client-side code, generate a
-Data client to make CRUDL requests to your table. (THIS SNIPPET WILL ONLY
-WORK IN THE FRONTEND CODE FILE.)
-
-Using JavaScript or Next.js React Server Components, Middleware, Server 
-Actions or Pages Router? Review how to generate Data clients for those use
-cases: https://docs.amplify.aws/gen2/build-a-backend/data/connect-to-API/
-=========================================================================*/
-
-/*
-"use client"
-import { generateClient } from "aws-amplify/data";
-import type { Schema } from "@/amplify/data/resource";
-
-const client = generateClient<Schema>() // use this Data client for CRUDL requests
-*/
-
-/*== STEP 3 ===============================================================
-Fetch records from the database and use them in your frontend component.
-(THIS SNIPPET WILL ONLY WORK IN THE FRONTEND CODE FILE.)
-=========================================================================*/
-
-/* For example, in a React component, you can use this snippet in your
-  function's RETURN statement */
-// const { data: todos } = await client.models.Todo.list()
-
-// return <ul>{todos.map(todo => <li key={todo.id}>{todo.content}</li>)}</ul>

@@ -18,39 +18,105 @@ const client = generateClient<Schema>();
 export default function App() {
       
   const { user, signOut } = useAuthenticator();
-  const [todos, setTodos] = useState<Array<Schema["Todo"]["type"]>>([]);
+  const [files, setFiles] = useState<Array<Schema["File"]["type"]>>([]);
 
-  function listTodos() {
-    client.models.Todo.observeQuery().subscribe({
-      next: (data) => setTodos([...data.items]),
+  function listFiles() {
+    client.models.File.observeQuery().subscribe({
+      next: (data) => setFiles([...data.items]),
     });
   }
 
   useEffect(() => {
-    listTodos();
+    listFiles();
   }, []);
 
-  function createTodo() {
-    client.models.Todo.create({
-      content: window.prompt("Todo content"),
-    });
+  async function createFile() {
+    try {
+      // Prompt user for necessary fields
+      const filename = window.prompt("Enter the file name:");
+      if (!filename) {
+        alert("Filename is required.");
+        return;
+      }
+  
+      var isDirectory = null;
+      while(isDirectory == null){
+        isDirectory = window.prompt("Is this a directory? (yes/no):")
+      }
+      const ownerId = window.prompt("Enter the owner ID:");
+  
+      // Validate isDirectory input
+      const isDirectoryValue =
+        isDirectory.toLowerCase() === "yes" ? true : false;
+  
+      if (!ownerId) {
+        alert("Owner ID is required.");
+        return;
+      }
+  
+      // Get the current timestamp
+      const now = new Date().toISOString();
+  
+      // Create the file record
+      const newFile = await client.models.File.create({
+        fileId: `file-${Math.floor(Math.random() * 100000)}`, // Generate a random ID for simplicity
+        filename,
+        isDirectory: isDirectoryValue,
+        ownerId,
+        createdAt: now,
+        updatedAt: now,
+      });
+  
+      alert("File created successfully!");
+      console.log("Created file:", newFile);
+    } catch (error) {
+      console.error("Error creating file:", error);
+      alert("An error occurred while creating the file. Please try again.");
+    }
   }
+  
     
-  function deleteTodo(id: string) {
-    client.models.Todo.delete({ id })
+  async function deleteFile(id: string) {
+    try {
+      // Confirm the deletion with the user
+      const confirmDelete = window.confirm(
+        `Are you sure you want to delete the file with ID: ${id}?`
+      );
+  
+      if (!confirmDelete) {
+        alert("File deletion canceled.");
+        return;
+      }
+  
+      // Attempt to delete the file
+      await client.models.File.delete({ id });
+  
+      alert("File deleted successfully.");
+      console.log(`File with ID ${id} has been deleted.`);
+    } catch (error) {
+      console.error("Error deleting file:", error);
+      alert("An error occurred while deleting the file. Please try again.");
+    }
   }
+  
 
   return (
     <main>
-      <h1>{user?.signInDetails?.loginId}'s todos</h1>
-      <button onClick={createTodo}>+ new</button>
+      <h1>{user?.signInDetails?.loginId}'s Files</h1>
+      <button onClick={createFile}>+ new</button>
       <ul>
-        {todos.map((todo) => (
-          <li 
-          onClick={() => deleteTodo(todo.id)}
-          key={todo.id}>
-          {todo.content}</li>
-        ))}
+      <ul>
+      {files.map((file) => (
+      <li 
+      key={file.fileId} 
+      onClick={() => deleteFile(file.fileId)} 
+      style={{ cursor: "pointer", color: "blue", textDecoration: "underline" }}
+      >
+        {file.filename}
+      </li>
+  ))}
+</ul>
+
       </ul>
       <div>
         🥳 App successfully hosted. Try creating a new todo.
