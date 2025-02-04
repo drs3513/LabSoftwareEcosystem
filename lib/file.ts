@@ -82,8 +82,9 @@ export async function deleteFile(id: string) {
 }
 
 export function displayFiles(files: Array<Schema["File"]["type"]>, showDeleted: boolean) {
-  return files.filter((file) => showDeleted || !file.isDeleted);
-}
+    return files.filter((file) => file && (showDeleted || !file.isDeleted));
+  }
+  
 
 export async function checkAndDeleteExpiredFiles(
   files: Array<Schema["File"]["type"]>,

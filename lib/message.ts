@@ -3,7 +3,7 @@ import type { Schema } from "@/amplify/data/resource";
 
 const client = generateClient<Schema>();
 
-// ✅ Create a Message
+
 export async function createMessage(fileId: string, userId: string, content: string) {
   try {
     const messageId = `message-${Math.floor(Math.random() * 100000)}`;
@@ -24,12 +24,23 @@ export async function createMessage(fileId: string, userId: string, content: str
   }
 }
 
-// ✅ Read Messages for a File
-export async function getMessagesForFile(fileId: string) {
-  return (await client.models.Message.list()).filter((msg) => msg.fileId === fileId);
-}
 
-// ✅ Delete a Message
+export async function getMessagesForFile(fileId: string) {
+    try {
+      
+      const response = await client.models.Message.list();
+      const messages = response.data; // Extract messages array
+  
+
+      return messages.filter((msg) => msg.fileId === fileId);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+      return [];
+    }
+  }
+  
+
+
 export async function deleteMessage(messageId: string) {
   try {
     await client.models.Message.delete({ messageId });

@@ -1,22 +1,29 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { Auth } from "aws-amplify"; // ✅ Import Cognito Auth
+import { fetchAuthSession, fetchUserAttributes } from "aws-amplify/auth"; // ✅ Corrected imports
 
 const client = generateClient<Schema>();
 
-// ✅ Create a User (Pulling Cognito User Info)
+
 export async function createUserFromCognito() {
   try {
-    // ✅ Get currently authenticated user from Cognito
-    const user = await Auth.currentAuthenticatedUser();
-    const { sub, email, name } = user.attributes; // Retrieve user attributes
+
+    const session = await fetchAuthSession();
+    const userAttributes = await fetchUserAttributes();
+
+    console.log("Auth Session:", session);
+
+ 
+    const sub = userAttributes.sub as string;
+    const name = userAttributes.name as string;
+    const email = userAttributes.email as string;
 
     const now = new Date().toISOString();
 
-    // ✅ Create User in the database
+    
     const newUser = await client.models.User.create({
       userId: sub, // Using Cognito User ID as primary key
-      username: name || email.split("@")[0], // Default to email prefix if name is unavailable
+      username: name,
       email,
       createdAt: now,
     });
@@ -28,19 +35,19 @@ export async function createUserFromCognito() {
   }
 }
 
-// ✅ Read Users
+
 export async function getUsers() {
   return await client.models.User.list();
 }
 
-// ✅ Get Current User Info
+
 export async function getCurrentUser() {
   try {
-    const user = await Auth.currentAuthenticatedUser();
+    const userAttributes = await fetchUserAttributes();
     return {
-      userId: user.attributes.sub,
-      username: user.attributes.name || user.attributes.email.split("@")[0],
-      email: user.attributes.email,
+      userId: userAttributes.sub,
+      username: userAttributes.name,
+      email: userAttributes.email,
     };
   } catch (error) {
     console.error("Error fetching current user:", error);

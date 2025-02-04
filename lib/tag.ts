@@ -3,19 +3,30 @@ import type { Schema } from "@/amplify/data/resource";
 
 const client = generateClient<Schema>();
 
-// ✅ Create a Tag
+
 export async function createTag(tagType: "file" | "message", refId: string, tagName: string) {
   try {
     const tagId = `tag-${Math.floor(Math.random() * 100000)}`;
     const now = new Date().toISOString();
-
-    const newTag = await client.models.Tag.create({
-      tagId,
-      tagType,
-      refId,
-      tagName,
-      createdAt: now,
-    });
+    let newTag;
+    if(tagType == "file"){
+        newTag = await client.models.Tag.create({
+              tagId,
+             tagType,
+             fileId:refId,
+              tagName,
+              createdAt: now,
+        });
+    }
+    else{
+         newTag = await client.models.Tag.create({
+            tagId,
+            tagType,
+            messageId:refId,
+            tagName,
+            createdAt: now,
+      });
+    }
 
     console.log("Created tag:", newTag);
     return newTag;
@@ -24,12 +35,22 @@ export async function createTag(tagType: "file" | "message", refId: string, tagN
   }
 }
 
-// ✅ Get Tags for a File or Message
 export async function getTagsForRef(refId: string) {
-  return (await client.models.Tag.list()).filter((tag) => tag.refId === refId);
-}
+    try {
+      // ✅ Fetch tags and extract `data` array
+      const response = await client.models.Tag.list();
+      const tags = response.data; // Extract data array
+  
+      // ✅ Filter tags based on refId
+      return tags.filter((tag) => tag.fileId === refId || tag.messageId === refId);
+    } catch (error) {
+      console.error("Error fetching tags:", error);
+      return [];
+    }
+  }
+  
 
-// ✅ Delete a Tag
+
 export async function deleteTag(tagId: string) {
   try {
     await client.models.Tag.delete({ tagId });
