@@ -22,12 +22,17 @@ const schema = a
         fileId: a.id().required(),
         filename: a.string().required(),
         isDirectory: a.boolean().default(false),
+        filepath: a.string().required(),
+        size: a.integer().required(),
+        versionId: a.string().required(),
         ownerId: a.id().required(), // Foreign key linking to User
         createdAt: a.datetime().required(),
         updatedAt: a.datetime().required(),
         messages: a.hasMany("Message", "fileId"), // Relationship with Message
         whitelist: a.hasMany("Whitelist", "fileId"),
         tag: a.hasMany("Tag","fileId"),
+        isDeleted: a.boolean().required(),
+        deletedAt: a.datetime(),
         ownerDetails: a.belongsTo("User", "ownerId"), // Rename to avoid conflict with implicit owner field
       })
       .identifier(["fileId"]),
