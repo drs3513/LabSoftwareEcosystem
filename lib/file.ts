@@ -1,19 +1,25 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 
-const client = generateClient<Schema>();
+export const client = generateClient<Schema>();
 
-
-export function listFiles(setFiles: (files: Array<Schema["File"]["type"]>) => void) {
-  client.models.File.observeQuery().subscribe({
-    next: (data) => setFiles([...data.items]),
-  });
+// ✅ List files and return a Promise
+export async function listFiles(): Promise<Array<Schema["File"]["type"]>> {
+  try {
+    const response = await client.models.File.list();
+    const files = response.data ?? [];
+    // Filter out invalid files
+    return files.filter((file) => file && file.fileId && file.filename && file.filepath);
+  } catch (error) {
+    console.error("Error fetching files:", error);
+    return [];
+  }
 }
 
 
-export async function createFile(filename:string, isDirectory: boolean, filepath: string, ownerId: string, size: number, versionId: string) {
+// ✅ Create a File
+export async function createFile(filename: string, isDirectory: boolean, filepath: string, ownerId: string, size: number, versionId: string) {
   try {
-   
     const now = new Date().toISOString();
 
     const newFile = await client.models.File.create({
@@ -29,41 +35,35 @@ export async function createFile(filename:string, isDirectory: boolean, filepath
       updatedAt: now,
     });
 
-    alert("File created successfully!");
     console.log("Created file:", newFile);
+    return newFile;
   } catch (error) {
     console.error("Error creating file:", error);
-    alert("An error occurred while creating the file. Please try again.");
   }
 }
 
-export async function updatefile(id: string) {
-  try{  
-    
+// ✅ Update File
+export async function updateFile(id: string) {
+  try {
     const now = new Date().toISOString();
     await client.models.File.update({
-        fileId: id,
-        updatedAt: now,
-      });
-      alert("File updated successfully.");
-      console.log(`File with ID ${id} has been updated.`);
-    } catch (error) {
-      console.error("Error updating file:", error);
-      alert("An error occurred while updating the file. Please try again.");
-    }
+      fileId: id,
+      updatedAt: now,
+    });
+    console.log(`File with ID ${id} has been updated.`);
+  } catch (error) {
+    console.error("Error updating file:", error);
+  }
 }
 
-
+// ✅ Soft Delete a File
 export async function deleteFile(id: string) {
   try {
     const confirmDelete = window.confirm(
       `Are you sure you want to delete the file with ID: ${id}?`
     );
 
-    if (!confirmDelete) {
-      alert("File deletion canceled.");
-      return;
-    }
+    if (!confirmDelete) return;
 
     const now = new Date().toISOString();
 
@@ -73,24 +73,20 @@ export async function deleteFile(id: string) {
       deletedAt: now,
     });
 
-    alert("File deleted successfully.");
-    console.log(`File with ID ${id} has been deleted.`);
+    console.log(`File with ID ${id} has been marked as deleted.`);
   } catch (error) {
     console.error("Error deleting file:", error);
-    alert("An error occurred while deleting the file. Please try again.");
   }
 }
 
+// ✅ Display Files Based on Deletion Status
 export function displayFiles(files: Array<Schema["File"]["type"]>, showDeleted: boolean) {
-    return files.filter((file) => file && (showDeleted || !file.isDeleted));
-  }
-  
+  return files.filter((file) => file && file.fileId && file.filename && (showDeleted || !file.isDeleted));
+}
 
-export async function checkAndDeleteExpiredFiles(
-  files: Array<Schema["File"]["type"]>,
-  timeSpan: number,
-  unit: "days" | "hours"
-) {
+
+// ✅ Check & Permanently Delete Files after Expiry
+export async function checkAndDeleteExpiredFiles(files: Array<Schema["File"]["type"]>, timeSpan: number, unit: "days" | "hours") {
   try {
     const now = new Date();
 

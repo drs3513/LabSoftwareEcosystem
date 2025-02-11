@@ -42,6 +42,7 @@ body {
     list-style-type: none;
     display: flex;
     flex-direction: column;
+    height: 100dvh;
     margin: 8px 0;
     border: 1px solid black;
     gap: 1px;

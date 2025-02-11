@@ -36,14 +36,14 @@ export async function getWhitelistedUsers(fileId: string) {
 
   export async function getWhitelistedFilesForUser(userId: string) {
     try {
-      // 🔹 Fetch all whitelist entries for the given userId
+      //  Fetch all whitelist entries for the given userId
       const response = await client.models.Whitelist.list();
       const whitelistEntries = response.data.filter((entry) => entry.userIds === userId);
   
-      // 🔹 Get the file IDs from the whitelist
+      //  Get the file IDs from the whitelist
       const fileIds = whitelistEntries.map((entry) => entry.fileId);
   
-      // 🔹 Fetch the actual file details
+      //  Fetch the actual file details
       const files = await client.models.File.list();
       const userFiles = files.data.filter((file) => fileIds.includes(file.fileId));
   
