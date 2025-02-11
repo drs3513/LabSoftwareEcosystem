@@ -12,9 +12,10 @@
     "@aws-amplify/storage": "^6.7.9",
     "@aws-amplify/ui-react": "^6.5.5",
     "aws-amplify": "^6.6.6",
-    "next": "14.2.10",
+    "next": "^14.2.23",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "styled-components": "^6.1.14"
   },
   "devDependencies": {
     "@aws-amplify/backend": "^1.5.1",
@@ -22,8 +23,8 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "aws-cdk": "^2",
-    "aws-cdk-lib": "^2",
+    "aws-cdk": "^2.178.1",
+    "aws-cdk-lib": "^2.178.1",
     "constructs": "^10.3.0",
     "esbuild": "^0.23.1",
     "tsx": "^4.19.0",

@@ -6,7 +6,7 @@ import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import outputs from "@/amplify_outputs.json";
-
+import MainScreen from "./main_screen/page"
 import {
   listFiles,
   createFile,
@@ -73,37 +73,7 @@ export default function App() {
 
   return (
     <main>
-      <h1>{user?.signInDetails?.loginId}'s Files</h1>
-      <button onClick={create}>+ New</button>
-      <button onClick={() => setShowDeleted(!showDeleted)}>
-        {showDeleted ? "Hide Deleted Files" : "Show Deleted Files"}
-      </button>
-
-      <ul>
-        {displayFiles(files, showDeleted).map((file) => (
-          <li
-            key={file.fileId}
-            onClick={() => deleteFile(file.fileId)}
-            style={{
-              cursor: "pointer",
-              color: file.isDeleted ? "gray" : "blue",
-              textDecoration: file.isDeleted ? "line-through" : "underline",
-            }}
-          >
-            {file.filename} {file.isDeleted && "(Deleted)"}
-          </li>
-        ))}
-      </ul>
-
-      <div>
-        🥳 App successfully hosted. Try creating a new file.
-        <br />
-        <a href="https://docs.amplify.aws/nextjs/start/quickstart/nextjs-app-router-client-components/">
-          Review next steps of this tutorial.
-        </a>
-      </div>
-
-      <button onClick={signOut}>Sign out</button>
+      <MainScreen/>
     </main>
   );
 }
