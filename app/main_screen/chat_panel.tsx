@@ -1,182 +1,130 @@
-import styled from 'styled-components'
-const ChatContainer = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    width: 100%;
-    height: 100%;
-    overflow-y: auto;
-    container-type: inline-size;
-    container-name: chatContainer;
-    &::-webkit-scrollbar {
-        width: 8px;
-    }
+"use client";
 
-    &::-webkit-scrollbar-thumb {
-        background: #888;
-        border-radius: 4px;
-    }
-
-    &::-webkit-scrollbar-thumb:hover {
-        background: #555;
-    } 
-`
-const ChatMessagesWrapper = styled.div`
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end; 
-`
-const ChatMessage = styled.div<{$sender?:boolean}>`
-    display: flex;
-    flex-shrink: 0; 
-    width: 80%;
-    height: fit-content;
-    margin-top: 1rem;
-    margin-right: ${props => props.$sender? '1rem':'auto'};
-    margin-left: ${props => props.$sender? 'auto':'1rem'};
-    justify-content: ${props => props.$sender? 'right': 'left'};
-
-    display: flex;
-    flex-direction: row;
-    @container chatContainer (max-width: 200px){
-        margin-right: ${props => props.$sender? '0rem':'auto'};
-        margin-left: ${props => props.$sender? 'auto':'0rem'};
-    }
-    visibility: visible;
-    @container chatContainer (max-width: 8rem){
-        visibility: hidden;
-    }
-
-`
-const Chat_Body = styled.div<{$sender?:boolean}>`
-    
-    background-color: ${props => props.$sender? 'cadetblue':'tan'};
-    margin-left: ${props => props.$sender? 0:'.5rem'};
-    margin-right: ${props => props.$sender? '.5rem':0};
-    padding: 0.5rem;
-    padding-right: 1rem;
-    border-radius: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    
-    max-width: 80%;
-    min-width: fit-content;
-    
-    overflow: hidden;
-    word-wrap: break-word;
-    -webkit-hyphens: auto;
-    -ms-hyphens: auto;
-    -moz-hyphens: auto;
-    hyphens: auto;
-    @container chatContainer (max-width: 8rem){
-        visibility: hidden;
-    }
-    
-`
-const Chat = styled.span`
-    
-    visibility: visible;
-    @container chatContainer (max-width: 8rem){
-        visibility: hidden;
-    }
-`
-const ChatSender = styled.div`
-    font-size: 8pt;
-    margin-top: 4px; 
-    @container chatContainer (max-width: 8rem){
-        visibility: hidden;
-    }
-`
-
-const ChatTimeStamp = styled.div`
-    font-size: 8pt;
-    color: red;
-    margin-top: 2px; 
-    @container chatContainer (max-width: 8rem){
-        visibility: hidden;
-    }
-`
-
-const ProfilePicture = styled.img`
-    width: 0px;
-    height: 50px;
-    border-radius: 50%;
-    visibility: hidden;
-    @container chatContainer (min-width: 200px){
-        visibility: visible;
-        width: 50px;
-    }
-`
-const InputContainer = styled.div`
-    display: flex;
-    width: calc(100% - 1rem);
-    padding: 0.5rem;
-    background: #f0f0f0;
-    border-top: 1px solid #ccc;
-    position: sticky;
-    bottom: 0;
-`
-
-const Input = styled.input`
-    flex: 1;
-    height: 2rem;
-    padding: 0.5rem;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-`
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useState, useRef } from "react";
+import { useGlobalState } from "./GlobalStateContext";
+import { getMessagesForFile, createMessage } from "@/lib/message";
+import styled from "styled-components";
 
 export default function ChatPanel() {
+  const { fileId, userId } = useGlobalState();
+  const [messages, setMessages] = useState<Array<{ messageId: string; userId: string; content: string; createdAt: string }>>([]);
+  const [input, setInput] = useState("");
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
-    const initialMessages = [
-        { sender: false, message: "Hello!" },
-        { sender: true, message: "How are you?" },
-        { sender: false, message: "Well." },
-        { sender: false, message: "Just have some issues with implementation." }
-    ];
-    
-    const [chats, setChats] = useState(initialMessages);
-    const [input, setInput] = useState('');
-    const chatEndRef = useRef<HTMLDivElement | null>(null); 
+  useEffect(() => {
+    async function fetchMessages() {
+      if (!fileId) return;
+      const fileMessages = await getMessagesForFile(fileId);
+      setMessages(fileMessages);
+    }
+    fetchMessages();
+  }, [fileId]);
 
-    useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [chats]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-    const handleSendMessage = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter' && input.trim()) {
-            setChats([...chats, { sender: chats.length % 2 === 1, message: input.trim() }]);
-            setInput('');
+  
+  const handleSendMessage = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && input.trim() && fileId && userId) {
+      try {
+        const response = await createMessage(fileId, userId, input.trim());
+  
+        // ✅ Extract the correct message format
+        const newMessage = response?.data ?? response; 
+  
+        // ✅ Ensure newMessage has required fields before updating state
+        if (newMessage && "messageId" in newMessage && "content" in newMessage) {
+          setMessages((prevMessages) => [...prevMessages, {
+            messageId: newMessage.messageId,
+            userId: newMessage.userId,
+            content: newMessage.content,
+            createdAt: newMessage.createdAt
+          }]);
+          setInput(""); // ✅ Clear input after sending
+        } else {
+          console.error("Invalid message response:", response);
         }
-    };
+      } catch (error) {
+        console.error("Error sending message:", error);
+      }
+    }
+  };
+  
+  
 
-    return (
-        <ChatContainer>
-            <ChatMessagesWrapper>
-                {chats.map((chat, i) => (
-                    <ChatMessage key={i} $sender={chat.sender}>
-                        {!chat.sender && <ProfilePicture src={'/default_user.svg'} alt="User" />}
-                        <Chat_Body $sender={chat.sender}>
-                            <div>{chat.message}</div>
-                            <ChatSender>{chat.sender ? 'You' : 'Dr. Patitz'}</ChatSender>
-                            <ChatTimeStamp>{new Date().toLocaleTimeString()}</ChatTimeStamp>
-                        </Chat_Body>
-                        {chat.sender && <ProfilePicture src={'/default_user.svg'} alt="User" />}
-                    </ChatMessage>
-                ))}
-                <div ref={chatEndRef} /> {/* Added to ensure auto-scroll works */}
-            </ChatMessagesWrapper>
-            <InputContainer>
-                <Input
-                    type="text"
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    onKeyDown={handleSendMessage}
-                    placeholder="Type a message..."
-                />
-            </InputContainer>
-        </ChatContainer>
-    );
+  return (
+    <ChatContainer>
+      <ChatMessagesWrapper>
+        {messages.map((msg) => (
+          <ChatMessage key={msg.messageId} $sender={msg.userId === userId}>
+            <Chat_Body $sender={msg.userId === userId}>
+              <div>{msg.content}</div>
+              <ChatSender>{msg.userId === userId ? "You" : "Other User"}</ChatSender>
+              <ChatTimeStamp>{new Date(msg.createdAt).toLocaleTimeString()}</ChatTimeStamp>
+            </Chat_Body>
+          </ChatMessage>
+        ))}
+        <div ref={chatEndRef} />
+      </ChatMessagesWrapper>
+      <InputContainer>
+        <Input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleSendMessage} placeholder="Type a message..." />
+      </InputContainer>
+    </ChatContainer>
+  );
 }
+
+const ChatContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 1rem;
+`;
+
+const ChatMessagesWrapper = styled.div`
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+`;
+
+const ChatMessage = styled.div<{$sender?: boolean}>`
+  display: flex;
+  justify-content: ${(props) => (props.$sender ? "flex-end" : "flex-start")};
+  margin-bottom: 10px;
+`;
+
+const Chat_Body = styled.div<{$sender?: boolean}>`
+  background-color: ${(props) => (props.$sender ? "cadetblue" : "tan")};
+  padding: 10px;
+  border-radius: 10px;
+  max-width: 60%;
+`;
+
+const ChatSender = styled.div`
+  font-size: 8pt;
+  margin-top: 4px;
+`;
+
+const ChatTimeStamp = styled.div`
+  font-size: 8pt;
+  color: red;
+  margin-top: 2px;
+`;
+
+const InputContainer = styled.div`
+  display: flex;
+  padding: 0.5rem;
+  background: #f0f0f0;
+  border-top: 1px solid #ccc;
+`;
+
+const Input = styled.input`
+  flex: 1;
+  height: 2rem;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+`;

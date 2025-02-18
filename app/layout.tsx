@@ -6,7 +6,7 @@ import { Authenticator } from "@aws-amplify/ui-react";
 import "@aws-amplify/ui-react/styles.css";
 import outputs from "@/amplify_outputs.json";
 import styled from "styled-components"
-
+import { GlobalStateProvider } from "./main_screen/GlobalStateContext";
 Amplify.configure(outputs);
 
 const Body = styled.body`
@@ -23,7 +23,9 @@ export default function RootLayout({
     <html lang="en">
       <Body>
         <Authenticator>
-          {children}
+          <GlobalStateProvider>
+            {children}
+          </GlobalStateProvider>
         </Authenticator>
       </Body>
     </html>

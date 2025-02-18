@@ -6,7 +6,10 @@ const client = generateClient<Schema>();
 
 export async function createMessage(fileId: string, userId: string, content: string) {
   try {
-    const messageId = `message-${Math.floor(Math.random() * 100000)}`;
+    // Fetch all messages for the given file
+    const fileMessages = await getMessagesForFile(fileId);
+    const messageCount = fileMessages.length || 0;
+    const messageId = `${fileId}M${messageCount + 1}`;
     const now = new Date().toISOString();
 
     const newMessage = await client.models.Message.create({

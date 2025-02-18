@@ -12,9 +12,21 @@ const schema = a
         files: a.hasMany("File", "ownerId"), // Define reciprocal relationship with File
         messages: a.hasMany("Message", "userId"),
         whitelist: a.hasMany("Whitelist","userIds"),
+        projects: a.hasMany("Project","userId"),
       })
       .identifier(["userId"]),
-      
+    Project: a
+      .model({
+        projectId: a.id().required(),
+        userId: a.id().required(),
+        projectName: a.string().required(),
+        isDeleted: a.boolean().required(),
+        createdAt: a.datetime().required(),
+        updatedAt: a.datetime(),
+        deletedAt: a.datetime(),
+        projectowner: a.belongsTo("User","userId"),
+        files: a.hasMany("File","projectId"),
+      }).identifier(["projectId"]),
 
     // File model
     File: a
@@ -23,9 +35,11 @@ const schema = a
         filename: a.string().required(),
         isDirectory: a.boolean().default(false),
         filepath: a.string().required(),
+        parentId: a.id(),
         size: a.integer().required(),
         versionId: a.string().required(),
         ownerId: a.id().required(), // Foreign key linking to User
+        projectId: a.id().required(),
         createdAt: a.datetime().required(),
         updatedAt: a.datetime().required(),
         messages: a.hasMany("Message", "fileId"), // Relationship with Message
@@ -33,7 +47,13 @@ const schema = a
         tag: a.hasMany("Tag","fileId"),
         isDeleted: a.boolean().required(),
         deletedAt: a.datetime(),
-        ownerDetails: a.belongsTo("User", "ownerId"), // Rename to avoid conflict with implicit owner field
+
+
+        parent: a.belongsTo("File","parentId"),
+        children: a.hasMany("File","parentId"),
+
+        ownerDetails: a.belongsTo("User", "ownerId"), 
+        project: a.belongsTo("Project","projectId"),
       })
       .identifier(["fileId"]),
 

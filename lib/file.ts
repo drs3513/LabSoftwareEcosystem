@@ -4,23 +4,40 @@ import type { Schema } from "@/amplify/data/resource";
 const client = generateClient<Schema>();
 
 
-export function listFiles(setFiles: (files: Array<Schema["File"]["type"]>) => void) {
+export async function listFiles(setFiles: (files: Array<Schema["File"]["type"]>) => void) {
   client.models.File.observeQuery().subscribe({
     next: (data) => setFiles([...data.items]),
   });
 }
 
-
-export async function createFile(filename:string, isDirectory: boolean, filepath: string, ownerId: string, size: number, versionId: string) {
+export async function listFilesForProject(projectId: string) {
   try {
-   
+    const response = await client.models.File.list(); // Fetch all files
+    const files = response.data; // Extract file array
+
+    if (!files) return [];
+
+    return files.filter((file) => file.projectId === projectId); // ✅ Filter files by projectId
+  } catch (error) {
+    console.error("Error fetching files for project:", error);
+    return [];
+  }
+}
+
+export async function createFile(projectId: string, filename:string, isDirectory: boolean, filepath: string, ownerId: string, size: number, versionId: string) {
+  try {
+    // Fetch all files for the project
+    const projectFiles = await listFilesForProject(projectId);
+    const fileCount = projectFiles.length || 0;
+    const fileId = `${projectId}F${fileCount + 1}`;
     const now = new Date().toISOString();
 
     const newFile = await client.models.File.create({
-      fileId: `file-${Math.floor(Math.random() * 100000)}`,
+      fileId,
       filename,
       filepath,
       versionId,
+      projectId,
       size: size,
       isDeleted: false,
       isDirectory: isDirectory,
@@ -31,6 +48,7 @@ export async function createFile(filename:string, isDirectory: boolean, filepath
 
     alert("File created successfully!");
     console.log("Created file:", newFile);
+    return newFile;
   } catch (error) {
     console.error("Error creating file:", error);
     alert("An error occurred while creating the file. Please try again.");
@@ -81,7 +99,7 @@ export async function deleteFile(id: string) {
   }
 }
 
-export function displayFiles(files: Array<Schema["File"]["type"]>, showDeleted: boolean) {
+export async function displayFiles(files: Array<Schema["File"]["type"]>, showDeleted: boolean) {
     return files.filter((file) => file && (showDeleted || !file.isDeleted));
   }
   
@@ -118,3 +136,4 @@ export async function checkAndDeleteExpiredFiles(
     console.error("Error checking and deleting expired files:", error);
   }
 }
+
