@@ -4,7 +4,7 @@ import type { Schema } from "@/amplify/data/resource";
 const client = generateClient<Schema>();
 
 
-export async function createMessage(fileId: string, userId: string, content: string) {
+export async function createMessage(fileId: string, userId: string | undefined, content: string) {
   try {
     // Fetch all messages for the given file
     const fileMessages = await getMessagesForFile(fileId);

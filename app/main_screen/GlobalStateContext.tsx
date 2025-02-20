@@ -1,15 +1,17 @@
 "use client";
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, {createContext, useContext, useState, useEffect, ReactNode, ReactElement} from "react";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 
 interface GlobalStateContextType {
   projectId: string | null;
   setProjectId: (id: string | null) => void;
-  fileId: string | null;
-  setFileId: (id: string | null) => void;
+  fileId: string | undefined;
+  setFileId: (id: string | undefined) => void;
   userId: string | null;
-  refreshProjects: boolean;
-  setRefreshProjects: (refresh: boolean) => void;
+  contextMenu: boolean;
+  setContextMenu: (val: boolean) => void;
+  contextMenuType: string;
+  setContextMenuType: (val: string) => void;
 }
 
 const GlobalStateContext = createContext<GlobalStateContextType | undefined>(undefined);
@@ -17,10 +19,10 @@ const GlobalStateContext = createContext<GlobalStateContextType | undefined>(und
 export function GlobalStateProvider({ children }: { children: ReactNode }) {
   const { user } = useAuthenticator(); // Get authenticated user
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [fileId, setFileId] = useState<string | null>(null);
+  const [fileId, setFileId] = useState<string | undefined>(undefined);
   const [userId, setUserId] = useState<string | null>(null);
-  const [refreshProjects, setRefreshProjects] = useState<boolean>(false); // Added refresh state
-
+  const [contextMenu, setContextMenu] = useState<boolean>(false);
+  const [contextMenuType, setContextMenuType] = useState<string>("file");
   useEffect(() => {
     if (user?.signInDetails?.loginId) {
       setUserId(user.signInDetails.loginId); // Automatically assign userId
@@ -28,9 +30,8 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   return (
-    <GlobalStateContext.Provider 
-      value={{ projectId, setProjectId, fileId, setFileId, userId, refreshProjects, setRefreshProjects }}
-    >
+    <GlobalStateContext.Provider value={{ projectId, setProjectId, fileId, setFileId, userId, contextMenu, setContextMenu,
+      contextMenuType, setContextMenuType}}>
       {children}
     </GlobalStateContext.Provider>
   );
