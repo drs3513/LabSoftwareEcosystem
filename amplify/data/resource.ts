@@ -15,6 +15,8 @@ const schema = a
         projects: a.hasMany("Project","userId"),
       })
       .identifier(["userId"]),
+
+    // Project model
     Project: a
       .model({
         projectId: a.id().required(),
@@ -47,7 +49,6 @@ const schema = a
         tag: a.hasMany("Tag","fileId"),
         isDeleted: a.boolean().required(),
         deletedAt: a.datetime(),
-
 
         parent: a.belongsTo("File","parentId"),
         children: a.hasMany("File","parentId"),

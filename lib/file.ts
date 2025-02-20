@@ -24,12 +24,14 @@ export async function listFilesForProject(projectId: string) {
   }
 }
 
-export async function createFile(projectId: string, filename:string, isDirectory: boolean, filepath: string, ownerId: string, size: number, versionId: string) {
+export async function createFile(projectId: string, filename:string, isDirectory: boolean, parentId?: string, filepath: string, ownerId: string, size: number, versionId: string) {
   try {
     // Fetch all files for the project
     const projectFiles = await listFilesForProject(projectId);
+
     const fileCount = projectFiles.length || 0;
     const fileId = `${projectId}F${fileCount + 1}`;
+
     const now = new Date().toISOString();
 
     const newFile = await client.models.File.create({
@@ -38,6 +40,7 @@ export async function createFile(projectId: string, filename:string, isDirectory
       filepath,
       versionId,
       projectId,
+      parentId: parentId,
       size: size,
       isDeleted: false,
       isDirectory: isDirectory,

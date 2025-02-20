@@ -16,7 +16,7 @@ export default function ProjectPanel() {
       if (!projectName) return;
   
       const newProject = await createProject(userId as string, projectName);
-  
+
       if (newProject) {
         setProjects((prevProjects) => [
           ...prevProjects,
@@ -33,16 +33,19 @@ export default function ProjectPanel() {
       console.error("Error creating project:", error);
     }
   };
-  
 
+
+
+  const [numCalls, setNumCalls] = useState(0);
 
   useEffect(() => {
     async function fetchProjects() {
       try {
         const projectResponse = await listProjectsForUser(userId as string);
-        
+        console.log(projectResponse)
         // ✅ Use projectResponse directly since it's already an array
-        if (projectResponse) {
+        if (projectResponse.length > 0) {
+          console.log("Jere")
           setProjects(
             projectResponse.map((proj) => ({
               projectId: proj.projectId,
@@ -50,6 +53,10 @@ export default function ProjectPanel() {
             }))
           );
         }
+        setNumCalls(numCalls + 1)
+        console.log("projects")
+        console.log(numCalls)
+
       } catch (error) {
         console.error("Error fetching projects:", error);
       }
@@ -57,7 +64,7 @@ export default function ProjectPanel() {
   
     fetchProjects();
   }, [userId]);
-  
+
 
   return (
     <PanelContainer>

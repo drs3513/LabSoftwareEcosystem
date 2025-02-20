@@ -2,7 +2,7 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 
 const client = generateClient<Schema>();
-
+console.log(client)
 
 export async function createProject(userId: string, projectName: string) {
   try {
@@ -42,6 +42,7 @@ export async function listAllProjects() {
 
 export async function listProjectsForUser(userId: string) {
   try {
+
     const response = await client.models.Project.list();
     return response.data.filter((project) => project.userId === userId);
   } catch (error) {
