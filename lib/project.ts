@@ -32,6 +32,7 @@ export async function createProject(userId: string, projectName: string) {
 export async function listAllProjects() {
   try {
     const response = await client.models.Project.list();
+    console.log("projects list:", response.data);
     return response.data ?? [];
   } catch (error) {
     console.error("Error fetching projects:", error);

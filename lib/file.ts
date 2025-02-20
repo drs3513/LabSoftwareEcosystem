@@ -24,7 +24,7 @@ export async function listFilesForProject(projectId: string) {
   }
 }
 
-export async function createFile(projectId: string, filename:string, isDirectory: boolean, filepath: string, ownerId: string, size: number, versionId: string) {
+export async function createFile(projectId: string, filename:string, isDirectory: boolean, filepath: string, ownerId: string, size: number, versionId: string, parentId: (string|null)) {
   try {
     // Fetch all files for the project
     const projectFiles = await listFilesForProject(projectId);
@@ -37,6 +37,7 @@ export async function createFile(projectId: string, filename:string, isDirectory
       filename,
       filepath,
       versionId,
+      parentId,
       projectId,
       size: size,
       isDeleted: false,
@@ -137,3 +138,34 @@ export async function checkAndDeleteExpiredFiles(
   }
 }
 
+export async function directory_builder(
+  parentId: string | null,
+  projectId: string
+): Promise<Array<{ directory: string; files: Array<{ fileId: string; filename: string } | { directory: string; files: any[] }> } | { fileId: string; filename: string }>> {
+  try {
+    // Fetch all files within the project
+    const response = await client.models.File.list();
+    const files = response.data ?? [];
+
+    // Filter files to get only the ones relevant to the project and parentId
+    const filteredFiles = files.filter((file) => file.projectId === projectId && file.parentId === parentId);
+
+    // Map over filtered files and recursively build the directory structure
+    const structuredFiles = await Promise.all(
+      filteredFiles.map(async (file) => {
+        if (file.isDirectory) {
+          // Recursive call for subdirectories
+          const subFiles = await directory_builder(file.fileId, projectId);
+          console.log({directory: file.filename, directoryId: file.fileId, files: subFiles});
+          return { directory: file.filename, directoryId: file.fileId, files: subFiles };
+        }
+        return { fileId: file.fileId, filename: file.filename };
+      })
+    );
+
+    return structuredFiles;
+  } catch (error) {
+    console.error("Error building directory structure:", error);
+    return [];
+  }
+}

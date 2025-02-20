@@ -30,10 +30,10 @@ export default function ChatPanel() {
       try {
         const response = await createMessage(fileId, userId, input.trim());
   
-        // ✅ Extract the correct message format
+        // Extract the correct message format
         const newMessage = response?.data ?? response; 
   
-        // ✅ Ensure newMessage has required fields before updating state
+        // Ensure newMessage has required fields before updating state
         if (newMessage && "messageId" in newMessage && "content" in newMessage) {
           setMessages((prevMessages) => [...prevMessages, {
             messageId: newMessage.messageId,
@@ -41,7 +41,7 @@ export default function ChatPanel() {
             content: newMessage.content,
             createdAt: newMessage.createdAt
           }]);
-          setInput(""); // ✅ Clear input after sending
+          setInput(""); // Clear input after sending
         } else {
           console.error("Invalid message response:", response);
         }

@@ -3,63 +3,76 @@ import type { Schema } from "@/amplify/data/resource";
 
 const client = generateClient<Schema>();
 
+// **Roles**
+export enum Role {
+  USER = "USER",
+  ADMIN = "ADMIN",
+  HEAD = "HEAD",
+}
 
-export async function addToWhitelist(userId: string, fileId: string) {
+//  Whitelist User (with Role)
+export async function whitelistUser(fileId: string, userEmail: string, role: Role) {
   try {
-    const whitelistId = `whitelist-${Math.floor(Math.random() * 100000)}`;
     const now = new Date().toISOString();
-
-    const newWhitelistEntry = await client.models.Whitelist.create({
+    const whitelistId = `${fileId}-${userEmail}`;
+    const response = await client.models.Whitelist.create({
       whitelistId,
-      userIds: userId,
+      userIds: userEmail,
       fileId,
       createdAt: now,
+      isAdmin: role === Role.ADMIN || role === Role.HEAD, 
+      role: role,
     });
-
-    console.log("Added to whitelist:", newWhitelistEntry);
-    return newWhitelistEntry;
+    return response;
   } catch (error) {
-    console.error("Error adding to whitelist:", error);
+    console.error("Error whitelisting user:", error);
+    return null;
   }
 }
 
-
-export async function getWhitelistedUsers(fileId: string) {
-    try {
-      const response = await client.models.Whitelist.list();
-      return response.data.filter((entry) => entry.fileId === fileId); // ✅ FIX: Extract `data` before filtering
-    } catch (error) {
-      console.error("Error fetching whitelisted users:", error);
-      return [];
-    }
-  }
-
-  export async function getWhitelistedFilesForUser(userId: string) {
-    try {
-      // 🔹 Fetch all whitelist entries for the given userId
-      const response = await client.models.Whitelist.list();
-      const whitelistEntries = response.data.filter((entry) => entry.userIds === userId);
-  
-      // 🔹 Get the file IDs from the whitelist
-      const fileIds = whitelistEntries.map((entry) => entry.fileId);
-  
-      // 🔹 Fetch the actual file details
-      const files = await client.models.File.list();
-      const userFiles = files.data.filter((file) => fileIds.includes(file.fileId));
-  
-      return userFiles;
-    } catch (error) {
-      console.error("Error fetching files for user:", error);
-      return [];
-    }
-  }
-
-
-export async function removeFromWhitelist(whitelistId: string) {
+// Remove User from Whitelist (Only if Lower Role)
+export async function removeWhitelistedUser(fileId: string, userEmail: string, currentUserRole: Role) {
   try {
+    const whitelistId = `${fileId}-${userEmail}`;
+    const user = await client.models.Whitelist.get({ whitelistId });
+
+    if (!user) return false;
+
+    const userRole = user.data?.role as Role;
+    if (userRole && (userRole === currentUserRole || userRole === Role.HEAD)) {
+      throw new Error("You cannot remove a user of equal or higher rank.");
+    }
+
     await client.models.Whitelist.delete({ whitelistId });
-    console.log(`Removed from whitelist: ${whitelistId}`);
+    return true;
   } catch (error) {
-    console.error("Error removing from whitelist:", error);
+    console.error("Error removing whitelisted user:", error);
+    return false;
+  }
+}
+
+// Check User Role
+export async function getUserRole(fileId: string, userEmail: string): Promise<Role | null> {
+  try {
+    const whitelistId = `${fileId}-${userEmail}`;
+    const response = await client.models.Whitelist.get({ whitelistId });
+    return response.data?.role as Role || null; // Cast to Role
+  } catch (error) {
+    console.error("Error getting user role:", error);
+    return null;
+  }
+}
+
+// List Users Below Role
+export async function listUsersBelowRole(fileId: string, role: Role) {
+  try {
+    const response = await client.models.Whitelist.list();
+    return response.data.filter((user) => {
+      const userRole = user.role as Role || Role.USER;
+      return user.fileId === fileId && userRole !== Role.HEAD && userRole !== role;
+    });
+  } catch (error) {
+    console.error("Error listing users:", error);
+    return [];
   }
 }

@@ -37,11 +37,11 @@ export async function createTag(tagType: "file" | "message", refId: string, tagN
 
 export async function getTagsForRef(refId: string) {
     try {
-      // ✅ Fetch tags and extract `data` array
+      // Fetch tags and extract `data` array
       const response = await client.models.Tag.list();
       const tags = response.data; // Extract data array
   
-      // ✅ Filter tags based on refId
+      // Filter tags based on refId
       return tags.filter((tag) => tag.fileId === refId || tag.messageId === refId);
     } catch (error) {
       console.error("Error fetching tags:", error);

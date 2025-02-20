@@ -2,112 +2,83 @@
 
 import { useEffect, useState } from "react";
 import { useGlobalState } from "./GlobalStateContext";
-import { listProjectsForUser, createProject } from "@/lib/project";
+import { listAllProjects } from "@/lib/project";
 import styled from "styled-components";
+import { useAuthenticator } from "@aws-amplify/ui-react";
 
 export default function ProjectPanel() {
-  const { userId, setProjectId } = useGlobalState();
-  const [projects, setProjects] = useState<Array<{ projectId: string; projectName: string }>>([]);
+    const { userId, setProjectId, refreshProjects } = useGlobalState();
+    const { user } = useAuthenticator(); // Ensure user is reloaded on refresh
+    const [projects, setProjects] = useState<Array<{ projectId: string; projectName: string }>>([]);
+    const [loading, setLoading] = useState<boolean>(true);
 
+    useEffect(() => {
+        async function fetchProjects() {
+            if (!user?.signInDetails?.loginId) return; // Ensure user is available
 
-  const handleCreateProject = async () => {
-    try {
-      const projectName = prompt("Enter Project Name:");
-      if (!projectName) return;
-  
-      const newProject = await createProject(userId as string, projectName);
-  
-      if (newProject) {
-        setProjects((prevProjects) => [
-          ...prevProjects,
-          {
-            projectId: newProject.data.projectId,
-            projectName: newProject.data.projectName,
-          },
-        ]);
-      } else {
-        console.error("Project creation failed: No data returned");
-        alert("Failed to create project. Please try again.");
-      }
-    } catch (error) {
-      console.error("Error creating project:", error);
-    }
-  };
-  
+            try {
+                const currentUserId = user?.signInDetails?.loginId || userId; // Use global or auth userId
+                const projectResponse = await listAllProjects();
 
-
-  useEffect(() => {
-    async function fetchProjects() {
-      try {
-        const projectResponse = await listProjectsForUser(userId as string);
-        
-        // ✅ Use projectResponse directly since it's already an array
-        if (projectResponse) {
-          setProjects(
-            projectResponse.map((proj) => ({
-              projectId: proj.projectId,
-              projectName: proj.projectName,
-            }))
-          );
+                if (projectResponse && Array.isArray(projectResponse)) {
+                    setProjects(projectResponse.map((proj) => ({
+                        projectId: proj.projectId,
+                        projectName: proj.projectName
+                    })));
+                }
+            } catch (error) {
+                console.error("Error fetching projects:", error);
+            } finally {
+                setLoading(false);
+            }
         }
-      } catch (error) {
-        console.error("Error fetching projects:", error);
-      }
-    }
-  
-    fetchProjects();
-  }, [userId]);
-  
 
-  return (
-    <PanelContainer>
-      <CreateButton onClick={handleCreateProject}>+ Create Project</CreateButton>
-      {projects.length > 0 ? (
-        projects.map((project) => (
-          <Project key={project.projectId} onClick={() => setProjectId(project.projectId)}>
-            {project.projectName}
-          </Project>
-        ))
-      ) : (
-        <NoProjects>No projects available.</NoProjects>
-      )}
-    </PanelContainer>
-  );
+        fetchProjects();
+    }, [user, userId, refreshProjects]);
+
+    return (
+        <PanelContainer>
+            {loading ? (
+                <LoadingText>Loading projects...</LoadingText>
+            ) : projects.length > 0 ? (
+                projects.map((project) => (
+                    <Project key={project.projectId} onClick={() => setProjectId(project.projectId)}>
+                        📁 {project.projectName}
+                    </Project>
+                ))
+            ) : (
+                <NoProjects>No projects available.</NoProjects>
+            )}
+        </PanelContainer>
+    );
 }
 
+// Styled Components
 const PanelContainer = styled.div`
-  width: 100%;
-  height: 100%;
-  background-color: white;
-  padding: 1rem;
-  text-align: center;
-  overflow-y: auto;
-`;
-
-const CreateButton = styled.button`
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 10px;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  cursor: pointer;
-  &:hover {
-    background-color: #0056b3;
-  }
+    width: 100%;
+    height: 100%;
+    background-color: black;
+    padding: 1rem;
+    text-align: center;
+    overflow-y: auto;
 `;
 
 const Project = styled.div`
-  background-color: white;
-  padding: 1rem;
-  border-bottom: 1px solid #ddd;
-  cursor: pointer;
-  &:hover {
-    background-color: grey;
-  }
+    background-color: white;
+    padding: 1rem;
+    border-bottom: 1px solid #ddd;
+    cursor: pointer;
+    &:hover {
+        background-color: grey;
+    }
 `;
 
 const NoProjects = styled.div`
-  color: gray;
-  text-align: center;
+    color: gray;
+    text-align: center;
+`;
+
+const LoadingText = styled.div`
+    color: gray;
+    text-align: center;
 `;
