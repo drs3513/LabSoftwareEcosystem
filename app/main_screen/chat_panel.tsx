@@ -26,32 +26,33 @@ export default function ChatPanel() {
     if (!fileId) return;
 
     const subscription = client.models.Message.observeQuery({
-      filter: { fileId: { eq: fileId } }, // Only observe messages for this file
-      sort: { createdAt: "ASC" }, // Sort messages by timestamp
+      filter: { fileId: { eq: fileId } },
     }).subscribe({
       next: async (data) => {
-        const fileMessages = data.items;
-
-        // Fetch emails for each user
-        const messagesWithEmails = await Promise.all(
-          fileMessages.map(async (msg) => {
-            const user = await client.models.User.get({ userId: msg.userId });
-            return {
-              ...msg,
-              email: user?.data?.email || "Unknown User",
-            };
-          })
-        );
-
-        setMessages(messagesWithEmails);
+        if (data.items && Array.isArray(data.items)) {
+          const sortedMessages = data.items.sort(
+            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
+    
+          const messagesWithEmails = await Promise.all(
+            sortedMessages.map(async (msg) => {
+              const user = await client.models.User.get({ userId: msg.userId });
+              return {
+                ...msg,
+                email: user?.data?.email || "Unknown User",
+              };
+            })
+          );
+    
+          setMessages(messagesWithEmails);
+        }
       },
       error: (error) => {
         console.error("Error observing messages:", error);
       },
     });
+});
 
-    return () => subscription.unsubscribe(); //  Unsubscribe when component unmounts
-  }, [fileId]);
 
   //  Scroll to the end when messages update
   useEffect(() => {

@@ -66,6 +66,7 @@ const schema = a
         userId: a.id().required(), // Foreign key linking to User
         content: a.string().required(),
         createdAt: a.datetime().required(),
+        updatedAt: a.datetime(),
         tag: a.hasMany("Tag","messageId"),
         file: a.belongsTo("File", "fileId"), // Define belongsTo relationship with File
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User

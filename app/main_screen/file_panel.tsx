@@ -17,7 +17,6 @@ export default function FilePanel() {
       }
       try {
         const structure = await directory_builder(null, projectId);
-        console.log("directory: ",structure);
         setFiles(structure);
       } catch (error) {
         console.error("Error fetching file structure:", error);
@@ -84,7 +83,6 @@ const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
       console.warn("handleFileClick called with undefined fileId");
       return;
     }
-    console.log("Selected file or directory with ID:", fileId);
     setFileId(fileId);
   };
 
@@ -93,7 +91,6 @@ const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
   };
 
   if ("directory" in item) {
-    console.log("Directoryid:", item.directoryId);
     return (
       <Directory style={indentStyle} onClick={(e) => handleFileClick(item.directoryId,e)}>
       <DirectoryHeader>
@@ -124,7 +121,6 @@ const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
     <File
       style={indentStyle}
       onClick={(e) => {
-        console.log("File clicked with ID:", item.fileId);
         handleFileClick(item.fileId, e);
       }}
     >

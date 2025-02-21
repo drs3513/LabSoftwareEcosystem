@@ -17,8 +17,7 @@ export async function listFilesForProject(projectId: string) {
 
     if (!files) return [];
     let projfiles = files.filter((file) => file.projectId === projectId);
-    console.log(projfiles);
-    return projfiles; // ✅ Filter files by projectId
+    return projfiles; // Filter files by projectId
   } catch (error) {
     console.error("Error fetching files for project:", error);
     return [];
@@ -49,7 +48,6 @@ export async function createFile(projectId: string, filename:string, isDirectory
     });
 
     alert("File created successfully!");
-    console.log("Created file:", newFile);
     return newFile;
   } catch (error) {
     console.error("Error creating file:", error);
@@ -66,7 +64,6 @@ export async function updatefile(id: string) {
         updatedAt: now,
       });
       alert("File updated successfully.");
-      console.log(`File with ID ${id} has been updated.`);
     } catch (error) {
       console.error("Error updating file:", error);
       alert("An error occurred while updating the file. Please try again.");
@@ -94,7 +91,7 @@ export async function deleteFile(id: string) {
     });
 
     alert("File deleted successfully.");
-    console.log(`File with ID ${id} has been deleted.`);
+
   } catch (error) {
     console.error("Error deleting file:", error);
     alert("An error occurred while deleting the file. Please try again.");
@@ -128,7 +125,6 @@ export async function checkAndDeleteExpiredFiles(
 
     for (const file of expiredFiles) {
       await client.models.File.delete({ fileId: file.fileId });
-      console.log(`Permanently deleted file: ${file.filename}`);
     }
 
     if (expiredFiles.length > 0) {
