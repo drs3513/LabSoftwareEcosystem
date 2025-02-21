@@ -79,7 +79,7 @@ export default function FilePanel() {
 
 const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
   const handleFileClick = (fileId: string | undefined, event: React.MouseEvent) => {
-    event.stopPropagation(); // ✅ Prevent parent click interference
+    event.stopPropagation(); // Prevent parent click interference
     if (!fileId) {
       console.warn("handleFileClick called with undefined fileId");
       return;
@@ -100,7 +100,7 @@ const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
         <div>📂 {item.directory}</div>
         <CreateButtonSmall
           onClick={(e) => {
-            e.stopPropagation(); // ✅ This ensures button click does NOT trigger directory click
+            e.stopPropagation();
             handleCreateFile(item.directoryId);
           }}
         >
@@ -187,7 +187,7 @@ const Directory = styled.div`
   margin-top: 5px;
   border-radius: 5px;
   cursor: pointer;
-  border: 1px solid black;  // ✅ Debug: Ensure you can see directory borders
+  border: 1px solid black;  
   &:hover {
     background-color: grey;
   }

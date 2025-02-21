@@ -12,7 +12,7 @@ interface Message {
   userId: string;
   content: string;
   createdAt: string;
-  email?: string; // ✅ Store user email
+  email?: string; //  Store user email
 }
 
 export default function ChatPanel() {
@@ -21,18 +21,18 @@ export default function ChatPanel() {
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ Fetch messages using observeQuery
+  //  Fetch messages using observeQuery
   useEffect(() => {
     if (!fileId) return;
 
     const subscription = client.models.Message.observeQuery({
-      filter: { fileId: { eq: fileId } }, // ✅ Only observe messages for this file
-      sort: { createdAt: "ASC" }, // ✅ Sort messages by timestamp
+      filter: { fileId: { eq: fileId } }, // Only observe messages for this file
+      sort: { createdAt: "ASC" }, // Sort messages by timestamp
     }).subscribe({
       next: async (data) => {
         const fileMessages = data.items;
 
-        // ✅ Fetch emails for each user
+        // Fetch emails for each user
         const messagesWithEmails = await Promise.all(
           fileMessages.map(async (msg) => {
             const user = await client.models.User.get({ userId: msg.userId });
@@ -50,15 +50,15 @@ export default function ChatPanel() {
       },
     });
 
-    return () => subscription.unsubscribe(); // ✅ Unsubscribe when component unmounts
+    return () => subscription.unsubscribe(); //  Unsubscribe when component unmounts
   }, [fileId]);
 
-  // ✅ Scroll to the end when messages update
+  //  Scroll to the end when messages update
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ✅ Handle Enter key to send message
+  // Handle Enter key to send message
   const handleSendMessage = async () => {
     if (input.trim() && fileId && userId) {
       try {
@@ -77,7 +77,7 @@ export default function ChatPanel() {
     }
   };
 
-  // ✅ KeyDown handler
+  //  KeyDown handler
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleSendMessage();

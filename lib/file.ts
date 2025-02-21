@@ -145,17 +145,17 @@ export async function directory_builder(
   sortBy: "name" | "date" | "size" = "name"
 ): Promise<Array<{ directory: string; directoryId: string; files: any[] } | { fileId: string; filename: string }>> {
   try {
-    // ✅ Fetch all files within the project
+    // Fetch all files within the project
     const files = await listFilesForProject(projectId);
     if (!files || files.length === 0) return [];
 
-    // ✅ Filter files by parentId (null, empty)
+    // Filter files by parentId (null, empty)
     const filteredFiles = files.filter((file) => {
       return parentId === null ? !file.parentId || !files.some(f => f.fileId === file.parentId) : file.parentId === parentId;
     });
     
 
-    // ✅ Sorting function based on user input with safeguard checks
+    // Sorting function based on user input with safeguard checks
     const sortFiles = (files: any[]) => {
       return files.sort((a, b) => {
         switch (sortBy) {
@@ -165,16 +165,15 @@ export async function directory_builder(
             return (a.size || 0) - (b.size || 0);
           case "name":
           default:
-            // ✅ Ensure filename exists before calling localeCompare
             return (a.filename || "").localeCompare(b.filename || "");
         }
       });
     };
 
-    // ✅ Separate directories and files
+    // Separate directories and files
     const directories = filteredFiles.filter((file) => file.isDirectory);
     const filesOnly = filteredFiles.filter((file) => !file.isDirectory);
-    // ✅ Recursively build directories
+    // Recursively build directories
     const structuredDirectories = await Promise.all(
       directories.map(async (directory) => ({
         directory: directory.filename || "Unnamed Directory",
@@ -183,7 +182,7 @@ export async function directory_builder(
       }))
     );
 
-    // ✅ Combine directories and files
+    // Combine directories and files
     const structuredFiles = sortFiles([
       ...structuredDirectories,
       ...filesOnly.map((file) => ({
