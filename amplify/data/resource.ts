@@ -69,6 +69,8 @@ const schema = a
         tag: a.hasMany("Tag","messageId"),
         file: a.belongsTo("File", "fileId"), // Define belongsTo relationship with File
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
+        edited: a.boolean().default(false), // Track if the message has been edited
+        deleted: a.boolean().default(false), // Track if the message has been deleted
       })
       .identifier(["messageId"]),
 

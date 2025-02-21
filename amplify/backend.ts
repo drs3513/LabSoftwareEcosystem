@@ -3,13 +3,14 @@ import { auth } from './auth/resource.js';
 import { data } from './data/resource.js';
 import { storage } from './storage/resource.js';
 
+
 const backend = defineBackend({
   auth,
   storage,
   data,
 });
 
-const { cfnUserPool } = backend.auth.resources.cfnResources;
+const { cfnUserPool } = (backend.auth as any).resources.cfnResources;
 // modify cfnUserPool policies directly
 cfnUserPool.policies = {
   passwordPolicy: {
