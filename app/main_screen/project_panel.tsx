@@ -42,7 +42,10 @@ export default function ProjectPanel() {
                 <LoadingText>Loading projects...</LoadingText>
             ) : projects.length > 0 ? (
                 projects.map((project) => (
-                    <Project key={project.projectId} onClick={() => setProjectId(project.projectId)}>
+                    <Project key={project.projectId} onClick={() => {
+                        console.log(`Clicked Project: ${project.projectId}`);
+                        setProjectId(project.projectId);
+                    }}>
                         📁 {project.projectName}
                     </Project>
                 ))

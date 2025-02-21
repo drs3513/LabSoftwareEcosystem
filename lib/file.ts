@@ -16,15 +16,16 @@ export async function listFilesForProject(projectId: string) {
     const files = response.data; // Extract file array
 
     if (!files) return [];
-
-    return files.filter((file) => file.projectId === projectId); // ✅ Filter files by projectId
+    let projfiles = files.filter((file) => file.projectId === projectId);
+    console.log(projfiles);
+    return projfiles; // ✅ Filter files by projectId
   } catch (error) {
     console.error("Error fetching files for project:", error);
     return [];
   }
 }
 
-export async function createFile(projectId: string, filename:string, isDirectory: boolean, filepath: string, ownerId: string, size: number, versionId: string, parentId: (string|null)) {
+export async function createFile(projectId: string, filename:string, isDirectory: boolean, filepath: string, ownerId: string, size: number, versionId: string, parentId: (string|undefined)) {
   try {
     // Fetch all files for the project
     const projectFiles = await listFilesForProject(projectId);
@@ -140,32 +141,64 @@ export async function checkAndDeleteExpiredFiles(
 
 export async function directory_builder(
   parentId: string | null,
-  projectId: string
-): Promise<Array<{ directory: string; files: Array<{ fileId: string; filename: string } | { directory: string; files: any[] }> } | { fileId: string; filename: string }>> {
+  projectId: string,
+  sortBy: "name" | "date" | "size" = "name"
+): Promise<Array<{ directory: string; directoryId: string; files: any[] } | { fileId: string; filename: string }>> {
   try {
-    // Fetch all files within the project
-    const response = await client.models.File.list();
-    const files = response.data ?? [];
+    // ✅ Fetch all files within the project
+    const files = await listFilesForProject(projectId);
+    if (!files || files.length === 0) return [];
 
-    // Filter files to get only the ones relevant to the project and parentId
-    const filteredFiles = files.filter((file) => file.projectId === projectId && file.parentId === parentId);
+    // ✅ Filter files by parentId (null, empty)
+    const filteredFiles = files.filter((file) => {
+      return parentId === null ? !file.parentId || !files.some(f => f.fileId === file.parentId) : file.parentId === parentId;
+    });
+    
 
-    // Map over filtered files and recursively build the directory structure
-    const structuredFiles = await Promise.all(
-      filteredFiles.map(async (file) => {
-        if (file.isDirectory) {
-          // Recursive call for subdirectories
-          const subFiles = await directory_builder(file.fileId, projectId);
-          console.log({directory: file.filename, directoryId: file.fileId, files: subFiles});
-          return { directory: file.filename, directoryId: file.fileId, files: subFiles };
+    // ✅ Sorting function based on user input with safeguard checks
+    const sortFiles = (files: any[]) => {
+      return files.sort((a, b) => {
+        switch (sortBy) {
+          case "date":
+            return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+          case "size":
+            return (a.size || 0) - (b.size || 0);
+          case "name":
+          default:
+            // ✅ Ensure filename exists before calling localeCompare
+            return (a.filename || "").localeCompare(b.filename || "");
         }
-        return { fileId: file.fileId, filename: file.filename };
-      })
+      });
+    };
+
+    // ✅ Separate directories and files
+    const directories = filteredFiles.filter((file) => file.isDirectory);
+    const filesOnly = filteredFiles.filter((file) => !file.isDirectory);
+    // ✅ Recursively build directories
+    const structuredDirectories = await Promise.all(
+      directories.map(async (directory) => ({
+        directory: directory.filename || "Unnamed Directory",
+        directoryId: directory.fileId,
+        files: await directory_builder(directory.fileId, projectId, sortBy),
+      }))
     );
 
+    // ✅ Combine directories and files
+    const structuredFiles = sortFiles([
+      ...structuredDirectories,
+      ...filesOnly.map((file) => ({
+        fileId: file.fileId,
+        filename: file.filename || "Unnamed File",
+        size: file.size || 0,
+        createdAt: file.createdAt || new Date().toISOString(),
+      })),
+    ]);
     return structuredFiles;
   } catch (error) {
     console.error("Error building directory structure:", error);
     return [];
   }
 }
+
+
+

@@ -17,6 +17,7 @@ export default function FilePanel() {
       }
       try {
         const structure = await directory_builder(null, projectId);
+        console.log("directory: ",structure);
         setFiles(structure);
       } catch (error) {
         console.error("Error fetching file structure:", error);
@@ -36,7 +37,8 @@ export default function FilePanel() {
     const isDirectory = confirm("Is Directory?");
     const parentId = prompt("Enter parentId");
     try {
-      const newFile = await createFile(projectId, filename, isDirectory, `/${filename}`, userId, 5, "1", parentId);
+
+      const newFile = await createFile(projectId, filename, isDirectory, `/${filename}`, userId as string, 5, "1", parentId as string);
 
       if (newFile && newFile.data?.fileId) {
         setFiles((prevFiles) => [...prevFiles, newFile.data]);
@@ -57,7 +59,7 @@ export default function FilePanel() {
           {fileStructure.length > 0 ? (
             fileStructure.map((item) => (
               <FileOrDirectory
-                key={item.fileId || item.directory}
+                key={item.fileId || item.directoryId}
                 item={item}
                 setFileId={setFileId}
                 handleCreateFile={handleCreateFile}
@@ -76,8 +78,13 @@ export default function FilePanel() {
 }
 
 const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
-  const handleFileClick = (fileId: string) => {
-    console.log("Selected file:", fileId);
+  const handleFileClick = (fileId: string | undefined, event: React.MouseEvent) => {
+    event.stopPropagation(); // ✅ Prevent parent click interference
+    if (!fileId) {
+      console.warn("handleFileClick called with undefined fileId");
+      return;
+    }
+    console.log("Selected file or directory with ID:", fileId);
     setFileId(fileId);
   };
 
@@ -86,31 +93,47 @@ const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
   };
 
   if ("directory" in item) {
+    console.log("Directoryid:", item.directoryId);
     return (
-      <Directory style={indentStyle}>
-        <DirectoryHeader>
-          <div onClick={() => handleFileClick(item.directoryId || "")}>📂 {item.directory}</div>
-          <CreateButtonSmall onClick={() => handleCreateFile(item.fileId)}>+ Add Item</CreateButtonSmall>
-        </DirectoryHeader>
-        {item.files.map((subItem: any) => (
-          <FileOrDirectory
-            key={subItem.fileId || subItem.directory}
-            item={subItem}
-            setFileId={setFileId}
-            handleCreateFile={handleCreateFile}
-            depth={depth + 1}
-          />
-        ))}
-      </Directory>
+      <Directory style={indentStyle} onClick={(e) => handleFileClick(item.directoryId,e)}>
+      <DirectoryHeader>
+        <div>📂 {item.directory}</div>
+        <CreateButtonSmall
+          onClick={(e) => {
+            e.stopPropagation(); // ✅ This ensures button click does NOT trigger directory click
+            handleCreateFile(item.directoryId);
+          }}
+        >
+          + Add Item
+        </CreateButtonSmall>
+      </DirectoryHeader>
+      {item.files.map((subItem: any) => (
+        <FileOrDirectory
+          key={subItem.fileId || subItem.directoryId}
+          item={subItem}
+          setFileId={setFileId}
+          handleCreateFile={handleCreateFile}
+          depth={depth + 1}
+        />
+      ))}
+    </Directory>    
     );
   }
 
   return (
-    <File style={indentStyle} onClick={() => handleFileClick(item.fileId)}>
+    <File
+      style={indentStyle}
+      onClick={(e) => {
+        console.log("File clicked with ID:", item.fileId);
+        handleFileClick(item.fileId, e);
+      }}
+    >
       📄 {item.filename}
     </File>
   );
 };
+
+
 
 // ✅ Styled Components
 const PanelContainer = styled.div`
@@ -164,10 +187,12 @@ const Directory = styled.div`
   margin-top: 5px;
   border-radius: 5px;
   cursor: pointer;
+  border: 1px solid black;  // ✅ Debug: Ensure you can see directory borders
   &:hover {
     background-color: grey;
   }
 `;
+
 
 const DirectoryHeader = styled.div`
   display: flex;

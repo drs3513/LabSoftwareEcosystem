@@ -103,8 +103,7 @@ const schema = a
   })
   .identifier(["whitelistId"]),
 }).authorization((allow) => [
-  allow.owner("userPools").to(["read", "update", "delete", "create"]),
-  allow.publicApiKey().to(["read","update","delete","create"]) // Optional: Public read access (if needed)
+  allow.authenticated().to(["create", "update", "delete", "read"]),
 ]);
 export type Schema = ClientSchema<typeof schema>;
 
