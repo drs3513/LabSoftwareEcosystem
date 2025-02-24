@@ -6,7 +6,6 @@ const client = generateClient<Schema>();
 
 export async function createMessage(fileId: string, userId: string | undefined, content: string) {
   try {
-    // Fetch all messages for the given file
     const fileMessages = await getMessagesForFile(fileId);
     const messageCount = fileMessages.length || 0;
     const messageId = `${fileId}M${messageCount + 1}`;
@@ -18,6 +17,7 @@ export async function createMessage(fileId: string, userId: string | undefined, 
       userId,
       content,
       createdAt: now,
+      updatedAt: now, 
     });
 
     console.log("Created message:", newMessage);
@@ -28,20 +28,38 @@ export async function createMessage(fileId: string, userId: string | undefined, 
 }
 
 
-export async function getMessagesForFile(fileId: string) {
-    try {
-      
-      const response = await client.models.Message.list();
-      const messages = response.data; // Extract messages array
-  
 
-      return messages.filter((msg) => msg.fileId === fileId);
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-      return [];
-    }
+export async function getMessagesForFile(fileId: string) {
+  try {
+    const response = await client.models.Message.list();
+    const messages = response.data;
+
+    return messages.filter((msg) => msg.fileId === fileId);
+  } catch (error) {
+    console.error("Error fetching messages:", error);
+    return [];
   }
-  
+}
+
+
+
+export async function updateMessage(messageId: string, content: string) {
+  try {
+    const now = new Date().toISOString();
+
+    const updatedMessage = await client.models.Message.update({
+      messageId,
+      content,
+      updatedAt: now, 
+    });
+
+    console.log("Updated message:", updatedMessage);
+    return updatedMessage;
+  } catch (error) {
+    console.error("Error updating message:", error);
+  }
+}
+
 
 
 export async function deleteMessage(messageId: string) {

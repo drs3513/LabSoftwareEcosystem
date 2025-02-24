@@ -102,7 +102,7 @@ export default function TopBar() {
     const handleCreateProject = () => {
         const projectName = prompt("Enter Project Name:");
         if (projectName) {
-           createProject(userId, projectName);
+           createProject(userId as string, projectName);
            setRefreshProjects(true); 
         setTimeout(() => setRefreshProjects(false), 500);
         }
@@ -120,7 +120,7 @@ export default function TopBar() {
         if (showAdmin) {
             const fetchUsers = async () => {
                 try {
-                    const response = await getUsers(); // Replace with actual function to fetch users
+                    const response = await getUsers(); 
                     if (response && Array.isArray(response.data)) {
                         setUsers(response.data);
                     }

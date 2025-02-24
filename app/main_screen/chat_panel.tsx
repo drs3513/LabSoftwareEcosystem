@@ -1,47 +1,74 @@
-"use client";
-
 import { useEffect, useState, useRef } from "react";
 import { useGlobalState } from "./GlobalStateContext";
-import { getMessagesForFile, createMessage } from "@/lib/message";
+import { createMessage } from "@/lib/message";
+import { generateClient } from "aws-amplify/data";
+import type { Schema } from "@/amplify/data/resource";
 import styled from "styled-components";
+
+const client = generateClient<Schema>();
+
+interface Message {
+  messageId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  email?: string; //  Store user email
+}
 
 export default function ChatPanel() {
   const { fileId, userId } = useGlobalState();
-  const [messages, setMessages] = useState<Array<{ messageId: string; userId: string; content: string; createdAt: string }>>([]);
+  const [messages, setMessages] = useState<Array<Message>>([]);
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
+  //  Fetch messages using observeQuery
   useEffect(() => {
-    async function fetchMessages() {
-      if (!fileId) return;
-      const fileMessages = await getMessagesForFile(fileId);
-      setMessages(fileMessages);
-    }
-    fetchMessages();
-  }, [fileId]);
+    if (!fileId) return;
 
+    const subscription = client.models.Message.observeQuery({
+      filter: { fileId: { eq: fileId } },
+    }).subscribe({
+      next: async (data) => {
+        if (data.items && Array.isArray(data.items)) {
+          const sortedMessages = data.items.sort(
+            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
+    
+          const messagesWithEmails = await Promise.all(
+            sortedMessages.map(async (msg) => {
+              const user = await client.models.User.get({ userId: msg.userId });
+              return {
+                ...msg,
+                email: user?.data?.email || "Unknown User",
+              };
+            })
+          );
+    
+          setMessages(messagesWithEmails);
+        }
+      },
+      error: (error) => {
+        console.error("Error observing messages:", error);
+      },
+    });
+});
+
+
+  //  Scroll to the end when messages update
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  
-  const handleSendMessage = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && input.trim() && fileId && userId) {
+  // Handle Enter key to send message
+  const handleSendMessage = async () => {
+    if (input.trim() && fileId && userId) {
       try {
         const response = await createMessage(fileId, userId, input.trim());
-  
-        // Extract the correct message format
-        const newMessage = response?.data ?? response; 
-  
-        // Ensure newMessage has required fields before updating state
+
+        const newMessage = response?.data ?? response;
+
         if (newMessage && "messageId" in newMessage && "content" in newMessage) {
-          setMessages((prevMessages) => [...prevMessages, {
-            messageId: newMessage.messageId,
-            userId: newMessage.userId,
-            content: newMessage.content,
-            createdAt: newMessage.createdAt
-          }]);
-          setInput(""); // Clear input after sending
+          setInput("");
         } else {
           console.error("Invalid message response:", response);
         }
@@ -50,8 +77,13 @@ export default function ChatPanel() {
       }
     }
   };
-  
-  
+
+  //  KeyDown handler
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSendMessage();
+    }
+  };
 
   return (
     <ChatContainer>
@@ -60,7 +92,7 @@ export default function ChatPanel() {
           <ChatMessage key={msg.messageId} $sender={msg.userId === userId}>
             <Chat_Body $sender={msg.userId === userId}>
               <div>{msg.content}</div>
-              <ChatSender>{msg.userId === userId ? "You" : "Other User"}</ChatSender>
+              <ChatSender>{msg.userId === userId ? "You" : msg.email}</ChatSender>
               <ChatTimeStamp>{new Date(msg.createdAt).toLocaleTimeString()}</ChatTimeStamp>
             </Chat_Body>
           </ChatMessage>
@@ -68,7 +100,13 @@ export default function ChatPanel() {
         <div ref={chatEndRef} />
       </ChatMessagesWrapper>
       <InputContainer>
-        <Input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleSendMessage} placeholder="Type a message..." />
+        <Input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message..."
+        />
       </InputContainer>
     </ChatContainer>
   );

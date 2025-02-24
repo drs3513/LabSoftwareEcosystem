@@ -67,6 +67,7 @@ const schema = a
         userId: a.id().required(), // Foreign key linking to User
         content: a.string().required(),
         createdAt: a.datetime().required(),
+        updatedAt: a.datetime(),
         tag: a.hasMany("Tag","messageId"),
         file: a.belongsTo("File", "fileId"), // Define belongsTo relationship with File
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
@@ -104,8 +105,7 @@ const schema = a
   })
   .identifier(["whitelistId"]),
 }).authorization((allow) => [
-  allow.owner("userPools").to(["read", "update", "delete", "create"]),
-  allow.publicApiKey().to(["read","update","delete","create"]) // Optional: Public read access (if needed)
+  allow.authenticated().to(["create", "update", "delete", "read"]),
 ]);
 export type Schema = ClientSchema<typeof schema>;
 
