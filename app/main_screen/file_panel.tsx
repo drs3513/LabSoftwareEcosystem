@@ -2,7 +2,7 @@
 
 import {useEffect, useRef, useState} from "react";
 import { useGlobalState } from "./GlobalStateContext";
-import { listFilesForProject, createFile } from "@/lib/file";
+import {listFilesForProject, createFile, updateFileLocation} from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
 import {boolean} from "zod";
@@ -35,6 +35,8 @@ export default function FilePanel() {
   }
 
   function createContextMenuFile(e, fileId: string, filepath: string){
+    isLongPress.current = false;
+    clearTimeout(timer.current);
     e.preventDefault();
     setContextMenu(true);
     setContextMenuType("file_fileId");
@@ -56,6 +58,7 @@ export default function FilePanel() {
   const [sort, setSort] = useState("date")
   const [hoverFileId, setHoverFileId] = useState<string | undefined>(undefined)
   const [pickedUpFileId, setPickedUpFileId] = useState<string | undefined>(undefined)
+  const [pickedUpFileName, setPickedUpFileName] = useState<string | undefined>(undefined)
   //sorts files to be displayed by the user
   //TODO allow toggle of sort mode through setting 'sort' state
   function sort_files(files: Array<{
@@ -68,7 +71,9 @@ export default function FilePanel() {
     projectId: string,
     parentId: Nullable<string>,
     createdAt: string,
-    updatedAt: string
+    updatedAt: string,
+    visible: boolean,
+    open: boolean
   }>){
 
     //put each file into its own 'bucket', which designates which parentId it belongs to, allows for seperate sorting
@@ -168,8 +173,8 @@ export default function FilePanel() {
     if (!filename || !projectId || !userId) return;
 
     try {
+      const newFile = await createFile(projectId, filename, isDirectory, `${contextMenuFilePath ? contextMenuFilePath : ""}/${filename}`, userId, 5, "1", contextMenuFileId);
 
-      const newFile = await createFile(projectId, filename, isDirectory, contextMenuFileId, `${contextMenuFilePath ? contextMenuFilePath : ""}/${filename}`, userId, 5, "1");
 
       if (newFile) {
         files.push({fileId: newFile.data.fileId,
@@ -217,23 +222,68 @@ export default function FilePanel() {
 
 
 
-  function onFileMouseDown(currFileId : string) {
-    console.log(currFileId)
+  function onFileMouseDown(currFileId : string, currFilePath: string) {
     isLongPress.current = true
     timer.current = setTimeout(() => {
       if(isLongPress.current){
-        console.log("You've been holding down for a while");
+        recursiveCloseFolder(currFileId);
         setPickedUpFileId(currFileId);
-        console.log(pickedUpFileId)
-        console.log(currFileId)
+        setPickedUpFileName(currFilePath)
+
       }
     }, 500)
 
   }
-  function onFileMouseUp() {
+  //TODO You could probably make this section more efficient, currently runs in 2n time, could be reduced to n?
+  //Debate storing a couple of separate dicts which are all files callable by : fileId, parentId
+  async function recursiveGeneratePaths(currFileId: Nullable<string>, pathAppend: string){
+    let newPathAppend: string = pathAppend
+    for(let i in files){
+      if(files[i].fileId == currFileId){
+        files[i].filepath = pathAppend + files[i].filename
+        try {
+          await updateFileLocation(currFileId, pathAppend + files[i].filename, files[i].parentId)
+        } catch (error) {
+          console.error("Error updating file:", error);
+          alert("Failed to update file");
+        }
+        newPathAppend = pathAppend + files[i].filename + "/"
+      }
+    }
+
+    for(let i in files){
+      if(files[i].parentId == currFileId){
+        await recursiveGeneratePaths(files[i].fileId, newPathAppend)
+      }
+    }
+
+  }
+  function onFileMouseUp(e, overFileId: Nullable<string>, overFilePath: Nullable<string>) {
+    if(e.target != e.currentTarget){
+      return
+    }
     isLongPress.current = false;
     clearTimeout(timer.current);
+
+    if(pickedUpFileId != null){
+      for(let i in files){
+        if(files[i].fileId == pickedUpFileId){
+          files[i].parentId = overFileId
+          if(overFilePath != null){
+            recursiveGeneratePaths(pickedUpFileId, overFilePath + "/")
+          }
+          else {
+            recursiveGeneratePaths(pickedUpFileId, "/")
+          }
+
+
+        }
+      }
+      setFiles(sort_files(files))
+    }
+
     setPickedUpFileId(undefined);
+    setPickedUpFileName(undefined)
   }
   const timer = useRef(setTimeout(() => {
   }, 500));
@@ -244,7 +294,10 @@ export default function FilePanel() {
 
   if(contextMenu && contextMenuType=="file_panel"){
     return (
-        <PanelContainer onContextMenu={(e) => createContextMenuPanel(e)} onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
+        <PanelContainer
+            onContextMenu={(e) => createContextMenuPanel(e)}
+            onMouseUp={(e) => onFileMouseUp(e, null, null)}
+            onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
           {files.length > 0 ? (
               files.filter(file => file.visible).map((file) => (
                   <File key={file.fileId}
@@ -252,8 +305,8 @@ export default function FilePanel() {
                         $pickedUp={pickedUpFileId == file.fileId}
                         $mouseX = {mouseCoords[0]}
                         $mouseY = {mouseCoords[1]}
-                        onMouseDown = {() => onFileMouseDown(file.fileId)}
-                        onMouseUp = {() => onFileMouseUp()}
+                        onMouseDown = {() => onFileMouseDown(file.fileId, file.filename)}
+                        onMouseUp = {(e) => onFileMouseUp(e, file.fileId, file.filepath)}
                         onClick={() => openCloseFolder(file.fileId)}
                         onContextMenu={(e) => createContextMenuFile(e, file.fileId, file.filepath)}>
 
@@ -279,7 +332,10 @@ export default function FilePanel() {
   }
   else if(contextMenu && contextMenuType=="file_fileId"){
     return (
-        <PanelContainer onContextMenu={(e) => createContextMenuPanel(e)} onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
+        <PanelContainer
+            onContextMenu={(e) => createContextMenuPanel(e)}
+            onMouseUp={(e) => onFileMouseUp(e, null, null)}
+            onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
           {files.length > 0 ? (
               files.filter(file => file.visible).map((file) => (
                   <File key={file.fileId}
@@ -287,8 +343,8 @@ export default function FilePanel() {
                         $pickedUp={pickedUpFileId == file.fileId}
                         $mouseX = {mouseCoords[0]}
                         $mouseY = {mouseCoords[1]}
-                        onMouseDown = {() => onFileMouseDown(file.fileId)}
-                        onMouseUp = {() => onFileMouseUp()}
+                        onMouseDown = {() => onFileMouseDown(file.fileId, file.filename)}
+                        onMouseUp = {(e) => onFileMouseUp(e, file.fileId, file.filepath)}
                         onClick={() => openCloseFolder(file.fileId)}
                         onContextMenu={(e) => createContextMenuFile(e, file.fileId, file.filepath)}>
 
@@ -314,7 +370,10 @@ export default function FilePanel() {
   }
   else {
     return (
-        <PanelContainer onContextMenu={(e) => createContextMenuPanel(e)} onMouseUp={() => setPickedUpFileId(undefined)} onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
+        <PanelContainer
+            onContextMenu={(e) => createContextMenuPanel(e)}
+            onMouseUp={(e) => onFileMouseUp(e, null, null)}
+            onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
           {files.length > 0 ? (
               files.filter(file => file.visible).map((file) => (
                   <File key={file.fileId}
@@ -322,8 +381,8 @@ export default function FilePanel() {
                         $pickedUp={pickedUpFileId == file.fileId}
                         $mouseX = {mouseCoords[0]}
                         $mouseY = {mouseCoords[1]}
-                        onMouseDown = {() => onFileMouseDown(file.fileId)}
-                        onMouseUp = {() => onFileMouseUp()}
+                        onMouseDown = {() => onFileMouseDown(file.fileId, file.filename)}
+                        onMouseUp = {(e) => onFileMouseUp(e, file.fileId, file.filepath)}
                         onClick={() => openCloseFolder(file.fileId)}
                         onContextMenu={(e) => createContextMenuFile(e, file.fileId, file.filepath)}>
 
@@ -380,18 +439,29 @@ const PanelContainer = styled.div`
   overflow-y: auto;
 `;
 
-const File = styled.div<{$depth: number, $pickedUp: boolean, $mouseX: number, $mouseY: number}>`
-  position: ${(props) => props.$pickedUp ? "absolute" : "auto"};
-  left: ${(props) => props.$pickedUp ? props.$mouseX-50 + "px" : "auto"};
-  top: ${(props) => props.$pickedUp ? props.$mouseY-50 + "px" : "auto"};
+interface fileProps{
+  $depth: number
+}
 
+const File = styled.div.attrs<{$depth: number, $pickedUp: boolean, $mouseX: number, $mouseY: number}>(props => ({
+  style: {
+    position: props.$pickedUp ? "absolute" : undefined,
+    top: props.$pickedUp ? props.$mouseY-50 + "px" : "auto",
+    left: props.$pickedUp ? props.$mouseX-50 + "px" : "auto",
+    marginLeft: props.$pickedUp ? "auto" : props.$depth * 20
+  }
+}))`
   background-color: white;
   padding: 1rem;
   border-bottom: 1px solid #ddd;
   cursor: pointer;
   width: 100%;
   text-align: left;
-  margin-left: ${(props) => props.$depth * 20}px;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
   &:hover {
     background-color: grey;
   }

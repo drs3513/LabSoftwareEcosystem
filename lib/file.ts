@@ -1,5 +1,6 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
+import {Nullable} from "@aws-amplify/data-schema";
 
 const client = generateClient<Schema>();
 
@@ -31,7 +32,6 @@ export async function createFile(projectId: string, filename:string, isDirectory
     const fileCount = projectFiles.length || 0;
     const fileId = `${projectId}F${fileCount + 1}`;
     const now = new Date().toISOString();
-
     const newFile = await client.models.File.create({
       fileId,
       filename,
@@ -48,8 +48,10 @@ export async function createFile(projectId: string, filename:string, isDirectory
     });
 
     alert("File created successfully!");
+    console.log(newFile)
     return newFile;
   } catch (error) {
+    console.log("HERE")
     console.error("Error creating file:", error);
     alert("An error occurred while creating the file. Please try again.");
   }
@@ -68,6 +70,20 @@ export async function updatefile(id: string) {
       console.error("Error updating file:", error);
       alert("An error occurred while updating the file. Please try again.");
     }
+}
+
+export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>){
+  try {
+    await client.models.File.update({
+      fileId: id,
+      filepath: path,
+      parentId: parentId
+    })
+    console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
+  } catch(error) {
+    console.error("Error updating file:", error);
+    alert("An error occurred while updating the file. Please try again.")
+  }
 }
 
 
