@@ -1,11 +1,10 @@
 "use client";
 
-import {useEffect, useRef, useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
 import { useGlobalState } from "./GlobalStateContext";
 import {listFilesForProject, createFile, updateFileLocation} from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
-import {boolean} from "zod";
 
 
 function compare_file_date(file_1: any, file_2: any){
@@ -22,7 +21,7 @@ function compare_file_date(file_1: any, file_2: any){
 
 
 export default function FilePanel() {
-  function createContextMenuPanel(e){
+  function createContextMenuPanel(e: React.MouseEvent<HTMLDivElement>){
     if(e.target != e.currentTarget){
       return
     }
@@ -34,7 +33,7 @@ export default function FilePanel() {
     setContextMenuFilePath(undefined);
   }
 
-  function createContextMenuFile(e, fileId: string, filepath: string){
+  function createContextMenuFile(e: React.MouseEvent<HTMLDivElement>, fileId: string, filepath: string){
     isLongPress.current = false;
     clearTimeout(timer.current);
     e.preventDefault();
@@ -46,19 +45,16 @@ export default function FilePanel() {
     return <ContextMenu $x={e.clientX} $y={e.clientY}></ContextMenu>;
   }
 
-  const { fileId, projectId, userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId } = useGlobalState();
+  const { projectId, userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId } = useGlobalState();
 
   const [contextMenuPosition, setContextMenuPosition] = useState([0,0])
   const [mouseCoords, setMouseCoords] = useState([0,0])
   const [contextMenuFileId, setContextMenuFileId] = useState<string | undefined>(undefined);
   const [contextMenuFilePath, setContextMenuFilePath] = useState<string | undefined>(undefined);
 
-  const [contextMenuDepth, setContextMenuDepth] = useState(0);
   const [files, setFiles] = useState<Array<{fileId: string, filename: string, filepath: string, size: number, versionId: string, ownerId: string, projectId: string, parentId: Nullable<string>, createdAt: string, updatedAt: string, visible: boolean, open: boolean}>>([]);
   const [sort, setSort] = useState("date")
-  const [hoverFileId, setHoverFileId] = useState<string | undefined>(undefined)
   const [pickedUpFileId, setPickedUpFileId] = useState<string | undefined>(undefined)
-  const [pickedUpFileName, setPickedUpFileName] = useState<string | undefined>(undefined)
   //sorts files to be displayed by the user
   //TODO allow toggle of sort mode through setting 'sort' state
   function sort_files(files: Array<{
@@ -176,7 +172,7 @@ export default function FilePanel() {
       const newFile = await createFile(projectId, filename, isDirectory, `${contextMenuFilePath ? contextMenuFilePath : ""}/${filename}`, userId, 5, "1", contextMenuFileId);
 
 
-      if (newFile) {
+      if (newFile && newFile.data) {
         files.push({fileId: newFile.data.fileId,
           filename: newFile.data.filename,
           filepath: newFile.data.filepath,
@@ -215,20 +211,13 @@ export default function FilePanel() {
       }
     }
   }
-  function placeFile(){
-    setPickedUpFileId(undefined)
-    //set file with fileId to the correct position, update everything
-  }
 
-
-
-  function onFileMouseDown(currFileId : string, currFilePath: string) {
+  function onFileMouseDown(currFileId : string) {
     isLongPress.current = true
     timer.current = setTimeout(() => {
       if(isLongPress.current){
         recursiveCloseFolder(currFileId);
         setPickedUpFileId(currFileId);
-        setPickedUpFileName(currFilePath)
 
       }
     }, 500)
@@ -258,23 +247,19 @@ export default function FilePanel() {
     }
 
   }
-  function onFileMouseUp(e, overFileId: Nullable<string>, overFilePath: Nullable<string>) {
+  function onFileMouseUp(e: React.MouseEvent<HTMLDivElement>, overFileId: Nullable<string>, overFilePath: Nullable<string>) {
     if(e.target != e.currentTarget){
       return
     }
     isLongPress.current = false;
     clearTimeout(timer.current);
 
-    if(pickedUpFileId != null){
+    if(pickedUpFileId !== null){
       for(let i in files){
         if(files[i].fileId == pickedUpFileId){
           files[i].parentId = overFileId
-          if(overFilePath != null){
-            recursiveGeneratePaths(pickedUpFileId, overFilePath + "/")
-          }
-          else {
-            recursiveGeneratePaths(pickedUpFileId, "/")
-          }
+          recursiveGeneratePaths(pickedUpFileId, overFilePath !== null ? overFilePath + "/" : "/").then()
+
 
 
         }
@@ -283,7 +268,6 @@ export default function FilePanel() {
     }
 
     setPickedUpFileId(undefined);
-    setPickedUpFileName(undefined)
   }
   const timer = useRef(setTimeout(() => {
   }, 500));
@@ -292,112 +276,64 @@ export default function FilePanel() {
   const isLongPress = useRef(false);
 
 
-  if(contextMenu && contextMenuType=="file_panel"){
-    return (
-        <PanelContainer
-            onContextMenu={(e) => createContextMenuPanel(e)}
-            onMouseUp={(e) => onFileMouseUp(e, null, null)}
-            onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
-          {files.length > 0 ? (
-              files.filter(file => file.visible).map((file) => (
-                  <File key={file.fileId}
-                        $depth={(file.filepath.match(/\//g) || []).length}
-                        $pickedUp={pickedUpFileId == file.fileId}
-                        $mouseX = {mouseCoords[0]}
-                        $mouseY = {mouseCoords[1]}
-                        onMouseDown = {() => onFileMouseDown(file.fileId, file.filename)}
-                        onMouseUp = {(e) => onFileMouseUp(e, file.fileId, file.filepath)}
-                        onClick={() => openCloseFolder(file.fileId)}
-                        onContextMenu={(e) => createContextMenuFile(e, file.fileId, file.filepath)}>
-
-                    {file.filepath}
-                  </File>
-              ))
+  return (
+      <PanelContainer
+          onContextMenu={(e) => createContextMenuPanel(e)}
+          onMouseUp={(e) => onFileMouseUp(e, null, null)}
+          onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
+        {files.length > 0 ? (
+            files.filter(file => file.visible).map((file) => (
+                <File key={file.fileId}
+                      $depth={(file.filepath.match(/\//g) || []).length}
+                      $pickedUp={pickedUpFileId == file.fileId}
+                      $mouseX = {mouseCoords[0]}
+                      $mouseY = {mouseCoords[1]}
+                      onMouseDown = {() => onFileMouseDown(file.fileId)}
+                      onMouseUp = {(e) => onFileMouseUp(e, file.fileId, file.filepath)}
+                      onClick={() => openCloseFolder(file.fileId)}
+                      onContextMenu={(e) => createContextMenuFile(e, file.fileId, file.filepath)}>
+                  {file.filepath}
+                </File>
+            ))
+        ) : (
+            <NoFiles>No files available.</NoFiles>
+        )}
+        {
+          contextMenu && contextMenuType=="file_panel" ? (
+              <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+                <ContextMenuItem onClick={() => handleCreateFile()}>
+                  Insert File
+                </ContextMenuItem>
+                <ContextMenuItem>
+                  This is a custom context menu!
+                </ContextMenuItem>
+                <ContextMenuItem>
+                  And it works exactly how you'd expect it to!
+                </ContextMenuItem>
+              </ContextMenu>
+          ) : contextMenu ? (
+              <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+                <ContextMenuItem onClick={() => handleCreateFile()}>
+                  Insert File
+                </ContextMenuItem>
+                <ContextMenuItem>
+                  Delete File
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
+                  Open Chat
+                </ContextMenuItem>
+              </ContextMenu>
           ) : (
-              <NoFiles>No files available.</NoFiles>
-          )}
-          <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
-            <ContextMenuItem onClick={(e) => handleCreateFile()}>
-              Insert File
-            </ContextMenuItem>
-            <ContextMenuItem>
-              This is a custom context menu!
-            </ContextMenuItem>
-            <ContextMenuItem>
-              And it works exactly how you'd expect it to!
-            </ContextMenuItem>
-          </ContextMenu>
-        </PanelContainer>
-    );
-  }
-  else if(contextMenu && contextMenuType=="file_fileId"){
-    return (
-        <PanelContainer
-            onContextMenu={(e) => createContextMenuPanel(e)}
-            onMouseUp={(e) => onFileMouseUp(e, null, null)}
-            onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
-          {files.length > 0 ? (
-              files.filter(file => file.visible).map((file) => (
-                  <File key={file.fileId}
-                        $depth={(file.filepath.match(/\//g) || []).length}
-                        $pickedUp={pickedUpFileId == file.fileId}
-                        $mouseX = {mouseCoords[0]}
-                        $mouseY = {mouseCoords[1]}
-                        onMouseDown = {() => onFileMouseDown(file.fileId, file.filename)}
-                        onMouseUp = {(e) => onFileMouseUp(e, file.fileId, file.filepath)}
-                        onClick={() => openCloseFolder(file.fileId)}
-                        onContextMenu={(e) => createContextMenuFile(e, file.fileId, file.filepath)}>
+              <>
+              </>
+          )
+        }
+      </PanelContainer>
+  );
 
-                    {file.filepath}
-                  </File>
-              ))
-          ) : (
-              <NoFiles>No files available.</NoFiles>
-          )}
-          <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
-            <ContextMenuItem onClick={(e) => handleCreateFile()}>
-              Insert File
-            </ContextMenuItem>
-            <ContextMenuItem>
-              Delete File
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
-              Open Chat
-            </ContextMenuItem>
-          </ContextMenu>
-        </PanelContainer>
-    );
-  }
-  else {
-    return (
-        <PanelContainer
-            onContextMenu={(e) => createContextMenuPanel(e)}
-            onMouseUp={(e) => onFileMouseUp(e, null, null)}
-            onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
-          {files.length > 0 ? (
-              files.filter(file => file.visible).map((file) => (
-                  <File key={file.fileId}
-                        $depth={(file.filepath.match(/\//g) || []).length}
-                        $pickedUp={pickedUpFileId == file.fileId}
-                        $mouseX = {mouseCoords[0]}
-                        $mouseY = {mouseCoords[1]}
-                        onMouseDown = {() => onFileMouseDown(file.fileId, file.filename)}
-                        onMouseUp = {(e) => onFileMouseUp(e, file.fileId, file.filepath)}
-                        onClick={() => openCloseFolder(file.fileId)}
-                        onContextMenu={(e) => createContextMenuFile(e, file.fileId, file.filepath)}>
-
-                    {file.filepath}
-                  </File>
-              ))
-          ) : (
-              <NoFiles>No files available.</NoFiles>
-          )}
-          {contextMenu}
-        </PanelContainer>
-    );
-  }
 
 }
+
 
 const ContextMenuItem = styled.div`
   text-align: left;
@@ -438,10 +374,6 @@ const PanelContainer = styled.div`
   text-align: center;
   overflow-y: auto;
 `;
-
-interface fileProps{
-  $depth: number
-}
 
 const File = styled.div.attrs<{$depth: number, $pickedUp: boolean, $mouseX: number, $mouseY: number}>(props => ({
   style: {

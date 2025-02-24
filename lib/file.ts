@@ -17,8 +17,7 @@ export async function listFilesForProject(projectId: string) {
     const files = response.data; // Extract file array
 
     if (!files) return [];
-    let projfiles = files.filter((file) => file.projectId === projectId);
-    return projfiles; // Filter files by projectId
+    return files.filter((file) => file.projectId === projectId);; // Filter files by projectId
   } catch (error) {
     console.error("Error fetching files for project:", error);
     return [];
