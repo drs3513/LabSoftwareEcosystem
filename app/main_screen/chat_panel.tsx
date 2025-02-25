@@ -11,6 +11,7 @@ interface Message {
   userId: string;
   content: string;
   createdAt: string;
+  updatedAt?: string;
   edited?: boolean;
   deleted?: boolean;
 }
@@ -78,17 +79,25 @@ export default function ChatPanel() {
   };
 
   const handleUpdateMessage = async (messageId: string) => {
-    const newContent = prompt("Enter new message content:");
+    const newContent = prompt('Enter new message content:');
     if (newContent) {
       try {
-        await updateMessage(messageId, newContent, userId!);
-        setMessages((prevMessages) =>
-          prevMessages.map((msg) =>
-            msg.messageId === messageId ? { ...msg, content: newContent } : msg
-          )
-        );
+        const response = await updateMessage(messageId, newContent, userId!);
+        const updatedMessage = response?.data ?? response;
+
+        if (updatedMessage && 'messageId' in updatedMessage && 'content' in updatedMessage) {
+          setMessages((prevMessages) =>
+            prevMessages.map((msg) =>
+              msg.messageId === messageId
+                ? { ...msg, content: newContent, edited: true, updatedAt: updatedMessage.updatedAt }
+                : msg
+            )
+          );
+        } else {
+          console.error('Invalid message response:', response);
+        }
       } catch (error) {
-        console.error("Error updating message:", error);
+        console.error('Error updating message:', error);
       }
     }
     setContextMenu(null);
@@ -108,6 +117,18 @@ export default function ChatPanel() {
     setContextMenu(null);
   };
 
+  const formatTimestamp = (timestamp: string) => {
+    return new Date(timestamp).toLocaleString("en-US", {
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+      hour12: true,
+    });
+  };
+
   return (
     <ChatContainer>
       <ChatMessagesWrapper>
@@ -123,7 +144,9 @@ export default function ChatPanel() {
               <Chat_Body $sender={msg.userId === userId}>
                 <div>{msg.content}</div>
                 <ChatSender>{msg.userId === userId ? "You" : "Other User"}</ChatSender>
-                <ChatTimeStamp>{new Date(msg.createdAt).toLocaleTimeString()}</ChatTimeStamp>
+                <ChatTimeStamp>{msg.edited
+                    ? formatTimestamp(msg.updatedAt ?? msg.createdAt)
+                    : formatTimestamp(msg.createdAt)}</ChatTimeStamp>
                 {msg.edited && <ChatUpdateStatus>Edited</ChatUpdateStatus>}
               </Chat_Body>
             )}

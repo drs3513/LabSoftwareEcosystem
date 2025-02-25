@@ -44,9 +44,11 @@ export async function updateMessage(messageId: string, content: string, currentU
     } else {
       console.log("User has permission to update the message");
       // Proceed to update the message
+      const now = new Date().toISOString();
       const updatedMessage = await client.models.Message.update({
         messageId,
         content,
+        updatedAt: now, // Update the timestamp
         edited: true, // Add the edited field
       });
       console.log("Updated message:", updatedMessage);
