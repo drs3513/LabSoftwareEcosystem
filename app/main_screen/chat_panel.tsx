@@ -38,11 +38,7 @@ export default function ChatPanel() {
   }, [messages]);
 
   const handleSendMessage = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-    console.log("handlesendmessage");
-    console.log(fileId);
-    console.log(userId);
     if (input.trim() && fileId && userId) {
-      console.log("enter");
       try {
         const response = await createMessage(fileId, userId, input.trim(), false, false);
 
@@ -54,7 +50,6 @@ export default function ChatPanel() {
 
         // ✅ Ensure newMessage has required fields before updating state
         if (newMessage && 'messageId' in newMessage && 'content' in newMessage) {
-          console.log("if");
           setMessages((prevMessages) => [
             ...prevMessages,
             {

@@ -6,7 +6,6 @@ const client = generateClient<Schema>();
 
 export async function createMessage(fileId: string, userId: string | undefined, content: string, edited: boolean, deleted: boolean) {
   try {
-    console.log("create message");
     // Fetch all messages for the given file
     const fileMessages = await getMessagesForFile(fileId);
     const messageCount = fileMessages.length || 0;
