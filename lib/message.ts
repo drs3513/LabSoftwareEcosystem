@@ -6,9 +6,11 @@ const client = generateClient<Schema>();
 
 export async function createMessage(fileId: string, userId: string | undefined, content: string, edited: boolean, deleted: boolean) {
   try {
+    console.log("create message");
+    // Fetch all messages for the given file
     const fileMessages = await getMessagesForFile(fileId);
     const messageCount = fileMessages.length || 0;
-    const messageId = ${fileId}M${messageCount + 1}; // this might cause issues if multiple users send a message simultaneously. uuid?
+    const messageId = `${fileId}M${messageCount + 1}`;
     const now = new Date().toISOString();
 
     // Provide a default value for userId if it is undefined
@@ -21,8 +23,7 @@ export async function createMessage(fileId: string, userId: string | undefined, 
       content,
       createdAt: now,
       edited, 
-      deleted,
-      updatedAt: now,
+      deleted
     });
 
     console.log("Created message:", newMessage);
@@ -44,11 +45,9 @@ export async function updateMessage(messageId: string, content: string, currentU
     } else {
       console.log("User has permission to update the message");
       // Proceed to update the message
-      const now = new Date().toISOString();
       const updatedMessage = await client.models.Message.update({
         messageId,
         content,
-        updatedAt: now, // Update the timestamp
         edited: true, // Add the edited field
       });
       console.log("Updated message:", updatedMessage);
@@ -59,10 +58,9 @@ export async function updateMessage(messageId: string, content: string, currentU
   }
 }
 
-
 export async function getMessagesForFile(fileId: string) {
     try {
-      
+      console.log("getmsgsforfile");
       const response = await client.models.Message.list();
       const messages = response.data; // Extract messages array
 
@@ -77,7 +75,6 @@ export async function getMessagesForFile(fileId: string) {
     try {
       // Check if the message belongs to the current user
       const message = await client.models.Message.get({ messageId });
-      const now = new Date().toISOString();
       if (!message) {
         throw new Error("Message not found");
       }
@@ -88,11 +85,10 @@ export async function getMessagesForFile(fileId: string) {
         // Update the message to mark it as deleted
         const updatedMessage = await client.models.Message.update({
           messageId,
-          content: "This message was deleted.",
+          content: "",
           deleted: true, // Add the deleted field
-          updatedAt: now,
         });
-        console.log(Message marked as deleted: ${messageId});
+        console.log(`Message marked as deleted: ${messageId}`);
         return updatedMessage;
       }
     } catch (error) {
