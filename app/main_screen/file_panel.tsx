@@ -1,11 +1,10 @@
 "use client";
 
-import {useEffect, useRef, useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
 import { useGlobalState } from "./GlobalStateContext";
-import { listFilesForProject, createFile } from "@/lib/file";
+import {listFilesForProject, createFile, updateFileLocation} from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
-import {boolean} from "zod";
 
 
 function compare_file_date(file_1: any, file_2: any){
@@ -20,158 +19,215 @@ function compare_file_date(file_1: any, file_2: any){
   }
 }
 
+function compare_file_date_reverse(file_1: fileInfo, file_2: fileInfo){
+  return compare_file_date(file_1, file_2) * -1
+}
+
+function compare_file_name(file_1: any, file_2: any){
+  return file_1.filename.localeCompare(file_2.filename)
+}
+function compare_file_name_reverse(file_1: any, file_2: any){
+  return compare_file_name(file_1, file_2) * -1
+}
+
+interface fileInfo{
+  fileId: string,
+  filename: string,
+  filepath: string,
+  size: number,
+  versionId: string,
+  ownerId: string,
+  projectId: string,
+  parentId: Nullable<string>,
+  createdAt: string,
+  updatedAt: string,
+  visible: boolean,
+  open: boolean,
+  isDirectory: boolean | null
+}
+
+interface fileInfoDict extends fileInfo{
+  index: number
+}
 
 export default function FilePanel() {
-  function createContextMenuPanel(e){
+
+  function createContextMenu(e: React.MouseEvent<HTMLDivElement>, fileId: string | undefined, filepath: string | undefined, location: string){
     if(e.target != e.currentTarget){
       return
     }
+    isLongPress.current = false;
+    clearTimeout(timer.current);
     e.preventDefault();
     setContextMenu(true);
-    setContextMenuType("file_panel");
-    setContextMenuPosition([e.clientX, e.clientY]);
-    setContextMenuFileId(undefined);
-    setContextMenuFilePath(undefined);
-  }
-
-  function createContextMenuFile(e, fileId: string, filepath: string){
-    e.preventDefault();
-    setContextMenu(true);
-    setContextMenuType("file_fileId");
-    setContextMenuPosition([e.clientX, e.clientY]);
+    setContextMenuType(location);
+    setContextMenuPosition([e.pageX, e.pageY]);
     setContextMenuFileId(fileId);
     setContextMenuFilePath(filepath);
-    return <ContextMenu $x={e.clientX} $y={e.clientY}></ContextMenu>;
   }
 
-  const { fileId, projectId, userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId } = useGlobalState();
+  const { projectId, userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId } = useGlobalState();
 
   const [contextMenuPosition, setContextMenuPosition] = useState([0,0])
+
   const [mouseCoords, setMouseCoords] = useState([0,0])
+
   const [contextMenuFileId, setContextMenuFileId] = useState<string | undefined>(undefined);
+
   const [contextMenuFilePath, setContextMenuFilePath] = useState<string | undefined>(undefined);
 
-  const [contextMenuDepth, setContextMenuDepth] = useState(0);
-  const [files, setFiles] = useState<Array<{fileId: string, filename: string, filepath: string, size: number, versionId: string, ownerId: string, projectId: string, parentId: Nullable<string>, createdAt: string, updatedAt: string, visible: boolean, open: boolean}>>([]);
-  const [sort, setSort] = useState("date")
-  const [hoverFileId, setHoverFileId] = useState<string | undefined>(undefined)
+  const [files, setFiles] = useState<Array<fileInfo>>([]);
+
+  const filesByParentId = useRef<{[key: string]: [number]}>({})
+
+  const filesByFileId = useRef<{[key: string]: number}>({})
+
+  const [sort, setSort] = useState("alphanumeric")
+
+  const [search, setSearch] = useState(false)
+
   const [pickedUpFileId, setPickedUpFileId] = useState<string | undefined>(undefined)
+
+  const timer = useRef(setTimeout(() => {}, 500));
+
+  const isLongPress = useRef(false);
+
+
+
   //sorts files to be displayed by the user
   //TODO allow toggle of sort mode through setting 'sort' state
-  function sort_files(files: Array<{
-    fileId: string,
-    filename: string,
-    filepath: string,
-    size: number,
-    versionId: string,
-    ownerId: string,
-    projectId: string,
-    parentId: Nullable<string>,
-    createdAt: string,
-    updatedAt: string
-  }>){
-
-    //put each file into its own 'bucket', which designates which parentId it belongs to, allows for seperate sorting
-    //within subdirectories
-    let files_by_parentId: {[key: string]: any} = {}
-
-    for(let file of files) {
-      if (file.parentId == null) {
-        if (files_by_parentId["no_parent"] == null) {
-          files_by_parentId["no_parent"] = [file]
-        } else {
-          files_by_parentId["no_parent"].push(file)
-        }
+  function sort_files(files: Array<fileInfo>){
+    let index = 0
+    function assignFileByParentId(file: fileInfo) {
+      if (filesByParentId.current[file.parentId != null ? file.parentId : "no_parent"] == null) {
+        filesByParentId.current[file.parentId != null ? file.parentId : "no_parent"] = [index]
       } else {
-        if (files_by_parentId[file.parentId] == null) {
-          files_by_parentId[file.parentId] = [file]
-        } else {
-          files_by_parentId[file.parentId].push(file)
+        filesByParentId.current[file.parentId != null ? file.parentId : "no_parent"].push(index)
+      }
+    }
+
+    //concatenates files together in the same order as the parent
+    function concatenateFiles(curr_parent: string, files_by_parentId: any, file_list: any) {
+      for (let i = 0; i < files_by_parentId[curr_parent].length; i++) {
+        file_list.push(files_by_parentId[curr_parent][i])
+        //console.log(files_by_parentId[curr_parent][i])
+        //console.log(files_by_parentId)
+        if (files_by_parentId[curr_parent][i].fileId in files_by_parentId) {
+          file_list = concatenateFiles(files_by_parentId[curr_parent][i].fileId, files_by_parentId, file_list)
         }
       }
+      return file_list
     }
-    //sort by date
-    for(let key in files_by_parentId){
-      let values = files_by_parentId[key]
-      files_by_parentId[key] = values.sort(compare_file_date)
-    }
-    if("no_parent" in files_by_parentId){
-      files = concatenateFiles("no_parent", files_by_parentId, []);
-    }
-    return files
-  }
-  //concatenates files together in the same order as the parent
-  function concatenateFiles(curr_parent: string, files_by_parentId: any, file_list: any){
-    for(let i = 0; i < files_by_parentId[curr_parent].length; i++){
-      file_list.push(files_by_parentId[curr_parent][i])
-      if(files_by_parentId[curr_parent][i].fileId in files_by_parentId){
-        file_list = concatenateFiles(files_by_parentId[curr_parent][i].fileId, files_by_parentId, file_list)
+
+      //put each file into its own 'bucket', which designates which parentId it belongs to, allows for seperate sorting
+      //within subdirectories
+      filesByParentId.current = {}
+
+      for (let file of files) {
+        assignFileByParentId(file)
+        index += 1
       }
-    }
-    return file_list
+
+      let sorted_files: { [key: string]: fileInfo[] } = {}
+      for (let key in filesByParentId.current) {
+        let values = []
+        for (let fileRef of filesByParentId.current[key]) {
+          values.push(files[fileRef])
+        }
+        switch (sort) {
+          case "alphanumeric": {
+            values = values.sort(compare_file_name)
+            break
+          }
+          case "alphanumeric-reverse": {
+            values = values.sort(compare_file_name_reverse)
+            break
+          }
+          case "chronological": {
+            values = values.sort(compare_file_date)
+            break
+          }
+          case "chronological-reverse": {
+            values = values.sort(compare_file_date_reverse)
+            break
+          }
+          default: {
+            values = values.sort(compare_file_name)
+            break
+          }
+        }
+
+        sorted_files[key] = values
+      }
+      if ("no_parent" in sorted_files) {
+        //console.log("Made it")
+        files = concatenateFiles("no_parent", sorted_files, []);
+      }
+      filesByParentId.current = {}
+      filesByFileId.current = {}
+      index = 0
+      for (let file of files) {
+        assignFileByParentId(file)
+        filesByFileId.current[file.fileId] = index
+        index += 1
+      }
+
+      return files
+
+
+
   }
 
+  //TODO for the love of god fix this hell
+
+  async function fetchFiles() {
+    if (!projectId) return;
+    const projectFiles = await listFilesForProject(projectId);
+    //builds array of files with extra information for display
+    //Extra information :
+    //'visible' : designates if a file is current visible,
+    // 'open' : designates if a file is currently open (it's unclear that this is required)
+    if(projectFiles){
+      let temp_files: Array<fileInfo> = []
+      for(let file of projectFiles) {
+        temp_files = [...temp_files,
+          {
+            fileId: file.fileId,
+            filename: file.filename,
+            filepath: file.filepath,
+            parentId: file.parentId,
+            size: file.size,
+            versionId: file.versionId,
+            ownerId: file.ownerId,
+            projectId: file.projectId,
+            createdAt: file.createdAt,
+            updatedAt: file.updatedAt,
+            visible: file.parentId == null,
+            open: false,
+            isDirectory: file.isDirectory
+          }]
+      }
+      setFiles(sort_files(temp_files))
+      return temp_files
+
+    }
+  }
+  //fetches files from database on load
   useEffect(() => {
-    async function fetchFiles() {
-      if (!projectId) return;
-      const projectFiles = await listFilesForProject(projectId);
-      setFiles([])
-      //builds array of files with extra information for display
-      //Extra information :
-      //'visible' : designates if a file is current visible,
-      // 'open' : designates if a file is currently open
-      if(projectFiles){
-        let temp_files: Array<{
-          fileId: string,
-          filename: string,
-          filepath: string,
-          size: number,
-          versionId: string,
-          ownerId: string,
-          projectId: string,
-          parentId: Nullable<string>,
-          createdAt: string,
-          updatedAt: string,
-          visible: boolean,
-          open: boolean
-        }> = []
-        for(let file of projectFiles) {
-           temp_files = [...temp_files,
-            {
-              fileId: file.fileId,
-              filename: file.filename,
-              filepath: file.filepath,
-              parentId: file.parentId,
-              size: file.size,
-              versionId: file.versionId,
-              ownerId: file.ownerId,
-              projectId: file.projectId,
-              createdAt: file.createdAt,
-              updatedAt: file.updatedAt,
-              visible: (file.filepath.match(/\//g) || []).length == 1,
-              open: false
-            }]
-        }
-
-        setFiles(sort_files(temp_files));
-        }
-      }
-    fetchFiles();
+    fetchFiles().then();
   }, [projectId]);
 
-
-
-  const handleCreateFile = async () => {
+  //creates a file
+  const handleCreateFile = async (isDirectory: boolean) => {
 
     const filename = prompt("Enter File Name:");
-    const isDirectory = confirm("Is Directory?");
     if (!filename || !projectId || !userId) return;
 
     try {
+      const newFile = await createFile(projectId, filename, isDirectory, `${contextMenuFilePath ? contextMenuFilePath : ""}/${filename}`, userId, 5, "1", contextMenuFileId);
 
-      const newFile = await createFile(projectId, filename, isDirectory, contextMenuFileId, `${contextMenuFilePath ? contextMenuFilePath : ""}/${filename}`, userId, 5, "1");
 
-      if (newFile) {
+      if (newFile && newFile.data) {
         files.push({fileId: newFile.data.fileId,
           filename: newFile.data.filename,
           filepath: newFile.data.filepath,
@@ -183,7 +239,9 @@ export default function FilePanel() {
           createdAt: newFile.data.createdAt,
           updatedAt: newFile.data.updatedAt,
           visible: true,
-          open: false})
+          open: false,
+          isDirectory: newFile.data.isDirectory
+        })
         setFiles(sort_files(files))
 
       }
@@ -192,153 +250,196 @@ export default function FilePanel() {
       alert("Failed to create file. Please check the inputs.");
     }
   };
+
   // opens / closes a folder that is clicked
-  function openCloseFolder(openFileId: string){
-    for (let file of files){
-      if(file.parentId == openFileId){
-        file.visible = !file.visible
-        recursiveCloseFolder(file.fileId)
+  function openCloseFolder(openFileId: string) {
+    if (openFileId in filesByParentId.current) {
+      for (let i of filesByParentId.current[openFileId]) {
+        files[i].visible = !files[i].visible
+        recursiveCloseFolder(files[i].fileId)
       }
     }
     setFiles([...files]);
   }
+
+  // recursively closes folders
   function recursiveCloseFolder(openFileId: string){
-    for(let file of files){
-      if(file.parentId == openFileId && file.visible){
-        file.visible = false
-        recursiveCloseFolder(file.fileId)
+    if(openFileId in filesByParentId.current){
+      for(let i of filesByParentId.current[openFileId]){
+        if(files[i].visible){
+          files[i].visible = !files[i].visible
+          recursiveCloseFolder(files[i].fileId)
+        }
       }
     }
   }
-  function placeFile(){
-    setPickedUpFileId(undefined)
-    //set file with fileId to the correct position, update everything
+
+  function onFilePlace(e: React.MouseEvent<HTMLDivElement>, overFileId: Nullable<string>, overFilePath: Nullable<string>) {
+    if(e.target != e.currentTarget){
+      return
+    }
+    isLongPress.current = false;
+    clearTimeout(timer.current);
+
+    if(pickedUpFileId !== undefined){
+      console.log(files[filesByFileId.current[pickedUpFileId]])
+      files[filesByFileId.current[pickedUpFileId]].parentId = overFileId
+      const pickedUpFileIdCopy = pickedUpFileId
+      setPickedUpFileId(undefined)
+      recursiveGeneratePaths(pickedUpFileIdCopy, overFilePath !== null ? overFilePath + "/" : "/")
+
+      console.log("Finished!")
+      setFiles(sort_files(files))
+      console.log(files)
+    }
+
   }
 
-
-
-  function onFileMouseDown(currFileId : string) {
-    console.log(currFileId)
+  //If the user holds down left-click on a file / folder, all subdirectories are closed, and
+  function onFilePickUp(currFileId : string) {
     isLongPress.current = true
     timer.current = setTimeout(() => {
       if(isLongPress.current){
-        console.log("You've been holding down for a while");
+        recursiveCloseFolder(currFileId);
         setPickedUpFileId(currFileId);
-        console.log(pickedUpFileId)
-        console.log(currFileId)
+
       }
     }, 500)
 
   }
-  function onFileMouseUp() {
-    isLongPress.current = false;
-    clearTimeout(timer.current);
-    setPickedUpFileId(undefined);
+
+  //Recursively generates new 'path' values for all subdirectories of that which was placed
+  function recursiveGeneratePaths(currFileId: Nullable<string>, pathAppend: string) {
+    let newPathAppend: string = pathAppend
+    if (currFileId !== null) {
+      files[filesByFileId.current[currFileId]].filepath = pathAppend + files[filesByFileId.current[currFileId]].filename
+      updateFileLocation(currFileId, pathAppend + files[filesByFileId.current[currFileId]].filename, files[filesByFileId.current[currFileId]].parentId).then()
+      newPathAppend = pathAppend + files[filesByFileId.current[currFileId]].filename + "/"
+      if (currFileId in filesByParentId.current) {
+        for (let i of filesByParentId.current[currFileId]) {
+          recursiveGeneratePaths(files[i].fileId, newPathAppend)
+        }
+      }
+    }
   }
-  const timer = useRef(setTimeout(() => {
-  }, 500));
 
+  function HandleSearch(e){
+    setSearch(true)
+    searchFiles(e.target.value).then()
+  }
 
-  const isLongPress = useRef(false);
+  //TODO this is an absolutely horrendous implementation
+  //I have no idea why you need to return temp_files from fetchFiles() in order for the code to operate
+  async function searchFiles(search: string) {
+    let temp_files = await fetchFiles()
+    if (temp_files) {
+      let foundFiles = temp_files.filter((file) => file.filename.includes(search))
+      switch (sort) {
+        case "alphanumeric": {
+          setFiles(foundFiles.sort(compare_file_name))
+          break
+        }
+        case "alphanumeric-reverse": {
+          setFiles(foundFiles.sort(compare_file_name_reverse))
+          break
+        }
+        case "chronological": {
+          setFiles(foundFiles.sort(compare_file_date))
+          break
+        }
+        case "chronological-reverse": {
+          setFiles(foundFiles.sort(compare_file_date_reverse))
+          break
+        }
+        default: {
+          setFiles(foundFiles.sort(compare_file_name))
+          break
+        }
+      }
+  }
+  }
+  return (
+      <PanelContainer
+          onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel')}
+          onMouseUp={(e) => onFilePlace(e, null, null)}
+          onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
+        <TopBarContainer>
+          <Input onChange={(e) => HandleSearch(e)}>
 
-
-  if(contextMenu && contextMenuType=="file_panel"){
-    return (
-        <PanelContainer onContextMenu={(e) => createContextMenuPanel(e)} onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
-          {files.length > 0 ? (
-              files.filter(file => file.visible).map((file) => (
-                  <File key={file.fileId}
-                        $depth={(file.filepath.match(/\//g) || []).length}
-                        $pickedUp={pickedUpFileId == file.fileId}
-                        $mouseX = {mouseCoords[0]}
-                        $mouseY = {mouseCoords[1]}
-                        onMouseDown = {() => onFileMouseDown(file.fileId)}
-                        onMouseUp = {() => onFileMouseUp()}
-                        onClick={() => openCloseFolder(file.fileId)}
-                        onContextMenu={(e) => createContextMenuFile(e, file.fileId, file.filepath)}>
-
-                    {file.filepath}
-                  </File>
-              ))
+          </Input>
+        </TopBarContainer>
+        {files.length > 0 ? (
+            files.filter(file => file.visible).map((file) => (
+                <File key={file.fileId}
+                      $depth={(file.filepath.match(/\//g) || []).length}
+                      $pickedUp={pickedUpFileId == file.fileId}
+                      $mouseX = {mouseCoords[0]}
+                      $mouseY = {mouseCoords[1]}
+                      $search = {search}
+                      onMouseDown = {() => file.fileId != pickedUpFileId ? onFilePickUp(file.fileId) : undefined}
+                      onMouseUp = {(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
+                      onClick={() => openCloseFolder(file.fileId)}
+                      onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile')}>
+                  {file.isDirectory ? "📁" : "🗎"}  {file.filename}
+                </File>
+            ))
+        ) : (
+            <NoFiles>No files available.</NoFiles>
+        )}
+        {
+          contextMenu && contextMenuType=="filePanel" ? (
+              <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+                <ContextMenuItem onClick={() => handleCreateFile(false)}>
+                  Create File
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleCreateFile(true)}>
+                  Create Folder
+                </ContextMenuItem>
+                <ContextMenuItem>
+                  Open Chat
+                </ContextMenuItem>
+              </ContextMenu>
+          ) : contextMenu && contextMenuType=="fileFile" ? (
+              <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+                <ContextMenuItem>
+                  Rename
+                </ContextMenuItem>
+                <ContextMenuItem>
+                  Properties
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
+                  Open Chat
+                </ContextMenuItem>
+              </ContextMenu>
+          ) : contextMenu && contextMenuType=="fileFolder" ? (
+              <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+                <ContextMenuItem onClick={() => handleCreateFile(false)}>
+                  Create File
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleCreateFile(true)}>
+                  Create Folder
+                </ContextMenuItem>
+                <ContextMenuItem>
+                  Delete Folder
+                </ContextMenuItem>
+                <ContextMenuItem>
+                  Properties
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
+                  Open Chat
+                </ContextMenuItem>
+              </ContextMenu>
           ) : (
-              <NoFiles>No files available.</NoFiles>
-          )}
-          <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
-            <ContextMenuItem onClick={(e) => handleCreateFile()}>
-              Insert File
-            </ContextMenuItem>
-            <ContextMenuItem>
-              This is a custom context menu!
-            </ContextMenuItem>
-            <ContextMenuItem>
-              And it works exactly how you'd expect it to!
-            </ContextMenuItem>
-          </ContextMenu>
-        </PanelContainer>
-    );
-  }
-  else if(contextMenu && contextMenuType=="file_fileId"){
-    return (
-        <PanelContainer onContextMenu={(e) => createContextMenuPanel(e)} onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
-          {files.length > 0 ? (
-              files.filter(file => file.visible).map((file) => (
-                  <File key={file.fileId}
-                        $depth={(file.filepath.match(/\//g) || []).length}
-                        $pickedUp={pickedUpFileId == file.fileId}
-                        $mouseX = {mouseCoords[0]}
-                        $mouseY = {mouseCoords[1]}
-                        onMouseDown = {() => onFileMouseDown(file.fileId)}
-                        onMouseUp = {() => onFileMouseUp()}
-                        onClick={() => openCloseFolder(file.fileId)}
-                        onContextMenu={(e) => createContextMenuFile(e, file.fileId, file.filepath)}>
+              <>
+              </>
+          )
+        }
+      </PanelContainer>
+  );
 
-                    {file.filepath}
-                  </File>
-              ))
-          ) : (
-              <NoFiles>No files available.</NoFiles>
-          )}
-          <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
-            <ContextMenuItem onClick={(e) => handleCreateFile()}>
-              Insert File
-            </ContextMenuItem>
-            <ContextMenuItem>
-              Delete File
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
-              Open Chat
-            </ContextMenuItem>
-          </ContextMenu>
-        </PanelContainer>
-    );
-  }
-  else {
-    return (
-        <PanelContainer onContextMenu={(e) => createContextMenuPanel(e)} onMouseUp={() => setPickedUpFileId(undefined)} onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
-          {files.length > 0 ? (
-              files.filter(file => file.visible).map((file) => (
-                  <File key={file.fileId}
-                        $depth={(file.filepath.match(/\//g) || []).length}
-                        $pickedUp={pickedUpFileId == file.fileId}
-                        $mouseX = {mouseCoords[0]}
-                        $mouseY = {mouseCoords[1]}
-                        onMouseDown = {() => onFileMouseDown(file.fileId)}
-                        onMouseUp = {() => onFileMouseUp()}
-                        onClick={() => openCloseFolder(file.fileId)}
-                        onContextMenu={(e) => createContextMenuFile(e, file.fileId, file.filepath)}>
-
-                    {file.filepath}
-                  </File>
-              ))
-          ) : (
-              <NoFiles>No files available.</NoFiles>
-          )}
-          {contextMenu}
-        </PanelContainer>
-    );
-  }
 
 }
+
 
 const ContextMenuItem = styled.div`
   text-align: left;
@@ -375,29 +476,68 @@ const PanelContainer = styled.div`
   width: 100%;
   height: 100%;
   background-color: white;
-  padding: 1rem;
   text-align: center;
   overflow-y: auto;
 `;
 
-const File = styled.div<{$depth: number, $pickedUp: boolean, $mouseX: number, $mouseY: number}>`
-  position: ${(props) => props.$pickedUp ? "absolute" : "auto"};
-  left: ${(props) => props.$pickedUp ? props.$mouseX-50 + "px" : "auto"};
-  top: ${(props) => props.$pickedUp ? props.$mouseY-50 + "px" : "auto"};
-
+const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: number, $mouseY: number, $search: boolean}>(props => ({
+  style: {
+    position: props.$pickedUp ? "absolute" : undefined,
+    top: props.$pickedUp ? props.$mouseY + "px" : "auto",
+    left: props.$pickedUp ? props.$mouseX + "px" : "auto",
+    marginLeft: props.$search ? props.$pickedUp ? "auto" : props.$depth * 20 : "auto",
+    width: props.$search ? props.$pickedUp ? "auto" : "calc(100% - " + props.$depth * 20 + "px)" : "100%",
+    pointerEvents: props.$pickedUp ? "none" : "auto",
+    opacity : props.$pickedUp ? 0.75 : 1,
+    backgroundColor: props.$pickedUp ? "lightskyblue" : "white",
+    borderRadius: props.$pickedUp ? "10px" : "0"
+  }
+}))`
+  color: inherit;
+  border: none;
+  font: inherit;
+  outline: inherit;
   background-color: white;
   padding: 1rem;
   border-bottom: 1px solid #ddd;
   cursor: pointer;
-  width: 100%;
   text-align: left;
-  margin-left: ${(props) => props.$depth * 20}px;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  border-radius: 0;
   &:hover {
-    background-color: grey;
+    
+    border: solid lightblue;
+    
+    padding-top: calc(1rem - 2px);
+    padding-bottom: calc(1rem - 2px);
   }
+  
+  &:active {
+    background-color: lightblue !important;
+    
+    }
 `;
 
 const NoFiles = styled.div`
   color: gray;
   text-align: center;
+`;
+
+const TopBarContainer = styled.div`
+  display: flex;
+  padding: 0.5rem;
+
+
+`;
+
+const Input = styled.input`
+  flex: 1;
+  height: 3rem;
+  padding: 0.5rem;
+  border: 2px solid #ccc;
+  border-radius: 5px;
 `;

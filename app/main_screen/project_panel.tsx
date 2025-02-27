@@ -2,77 +2,51 @@
 
 import { useEffect, useState } from "react";
 import { useGlobalState } from "./GlobalStateContext";
-import { listProjectsForUser, createProject } from "@/lib/project";
+import { generateClient } from "aws-amplify/data";
+import type { Schema } from "@/amplify/data/resource";
 import styled from "styled-components";
+import { useAuthenticator } from "@aws-amplify/ui-react";
+
+const client = generateClient<Schema>();
 
 export default function ProjectPanel() {
-  const { userId, setProjectId } = useGlobalState();
+  const { setProjectId } = useGlobalState();
+  const { user } = useAuthenticator();
   const [projects, setProjects] = useState<Array<{ projectId: string; projectName: string }>>([]);
-
-
-  const handleCreateProject = async () => {
-    try {
-      const projectName = prompt("Enter Project Name:");
-      if (!projectName) return;
-  
-      const newProject = await createProject(userId as string, projectName);
-
-      if (newProject) {
-        setProjects((prevProjects) => [
-          ...prevProjects,
-          {
-            projectId: newProject.data.projectId,
-            projectName: newProject.data.projectName,
-          },
-        ]);
-      } else {
-        console.error("Project creation failed: No data returned");
-        alert("Failed to create project. Please try again.");
-      }
-    } catch (error) {
-      console.error("Error creating project:", error);
-    }
-  };
-
-
-
-  const [numCalls, setNumCalls] = useState(0);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    async function fetchProjects() {
-      try {
-        const projectResponse = await listProjectsForUser(userId as string);
-        console.log(projectResponse)
-        // ✅ Use projectResponse directly since it's already an array
-        if (projectResponse.length > 0) {
-          console.log("Jere")
+    if (!user?.signInDetails?.loginId) return;
+
+    const subscription = client.models.Project.observeQuery().subscribe({
+      next: (data) => {
+        if (data.items && Array.isArray(data.items)) {
           setProjects(
-            projectResponse.map((proj) => ({
+            data.items.map((proj) => ({
               projectId: proj.projectId,
               projectName: proj.projectName,
             }))
           );
         }
-        setNumCalls(numCalls + 1)
-        console.log("projects")
-        console.log(numCalls)
+        setLoading(false);
+      },
+      error: (error) => {
+        console.error("Error observing projects:", error);
+        setLoading(false);
+      },
+    });
 
-      } catch (error) {
-        console.error("Error fetching projects:", error);
-      }
-    }
-  
-    fetchProjects();
-  }, [userId]);
-
+    return () => subscription.unsubscribe(); // Unsubscribe on unmount
+  }, [user]);
 
   return (
     <PanelContainer>
-      <CreateButton onClick={handleCreateProject}>+ Create Project</CreateButton>
-      {projects.length > 0 ? (
+      {loading ? (
+        <LoadingText>Loading projects...</LoadingText>
+      ) : projects.length > 0 ? (
         projects.map((project) => (
           <Project key={project.projectId} onClick={() => setProjectId(project.projectId)}>
-            {project.projectName}
+            📁 {project.projectName}
           </Project>
         ))
       ) : (
@@ -82,26 +56,14 @@ export default function ProjectPanel() {
   );
 }
 
+// Styled Components
 const PanelContainer = styled.div`
   width: 100%;
   height: 100%;
-  background-color: white;
+  background-color: black;
   padding: 1rem;
   text-align: center;
   overflow-y: auto;
-`;
-
-const CreateButton = styled.button`
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 10px;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  cursor: pointer;
-  &:hover {
-    background-color: #0056b3;
-  }
 `;
 
 const Project = styled.div`
@@ -115,6 +77,11 @@ const Project = styled.div`
 `;
 
 const NoProjects = styled.div`
+  color: gray;
+  text-align: center;
+`;
+
+const LoadingText = styled.div`
   color: gray;
   text-align: center;
 `;

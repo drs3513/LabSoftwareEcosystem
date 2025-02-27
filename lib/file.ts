@@ -1,5 +1,6 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
+import {Nullable} from "@aws-amplify/data-schema";
 
 const client = generateClient<Schema>();
 
@@ -16,31 +17,27 @@ export async function listFilesForProject(projectId: string) {
     const files = response.data; // Extract file array
 
     if (!files) return [];
-
-    return files.filter((file) => file.projectId === projectId); // ✅ Filter files by projectId
+    return files.filter((file) => file.projectId === projectId);; // Filter files by projectId
   } catch (error) {
     console.error("Error fetching files for project:", error);
     return [];
   }
 }
 
-export async function createFile(projectId: string, filename:string, isDirectory: boolean, parentId?: string, filepath: string, ownerId: string, size: number, versionId: string) {
+export async function createFile(projectId: string, filename:string, isDirectory: boolean, filepath: string, ownerId: string, size: number, versionId: string, parentId: (string|undefined)) {
   try {
     // Fetch all files for the project
     const projectFiles = await listFilesForProject(projectId);
-
     const fileCount = projectFiles.length || 0;
     const fileId = `${projectId}F${fileCount + 1}`;
-
     const now = new Date().toISOString();
-
     const newFile = await client.models.File.create({
       fileId,
       filename,
       filepath,
       versionId,
       projectId,
-      parentId: parentId,
+      parentId,
       size: size,
       isDeleted: false,
       isDirectory: isDirectory,
@@ -49,10 +46,9 @@ export async function createFile(projectId: string, filename:string, isDirectory
       updatedAt: now,
     });
 
-    alert("File created successfully!");
-    console.log("Created file:", newFile);
     return newFile;
   } catch (error) {
+    console.log("HERE")
     console.error("Error creating file:", error);
     alert("An error occurred while creating the file. Please try again.");
   }
@@ -67,11 +63,24 @@ export async function updatefile(id: string) {
         updatedAt: now,
       });
       alert("File updated successfully.");
-      console.log(`File with ID ${id} has been updated.`);
     } catch (error) {
       console.error("Error updating file:", error);
       alert("An error occurred while updating the file. Please try again.");
     }
+}
+
+export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>){
+  try {
+    await client.models.File.update({
+      fileId: id,
+      filepath: path,
+      parentId: parentId
+    })
+    console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
+  } catch(error) {
+    console.error("Error updating file:", error);
+    alert("An error occurred while updating the file. Please try again.")
+  }
 }
 
 
@@ -95,7 +104,7 @@ export async function deleteFile(id: string) {
     });
 
     alert("File deleted successfully.");
-    console.log(`File with ID ${id} has been deleted.`);
+
   } catch (error) {
     console.error("Error deleting file:", error);
     alert("An error occurred while deleting the file. Please try again.");
@@ -129,7 +138,6 @@ export async function checkAndDeleteExpiredFiles(
 
     for (const file of expiredFiles) {
       await client.models.File.delete({ fileId: file.fileId });
-      console.log(`Permanently deleted file: ${file.filename}`);
     }
 
     if (expiredFiles.length > 0) {
@@ -139,4 +147,66 @@ export async function checkAndDeleteExpiredFiles(
     console.error("Error checking and deleting expired files:", error);
   }
 }
+
+export async function directory_builder(
+  parentId: string | null,
+  projectId: string,
+  sortBy: "name" | "date" | "size" = "name"
+): Promise<Array<{ directory: string; directoryId: string; files: any[] } | { fileId: string; filename: string }>> {
+  try {
+    // Fetch all files within the project
+    const files = await listFilesForProject(projectId);
+    if (!files || files.length === 0) return [];
+
+    // Filter files by parentId (null, empty)
+    const filteredFiles = files.filter((file) => {
+      return parentId === null ? !file.parentId || !files.some(f => f.fileId === file.parentId) : file.parentId === parentId;
+    });
+    
+
+    // Sorting function based on user input with safeguard checks
+    const sortFiles = (files: any[]) => {
+      return files.sort((a, b) => {
+        switch (sortBy) {
+          case "date":
+            return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+          case "size":
+            return (a.size || 0) - (b.size || 0);
+          case "name":
+          default:
+            return (a.filename || "").localeCompare(b.filename || "");
+        }
+      });
+    };
+
+    // Separate directories and files
+    const directories = filteredFiles.filter((file) => file.isDirectory);
+    const filesOnly = filteredFiles.filter((file) => !file.isDirectory);
+    // Recursively build directories
+    const structuredDirectories = await Promise.all(
+      directories.map(async (directory) => ({
+        directory: directory.filename || "Unnamed Directory",
+        directoryId: directory.fileId,
+        files: await directory_builder(directory.fileId, projectId, sortBy),
+      }))
+    );
+
+    // Combine directories and files
+    const structuredFiles = sortFiles([
+      ...structuredDirectories,
+      ...filesOnly.map((file) => ({
+        fileId: file.fileId,
+        filename: file.filename || "Unnamed File",
+        size: file.size || 0,
+        createdAt: file.createdAt || new Date().toISOString(),
+      })),
+    ]);
+    return structuredFiles;
+  } catch (error) {
+    console.error("Error building directory structure:", error);
+    return [];
+  }
+}
+
+
 

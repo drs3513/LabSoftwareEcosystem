@@ -29,7 +29,7 @@ function getWindowDimensions() {
 
 export default function PanelManager() {
 
-  // ✅ Resizing Panel Logic
+  // Resizing Panel Logic
   const [windowDimensions, setWindowDimensions] = useState(getWindowDimensions());
 
   useEffect(() => {

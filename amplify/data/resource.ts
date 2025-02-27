@@ -1,4 +1,5 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
+import { ApiKey } from "aws-cdk-lib/aws-apigateway";
 
 const schema = a
   .schema({
@@ -66,7 +67,7 @@ const schema = a
         userId: a.id().required(), // Foreign key linking to User
         content: a.string().required(),
         createdAt: a.datetime().required(),
-        updatedAt: a.datetime(), // Optional field for tracking updates
+        updatedAt: a.datetime(),
         tag: a.hasMany("Tag","messageId"),
         file: a.belongsTo("File", "fileId"), // Define belongsTo relationship with File
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
@@ -91,29 +92,29 @@ const schema = a
     .identifier(["tagId"]),
 
     // Whitelist model
-    Whitelist: a
-      .model({
-        whitelistId: a.id().required(),
-        userIds: a.id().required(), // Associates users to file to whitelist. sort key?
-        fileId: a.id().required(), // Foreign key linking to File
-        createdAt: a.datetime().required(),
-        user: a.belongsTo("User","userIds"),
-        file: a.belongsTo("File","fileId"),
-      })
-      .identifier(["whitelistId"]),
-  })
-  .authorization((allow) => [
-    allow.publicApiKey(),
-    allow.owner("userPools"), // Correctly use "userPools" as the provider
-    allow.groups(["whitelistedUserIds"]), // Use an array for groups
-  ]);
+  Whitelist: a
+  .model({
+    whitelistId: a.id().required(),
+    userIds: a.id().required(), // User ID being whitelisted
+    fileId: a.id().required(), // File or Project
+    createdAt: a.datetime().required(),
+    isAdmin: a.boolean().default(false), // Indicates if user is admin for this file/project
+    role: a.enum(["USER", "ADMIN", "HEAD"]), // Role-specific permission
 
+    // Relationships
+    user: a.belongsTo("User", "userIds"),
+    file: a.belongsTo("File", "fileId"),
+  })
+  .identifier(["whitelistId"]),
+}).authorization((allow) => [
+  allow.authenticated().to(["create", "update", "delete", "read"]),
+]);
 export type Schema = ClientSchema<typeof schema>;
 
 export const data = defineData({
   schema,
   authorizationModes: {
-    defaultAuthorizationMode: "apiKey", // Use API key for testing
+    defaultAuthorizationMode: "userPool", // Use API key for testing
     apiKeyAuthorizationMode: {
       expiresInDays: 30, // API key validity period
     },

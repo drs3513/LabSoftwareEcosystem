@@ -6,10 +6,9 @@ const client = generateClient<Schema>();
 
 export async function createMessage(fileId: string, userId: string | undefined, content: string, edited: boolean, deleted: boolean) {
   try {
-    // Fetch all messages for the given file
     const fileMessages = await getMessagesForFile(fileId);
     const messageCount = fileMessages.length || 0;
-    const messageId = `${fileId}M${messageCount + 1}`;
+    const messageId = ${fileId}M${messageCount + 1}; // this might cause issues if multiple users send a message simultaneously. uuid?
     const now = new Date().toISOString();
 
     // Provide a default value for userId if it is undefined
@@ -22,7 +21,8 @@ export async function createMessage(fileId: string, userId: string | undefined, 
       content,
       createdAt: now,
       edited, 
-      deleted
+      deleted,
+      updatedAt: now,
     });
 
     console.log("Created message:", newMessage);
@@ -59,6 +59,7 @@ export async function updateMessage(messageId: string, content: string, currentU
   }
 }
 
+
 export async function getMessagesForFile(fileId: string) {
     try {
       
@@ -76,6 +77,7 @@ export async function getMessagesForFile(fileId: string) {
     try {
       // Check if the message belongs to the current user
       const message = await client.models.Message.get({ messageId });
+      const now = new Date().toISOString();
       if (!message) {
         throw new Error("Message not found");
       }
@@ -86,10 +88,11 @@ export async function getMessagesForFile(fileId: string) {
         // Update the message to mark it as deleted
         const updatedMessage = await client.models.Message.update({
           messageId,
-          content: "",
+          content: "This message was deleted.",
           deleted: true, // Add the deleted field
+          updatedAt: now,
         });
-        console.log(`Message marked as deleted: ${messageId}`);
+        console.log(Message marked as deleted: ${messageId});
         return updatedMessage;
       }
     } catch (error) {
