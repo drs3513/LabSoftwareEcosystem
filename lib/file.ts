@@ -46,8 +46,6 @@ export async function createFile(projectId: string, filename:string, isDirectory
       updatedAt: now,
     });
 
-    alert("File created successfully!");
-    console.log(newFile)
     return newFile;
   } catch (error) {
     console.log("HERE")

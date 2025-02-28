@@ -11,6 +11,7 @@ Amplify.configure(outputs);
 
 const Body = styled.body`
     margin: 0;
+    padding: 0;
 `
 
 
