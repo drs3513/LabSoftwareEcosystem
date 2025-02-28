@@ -5,6 +5,7 @@ import { useGlobalState } from "./GlobalStateContext";
 import {listFilesForProject, createFile, updateFileLocation} from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
+import { truncate } from "fs";
 
 
 function compare_file_date(file_1: any, file_2: any){
@@ -76,6 +77,14 @@ export default function FilePanel() {
   const [contextMenuFilePath, setContextMenuFilePath] = useState<string | undefined>(undefined);
 
   const [files, setFiles] = useState<Array<fileInfo>>([]);
+
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [uploadFile, setFile] = useState<File | null>(null);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+          if (e.target.files) {
+              setFile(e.target.files[0]);
+          }
+      };
 
   const filesByParentId = useRef<{[key: string]: [number]}>({})
   const filesByFileId = useRef<{[key: string]: number}>({})
@@ -161,6 +170,14 @@ export default function FilePanel() {
     fetchFiles();
   }, [projectId]);
 
+  const handleUploadFile = async () => {
+    if (!uploadInputRef || !uploadInputRef.current) return;
+    try {
+      uploadInputRef.current.click();
+    } catch (error) {
+
+    }
+  }
 
 
   const handleCreateFile = async (isDirectory: boolean) => {
@@ -283,6 +300,7 @@ export default function FilePanel() {
           onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel')}
           onMouseUp={(e) => onFileMouseUp(e, null, null)}
           onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
+        <input ref={uploadInputRef} id = "file" type = "file" hidden onChange={handleFileChange}></input>
         {files.length > 0 ? (
             files.filter(file => file.visible).map((file) => (
                 <File key={file.fileId}
@@ -303,6 +321,9 @@ export default function FilePanel() {
         {
           contextMenu && contextMenuType=="filePanel" ? (
               <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+                <ContextMenuItem onClick={() => handleUploadFile()}>
+                  Upload File
+                </ContextMenuItem>
                 <ContextMenuItem onClick={() => handleCreateFile(false)}>
                   Create File
                 </ContextMenuItem>
@@ -327,6 +348,9 @@ export default function FilePanel() {
               </ContextMenu>
           ) : contextMenu && contextMenuType=="fileFolder" ? (
               <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+                <ContextMenuItem onClick={() => handleUploadFile()}>
+                  Upload File
+                </ContextMenuItem>
                 <ContextMenuItem onClick={() => handleCreateFile(false)}>
                   Create File
                 </ContextMenuItem>
