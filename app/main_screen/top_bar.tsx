@@ -144,7 +144,6 @@ export default function TopBar() {
   }, []);
 
   const handleSignOut = () => {
-    console.log("User signed out");
     signOut();
   };
 

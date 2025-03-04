@@ -23,8 +23,6 @@ export async function createUserFromCognito() {
       email,
       createdAt: now,
     });
-
-    console.log("User created in database:", newUser);
     return newUser;
   } catch (error) {
     console.error("Error creating user from Cognito:", error);

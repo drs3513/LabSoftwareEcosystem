@@ -20,8 +20,6 @@ export async function createMessage(fileId: string, userId: string, content: str
       createdAt: now,
       updatedAt: now, 
     });
-
-    console.log("Created message:", newMessage);
     return newMessage;
   } catch (error) {
     console.error("Error creating message:", error);
@@ -52,9 +50,8 @@ export async function updateMessage(messageId: string, content: string) {
       messageId,
       content,
       updatedAt: now, 
+      isUpdated: true,
     });
-
-    console.log("Updated message:", updatedMessage);
     return updatedMessage;
   } catch (error) {
     console.error("Error updating message:", error);
@@ -66,7 +63,6 @@ export async function updateMessage(messageId: string, content: string) {
 export async function deleteMessage(messageId: string) {
   try {
     await client.models.Message.delete({ messageId });
-    console.log(`Deleted message: ${messageId}`);
   } catch (error) {
     console.error("Error deleting message:", error);
   }

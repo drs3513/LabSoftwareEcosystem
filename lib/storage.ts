@@ -23,8 +23,6 @@ export async function uploadFile(
             },
           });
 
-          console.log("File uploaded successfully:", key);
-
           // Get file properties (including versionId)
           const properties = await getProperties({ path: key });
           const versionId = properties?.versionId || "1"; // Default to "1" if no versionId

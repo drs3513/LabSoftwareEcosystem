@@ -19,8 +19,6 @@ export async function createProject(userId: string, projectName: string) {
       isDeleted: false,
       createdAt: now,
     });
-
-    console.log("Created Project:", newProject);
     return newProject;
   } catch (error) {
     console.error("Error creating project:", error);
@@ -32,7 +30,6 @@ export async function createProject(userId: string, projectName: string) {
 export async function listAllProjects() {
   try {
     const response = await client.models.Project.list();
-    console.log("projects list:", response.data);
     return response.data ?? [];
   } catch (error) {
     console.error("Error fetching projects:", error);
@@ -70,8 +67,6 @@ export async function updateProject(projectId: string, updates: Partial<Schema["
       ...updates,
       updatedAt: new Date().toISOString(),
     });
-
-    console.log("Updated Project:", updatedProject);
     return updatedProject;
   } catch (error) {
     console.error("Error updating project:", error);
@@ -90,8 +85,6 @@ export async function deleteProject(projectId: string) {
       isDeleted: true,
       deletedAt: new Date().toISOString(),
     });
-
-    console.log(`Project ${projectId} has been marked as deleted.`);
   } catch (error) {
     console.error("Error deleting project:", error);
     throw error;

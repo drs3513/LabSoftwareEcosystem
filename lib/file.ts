@@ -57,8 +57,6 @@ export async function uploadFileAndCreateEntry(file: File, projectId: string, ow
       createdAt: now,
       updatedAt: now,
     });
-
-    console.log("File uploaded and entry created successfully.");
     return newfile;
   } catch (error) {
     console.error("Error uploading and creating file:", error);
@@ -297,6 +295,3 @@ export async function directory_builder(
     return [];
   }
 }
-
-
-

@@ -85,11 +85,9 @@ const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
     event.stopPropagation(); // Prevent parent click interference
 
     if (!fileId) {
-      console.warn("🚨 handleFileClick called with undefined fileId");
+      console.warn("handleFileClick called with undefined fileId");
       return;
     }
-
-    console.log(`✅ File selected: fileId=${fileId}`); // ✅ Log selected fileId
     setFileId(fileId);
   };
 
@@ -98,7 +96,6 @@ const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
   };
 
   if ("directory" in item) {
-    console.log(`📁 Directory opened: directoryId=${item.directoryId}`); // ✅ Log directory clicks
 
     return (
       <Directory style={indentStyle} onClick={(e) => handleFileClick(item.directoryId, e)}>
@@ -107,7 +104,6 @@ const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
           <CreateButtonSmall
             onClick={(e) => {
               e.stopPropagation();
-              console.log(`➕ Creating item inside directoryId=${item.directoryId}`); // ✅ Log create action
               handleCreateFile(item.directoryId);
             }}
           >
@@ -141,16 +137,108 @@ const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
 
 
 
+const ContextMenuItem = styled.div`
+  text-align: left;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-bottom-color: gray;
+  font-size: 14px;
 
-// ✅ Styled Components
+  &:hover {
+    transition: background-color 250ms linear;
+    background-color: darkgray;
+  }
+
+  &:last-child {
+    border-bottom-style: none;
+  }
+
+  padding: 0.2rem 0.5rem 0.2rem 0.2rem;
+`
+
+const ContextMenu = styled.div<{$x: number, $y: number}>`
+    position: absolute;
+    left: ${(props) => props.$x}px;
+    top: ${(props) => props.$y}px;
+    
+    background-color: lightgray;
+    border-color: dimgray;
+    border-style: solid;
+    border-radius: 5px;
+    border-width: 2px;
+`;
+
 const PanelContainer = styled.div`
   width: 100%;
   height: 100%;
-  background-color: black;
-  padding: 1rem;
-  text-align: left;
+  background-color: white;
+  text-align: center;
   overflow-y: auto;
 `;
+
+const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: number, $mouseY: number, $search: boolean}>(props => ({
+  style: {
+    position: props.$pickedUp ? "absolute" : undefined,
+    top: props.$pickedUp ? props.$mouseY + "px" : "auto",
+    left: props.$pickedUp ? props.$mouseX + "px" : "auto",
+    marginLeft: props.$search ? props.$pickedUp ? "auto" : props.$depth * 20 : "auto",
+    width: props.$search ? props.$pickedUp ? "auto" : "calc(100% - " + props.$depth * 20 + "px)" : "100%",
+    pointerEvents: props.$pickedUp ? "none" : "auto",
+    opacity : props.$pickedUp ? 0.75 : 1,
+    backgroundColor: props.$pickedUp ? "lightskyblue" : "white",
+    borderRadius: props.$pickedUp ? "10px" : "0"
+  }
+}))`
+  color: inherit;
+  border: none;
+  font: inherit;
+  outline: inherit;
+  background-color: white;
+  padding: 1rem;
+  border-bottom: 1px solid #ddd;
+  cursor: pointer;
+  text-align: left;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  border-radius: 0;
+  &:hover {
+    
+    border: solid lightblue;
+    
+    padding-top: calc(1rem - 2px);
+    padding-bottom: calc(1rem - 2px);
+  }
+  
+  &:active {
+    background-color: lightblue !important;
+    
+    }
+`;
+
+const NoFiles = styled.div`
+  color: gray;
+  text-align: center;
+`;
+
+const TopBarContainer = styled.div`
+  display: flex;
+  padding: 0.5rem;
+
+
+`;
+
+const Input = styled.input`
+  flex: 1;
+  height: 3rem;
+  padding: 0.5rem;
+  border: 2px solid #ccc;
+  border-radius: 5px;
+`;
+
+// Styled Components
 
 const CreateButton = styled.button`
   width: 100%;
@@ -176,40 +264,6 @@ const CreateButtonSmall = styled.button`
   &:hover {
     background-color: #218838;
   }
-`;
-
-const File = styled.div`
-  background-color: white;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid #ddd;
-  cursor: pointer;
-  &:hover {
-    background-color: grey;
-  }
-`;
-
-const Directory = styled.div`
-  background-color: lightgray;
-  padding: 0.5rem 1rem;
-  margin-top: 5px;
-  border-radius: 5px;
-  cursor: pointer;
-  border: 1px solid black;  
-  &:hover {
-    background-color: grey;
-  }
-`;
-
-
-const DirectoryHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-`;
-
-const NoFiles = styled.div`
-  color: gray;
-  text-align: center;
 `;
 
 const NoProjectSelected = styled.div`

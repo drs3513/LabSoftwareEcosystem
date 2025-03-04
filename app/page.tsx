@@ -18,7 +18,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user?.signInDetails?.loginId) {
-      console.error("❌ No user ID found in sign-in details.");
+      console.error("No user ID found in sign-in details.");
       return;
     }
 
@@ -27,22 +27,16 @@ export default function App() {
         const userAttributes = await fetchUserAttributes();
         const userId = userAttributes.sub as string;
 
-        console.log(`🔍 Checking if user ${userId} exists in the database...`);
-
-        // ✅ Fetch user from DynamoDB
+        // Fetch user from DynamoDB
         const existingUser = await client.models.User.get({ userId });
 
-        if (existingUser.data) {
-          console.log(`✅ User ${userId} already exists.`);
-        } else {
-          console.log(`❌ User ${userId} not found. Creating new entry...`);
-          await createUserFromCognito(); // ✅ Call only if the user does not exist
-          console.log("🎉 User created successfully.");
+        if (!existingUser.data){
+          await createUserFromCognito(); // Call only if the user does not exist
         }
 
         setLoading(false);
       } catch (error) {
-        console.error("❌ Error checking/creating user:", error);
+        console.error("Error checking/creating user:", error);
       }
     }
 
