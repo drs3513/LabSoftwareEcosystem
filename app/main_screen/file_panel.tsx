@@ -402,6 +402,7 @@ export default function FilePanel() {
                       onClick={() => openCloseFolder(file.fileId)}
                       onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile')}>
                   {file.isDirectory ? "📁" : "🗎"}  {file.filename}
+                  <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath} size={file.size} versionId={file.versionId} ownerId={file.ownerId} projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt} updatedAt={file.updatedAt} visible={file.visible} open={file.open} isDirectory={file.isDirectory}></FileContext>
                 </File>
             ))
         ) : (
@@ -507,6 +508,25 @@ const PanelContainer = styled.div`
   overflow-y: auto;
 `;
 
+const FileContextItem = styled.div`
+  width: 100%;
+  height: 100%;
+  font-size: 12px;
+  background-color: white;
+  color: gray;
+  text-align: left;
+  overflow-y: auto;
+`;
+
+export function FileContext(file: fileInfo ) {
+  const now = new Date()
+  const updated = new Date(file.updatedAt)
+  return (
+    <FileContextItem>
+      Last updated: {updated.toDateString() == now.toDateString() ? updated.toLocaleTimeString("en-US") : updated.toLocaleDateString("en-US") } Size: {file.size}
+    </FileContextItem>
+  );
+}
 const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: number, $mouseY: number, $search: boolean}>(props => ({
   style: {
     position: props.$pickedUp ? "absolute" : undefined,
