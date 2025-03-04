@@ -1,6 +1,6 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { fetchAuthSession, fetchUserAttributes } from "aws-amplify/auth"; // ✅ Corrected imports
+import { fetchUserAttributes } from "aws-amplify/auth"; // ✅ Corrected imports
 
 const client = generateClient<Schema>();
 
@@ -8,14 +8,10 @@ const client = generateClient<Schema>();
 export async function createUserFromCognito() {
   try {
 
-    const session = await fetchAuthSession();
     const userAttributes = await fetchUserAttributes();
 
-    console.log("Auth Session:", session);
-
- 
     const sub = userAttributes.sub as string;
-    const name = userAttributes.name as string;
+    const name = userAttributes.preferred_username as string;
     const email = userAttributes.email as string;
 
     const now = new Date().toISOString();
@@ -46,7 +42,7 @@ export async function getCurrentUser() {
     const userAttributes = await fetchUserAttributes();
     return {
       userId: userAttributes.sub,
-      username: userAttributes.name,
+      username: userAttributes.preferred_username,
       email: userAttributes.email,
     };
   } catch (error) {

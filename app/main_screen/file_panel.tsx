@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useGlobalState } from "./GlobalStateContext";
-import { directory_builder, createFile } from "@/lib/file";
+import { directory_builder, uploadFileAndCreateEntry } from "@/lib/file";
 import styled from "styled-components";
 
 export default function FilePanel() {
@@ -25,43 +25,47 @@ export default function FilePanel() {
     fetchFiles();
   }, [projectId]);
 
-  const handleCreateFile = async () => {
+  const handleFileOrFolderUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!projectId) {
       alert("No project selected. Please select a project first.");
       return;
     }
-
-    const filename = prompt("Enter File Name:");
-    if (!filename) return;
-    const isDirectory = confirm("Is Directory?");
-    const parentId = prompt("Enter parentId");
+  
+    if (!event.target.files || event.target.files.length === 0) return;
+  
     try {
-
-      const newFile = await createFile(projectId, filename, isDirectory, `/${filename}`, userId as string, 5, "1", parentId as string);
-
-      if (newFile && newFile.data?.fileId) {
-        setFiles((prevFiles) => [...prevFiles, newFile.data]);
-      } else {
-        console.error("File creation failed, invalid response:", newFile);
-      }
+      const files = Array.from(event.target.files);
+  
+      await Promise.all(
+        files.map(async (file) => {
+          const relativePath = file.webkitRelativePath || file.name; // Use relativePath if folder, else just filename
+          await uploadFileAndCreateEntry(file, projectId, userId as string, relativePath);
+        })
+      );
+  
+      // Refresh file structure after upload
+      const structure = await directory_builder(null, projectId);
+      setFiles(structure);
+  
+      alert("Upload completed successfully.");
     } catch (error) {
-      console.error("Error creating file:", error);
-      alert("Failed to create file. Please check the inputs.");
+      console.error("Error uploading files or folder:", error);
+      alert("Failed to upload. Please try again.");
     }
   };
-
+  
   return (
     <PanelContainer>
       {projectId ? (
         <>
-          <CreateButton onClick={() => handleCreateFile()}>+ Create File</CreateButton>
+          <UploadInput type="file" onChange={handleFileOrFolderUpload} />
           {fileStructure.length > 0 ? (
             fileStructure.map((item) => (
               <FileOrDirectory
                 key={item.fileId || item.directoryId}
                 item={item}
                 setFileId={setFileId}
-                handleCreateFile={handleCreateFile}
+                handleCreateFile={handleFileOrFolderUpload}
                 depth={0}
               />
             ))
@@ -73,16 +77,19 @@ export default function FilePanel() {
         <NoProjectSelected>No project selected.</NoProjectSelected>
       )}
     </PanelContainer>
-  );
+  );  
 }
 
 const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
   const handleFileClick = (fileId: string | undefined, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent parent click interference
+
     if (!fileId) {
-      console.warn("handleFileClick called with undefined fileId");
+      console.warn("🚨 handleFileClick called with undefined fileId");
       return;
     }
+
+    console.log(`✅ File selected: fileId=${fileId}`); // ✅ Log selected fileId
     setFileId(fileId);
   };
 
@@ -91,29 +98,32 @@ const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
   };
 
   if ("directory" in item) {
+    console.log(`📁 Directory opened: directoryId=${item.directoryId}`); // ✅ Log directory clicks
+
     return (
-      <Directory style={indentStyle} onClick={(e) => handleFileClick(item.directoryId,e)}>
-      <DirectoryHeader>
-        <div>📂 {item.directory}</div>
-        <CreateButtonSmall
-          onClick={(e) => {
-            e.stopPropagation();
-            handleCreateFile(item.directoryId);
-          }}
-        >
-          + Add Item
-        </CreateButtonSmall>
-      </DirectoryHeader>
-      {item.files.map((subItem: any) => (
-        <FileOrDirectory
-          key={subItem.fileId || subItem.directoryId}
-          item={subItem}
-          setFileId={setFileId}
-          handleCreateFile={handleCreateFile}
-          depth={depth + 1}
-        />
-      ))}
-    </Directory>    
+      <Directory style={indentStyle} onClick={(e) => handleFileClick(item.directoryId, e)}>
+        <DirectoryHeader>
+          <div>📂 {item.directory}</div>
+          <CreateButtonSmall
+            onClick={(e) => {
+              e.stopPropagation();
+              console.log(`➕ Creating item inside directoryId=${item.directoryId}`); // ✅ Log create action
+              handleCreateFile(item.directoryId);
+            }}
+          >
+            + Add Item
+          </CreateButtonSmall>
+        </DirectoryHeader>
+        {item.files.map((subItem: any) => (
+          <FileOrDirectory
+            key={subItem.fileId || subItem.directoryId}
+            item={subItem}
+            setFileId={setFileId}
+            handleCreateFile={handleCreateFile}
+            depth={depth + 1}
+          />
+        ))}
+      </Directory>
     );
   }
 
@@ -128,6 +138,7 @@ const FileOrDirectory = ({ item, setFileId, handleCreateFile, depth }: any) => {
     </File>
   );
 };
+
 
 
 
@@ -207,4 +218,13 @@ const NoProjectSelected = styled.div`
   font-weight: bold;
   text-align: center;
   padding: 20px;
+`;
+
+const UploadInput = styled.input`
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  cursor: pointer;
 `;

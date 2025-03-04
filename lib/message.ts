@@ -4,7 +4,7 @@ import type { Schema } from "@/amplify/data/resource";
 const client = generateClient<Schema>();
 
 
-export async function createMessage(fileId: string, userId: string, content: string) {
+export async function createMessage(fileId: string, userId: string, content: string, projectId: string) {
   try {
     const fileMessages = await getMessagesForFile(fileId);
     const messageCount = fileMessages.length || 0;
@@ -13,6 +13,7 @@ export async function createMessage(fileId: string, userId: string, content: str
 
     const newMessage = await client.models.Message.create({
       messageId,
+      projectId,
       fileId,
       userId,
       content,

@@ -8,8 +8,6 @@ interface GlobalStateContextType {
   fileId: string | null;
   setFileId: (id: string | null) => void;
   userId: string | null;
-  refreshProjects: boolean;
-  setRefreshProjects: (refresh: boolean) => void;
 }
 
 const GlobalStateContext = createContext<GlobalStateContextType | undefined>(undefined);
@@ -19,17 +17,17 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [refreshProjects, setRefreshProjects] = useState<boolean>(false); // Added refresh state
 
   useEffect(() => {
-    if (user?.signInDetails?.loginId) {
-      setUserId(user.signInDetails.loginId); // Automatically assign userId
+    if (user?.userId) {
+      setUserId(user.userId); // Automatically assign userId
+      console.log("user ID: ", user.userId)
     }
   }, [user]);
 
   return (
     <GlobalStateContext.Provider 
-      value={{ projectId, setProjectId, fileId, setFileId, userId, refreshProjects, setRefreshProjects }}
+      value={{ projectId, setProjectId, fileId, setFileId, userId}}
     >
       {children}
     </GlobalStateContext.Provider>

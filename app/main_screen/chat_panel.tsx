@@ -12,16 +12,15 @@ interface Message {
   userId: string;
   content: string;
   createdAt: string;
-  email?: string; //  Store user email
+  email?: string;
 }
 
 export default function ChatPanel() {
-  const { fileId, userId } = useGlobalState();
+  const { projectId, fileId, userId } = useGlobalState();
   const [messages, setMessages] = useState<Array<Message>>([]);
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
-  //  Fetch messages using observeQuery
   useEffect(() => {
     if (!fileId) return;
 
@@ -33,17 +32,17 @@ export default function ChatPanel() {
           const sortedMessages = data.items.sort(
             (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           );
-    
+
           const messagesWithEmails = await Promise.all(
             sortedMessages.map(async (msg) => {
               const user = await client.models.User.get({ userId: msg.userId });
               return {
                 ...msg,
-                email: user?.data?.email || "Unknown User",
+                email: user?.data?.username,
               };
             })
           );
-    
+
           setMessages(messagesWithEmails);
         }
       },
@@ -51,20 +50,22 @@ export default function ChatPanel() {
         console.error("Error observing messages:", error);
       },
     });
-});
 
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
+  }, [fileId]);
 
-  //  Scroll to the end when messages update
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Handle Enter key to send message
   const handleSendMessage = async () => {
     if (input.trim() && fileId && userId) {
       try {
-        const response = await createMessage(fileId, userId, input.trim());
-
+        const response = await createMessage(fileId, userId, input.trim(), projectId as string);
         const newMessage = response?.data ?? response;
 
         if (newMessage && "messageId" in newMessage && "content" in newMessage) {
@@ -78,7 +79,6 @@ export default function ChatPanel() {
     }
   };
 
-  //  KeyDown handler
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleSendMessage();
@@ -93,7 +93,7 @@ export default function ChatPanel() {
             <Chat_Body $sender={msg.userId === userId}>
               <div>{msg.content}</div>
               <ChatSender>{msg.userId === userId ? "You" : msg.email}</ChatSender>
-              <ChatTimeStamp>{new Date(msg.createdAt).toLocaleTimeString()}</ChatTimeStamp>
+              <ChatTimeStamp>{new Date(msg.createdAt).toLocaleDateString()} {new Date(msg.createdAt).toLocaleTimeString()}</ChatTimeStamp>
             </Chat_Body>
           </ChatMessage>
         ))}

@@ -29,34 +29,38 @@ const schema = a
         files: a.hasMany("File","projectId"),
       }).identifier(["projectId"]),
 
-    // File model
-    File: a
+      
+      File: a
       .model({
-        fileId: a.id().required(),
+        fileId: a.id().required(), // Primary key
         filename: a.string().required(),
         isDirectory: a.boolean().default(false),
         filepath: a.string().required(),
-        parentId: a.id(),
+        parentId: a.id().required(),
         size: a.integer().required(),
-        versionId: a.string().required(),
-        ownerId: a.id().required(), // Foreign key linking to User
+        versionId: a.string().required(), // Sort key in secondary index
+        ownerId: a.id().required(),
         projectId: a.id().required(),
         createdAt: a.datetime().required(),
         updatedAt: a.datetime().required(),
-        messages: a.hasMany("Message", "fileId"), // Relationship with Message
-        whitelist: a.hasMany("Whitelist", "fileId"),
-        tag: a.hasMany("Tag","fileId"),
+        messages: a.hasMany("Message", ["fileId","projectId"]),
+        whitelist: a.hasMany("Whitelist", ["fileId","projectId"]),
+        tag: a.hasMany("Tag", ["fileId","projectId"]),
         isDeleted: a.boolean().required(),
         deletedAt: a.datetime(),
-
-
-        parent: a.belongsTo("File","parentId"),
-        children: a.hasMany("File","parentId"),
-
-        ownerDetails: a.belongsTo("User", "ownerId"), 
-        project: a.belongsTo("Project","projectId"),
+    
+        parent: a.belongsTo("File", ["parentId","projectId"]),
+        children: a.hasMany("File", ["parentId","projectId"]),
+    
+        ownerDetails: a.belongsTo("User", "ownerId"),
+        project: a.belongsTo("Project", "projectId"),
       })
-      .identifier(["fileId"]),
+      .identifier(["fileId","projectId"]) // Use only `fileId` as primary key
+      .secondaryIndexes((index) => [
+        index("fileId").sortKeys(["versionId"]), //Secondary index
+      ]),
+    
+
 
     // Message model
     Message: a
@@ -64,11 +68,13 @@ const schema = a
         messageId: a.id().required(),
         fileId: a.id().required(), // Foreign key linking to File
         userId: a.id().required(), // Foreign key linking to User
+        projectId: a.id().required(),
         content: a.string().required(),
         createdAt: a.datetime().required(),
         updatedAt: a.datetime(),
         tag: a.hasMany("Tag","messageId"),
-        file: a.belongsTo("File", "fileId"), // Define belongsTo relationship with File
+        file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
+        
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
       })
       .identifier(["messageId"]),
@@ -79,12 +85,13 @@ const schema = a
         tagId: a.id().required(),
         tagType: a.enum(["file", "message"]), // Enum for Tag type
         fileId: a.id(), // Foreign key linking to File or Message
+        projectId: a.id(),
         messageId: a.id(),
         tagName: a.string().required(),
         createdAt: a.datetime().required(),
 
         // Relationships
-        file: a.belongsTo("File", "fileId"),
+        file: a.belongsTo("File", ["fileId","projectId"]),
         message: a.belongsTo("Message", "messageId"),})
     .identifier(["tagId"]),
 
@@ -95,12 +102,13 @@ const schema = a
     userIds: a.id().required(), // User ID being whitelisted
     fileId: a.id().required(), // File or Project
     createdAt: a.datetime().required(),
+    projectId: a.id().required(),
     isAdmin: a.boolean().default(false), // Indicates if user is admin for this file/project
     role: a.enum(["USER", "ADMIN", "HEAD"]), // Role-specific permission
 
     // Relationships
     user: a.belongsTo("User", "userIds"),
-    file: a.belongsTo("File", "fileId"),
+    file: a.belongsTo("File", ["fileId","projectId"]),
   })
   .identifier(["whitelistId"]),
 }).authorization((allow) => [
