@@ -19,7 +19,9 @@ export async function uploadFile(
             data: event.target?.result as ArrayBuffer,
             path: key,
             options: {
-              contentType: file.type,
+              contentType: file.type,   
+              // Specify a target bucket using name assigned in Amplify Backend
+              bucket: 'filestorage142024'
             },
           });
 
@@ -46,15 +48,42 @@ export async function uploadFile(
 }
 
 
-// Get download URL for a file
-export async function getDownloadUrl(fileKey: string): Promise<string> {
+export async function downloadFile(fileKey: string): Promise<Blob | string | object> {
   try {
-    const response = await getUrl({ path: fileKey });
-    return response.url.toString();
+    const downloadResult = await downloadData({ path: fileKey }).result;
+    
+    
+    const text = await downloadResult.body.text(); 
+    console.log("File downloaded as text:", text);
+
+    // Alternative formats:
+    // const blob = await downloadResult.body.blob(); 
+    // const json = await downloadResult.body.json(); 
+    
+    return text; 
   } catch (error) {
-    console.error("Error getting file URL:", error);
+    console.error("Error downloading file:", error);
     throw error;
   }
 }
 
 
+export async function downloadFileToMemory(fileKey: string): Promise<Blob> {
+  try {
+    const { body } = await (await downloadData({ path: fileKey })).result;
+    return await body.blob(); 
+  } catch (error) {
+    console.error("Error downloading file to memory:", error);
+    throw error;
+  }
+}
+
+export async function deleteFileFromStorage(fileKey: string): Promise<void> {
+  try {
+    await remove({ path: fileKey }); 
+    console.log(`File deleted: ${fileKey}`);
+  } catch (error) {
+    console.error("Error deleting file:", error);
+    throw error;
+  }
+}

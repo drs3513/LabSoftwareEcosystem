@@ -1,13 +1,23 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import {uploadFile} from "./storage";
+import {Nullable} from "@aws-amplify/data-schema";
+import { Timeout } from "aws-cdk-lib/aws-stepfunctions";
 const client = generateClient<Schema>();
 
 
 export async function listFiles(setFiles: (files: Array<Schema["File"]["type"]>) => void) {
-  client.models.File.observeQuery().subscribe({
+  const subscription = client.models.File.observeQuery().subscribe({
     next: (data) => setFiles([...data.items]),
-  });
+    error: (error) => {
+      console.error("Error observing messages:", error);
+    },
+  }); 
+  return () => {
+    if (subscription) {
+      subscription.unsubscribe();
+    }
+  };
 }
 
 // Retrieve all versions of a file using manual sorting
@@ -31,25 +41,95 @@ export async function getVersionHistory(fileId: string): Promise<any[]> {
   }
 }
 
-
-export async function uploadFileAndCreateEntry(file: File, projectId: string, ownerId: string, parentId: string) {
+export async function uploadFileAndCreateEntry(
+  file: File,
+  projectId: string,
+  ownerId: string,
+  parentId: string,
+  isDirectory: boolean,
+  uploadedFiles: Set<string>
+) {
   try {
-    const projectFiles = await listFilesForProject(projectId);
-    const fileCount = projectFiles.length || 0;
-    const fileId = `${projectId}F${fileCount + 1}`;
+    if (!uploadedFiles) {
+      throw new Error("[ERROR] Uploaded files Set is undefined");
+    }
+
     const now = new Date().toISOString();
+    let projectFiles = await listFilesForProject(projectId);
+    let existingFilePaths = new Set(projectFiles.map(f => f.filepath));
 
-    // Upload file to S3
-    const { key, versionId } = await uploadFile(file, projectId, fileId);
+    const relativePath = file.webkitRelativePath || file.name;
+    const pathParts = relativePath.split("/");
+    const fileName = pathParts.pop() || ""; // Extract actual file name
+    const folderPath = pathParts.join("/"); // Extract folder path
 
-    // Create file entry in DynamoDB
-    const newfile = await createFile({
+    let parentFolderId = projectId; // Start at root project folder
+    let currentPath = "";
+    let createdFolders = new Set();
+
+    // **Ensure all parent directories exist**
+    for (const part of pathParts) {
+      currentPath += (currentPath ? "/" : "") + part;
+      const folderId = `${projectId}_${currentPath.replace(/\//g, "_")}`;
+
+      // If directory already exists, continue to the next level
+      if (existingFilePaths.has(currentPath) || createdFolders.has(currentPath)) {
+        parentFolderId = folderId;
+        continue;
+      }
+
+      console.log(`[DEBUG] Creating missing folder: ${currentPath}`);
+
+      await createFile({
+        projectId,
+        fileId: folderId,
+        filename: part,
+        isDirectory: true,
+        filepath: currentPath,
+        parentId: parentFolderId,
+        size: 0,
+        versionId: "1",
+        ownerId,
+        isDeleted: false,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // Track created directories to prevent redundant checks
+      createdFolders.add(currentPath);
+      existingFilePaths.add(currentPath);
+
+      // **Ensure directory creation completes before proceeding**
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      parentFolderId = folderId; // Update for the next directory level
+    }
+
+    // **Ensure we are not re-uploading the same file (track by full path)**
+    const fileKey = `${folderPath}/${fileName}`;
+    if (uploadedFiles.has(fileKey)) {
+      console.log(`[DEBUG] Skipping duplicate upload: ${fileKey}`);
+      return;
+    }
+
+    uploadedFiles.add(fileKey); // Mark this file as uploaded
+
+    if (isDirectory) {
+      console.log(`[DEBUG] Directory created: ${folderPath}`);
+      return;
+    }
+
+    console.log(`[DEBUG] Uploading file: ${fileName} to ${folderPath || "upload/"}`);
+    const { key, versionId } = await uploadFile(file, projectId, parentFolderId);
+
+    // Create file entry in database
+    const newFile = await createFile({
       projectId,
-      fileId,
-      filename: file.name,
+      fileId: `${projectId}_F${projectFiles.length + 1}`,
+      filename: fileName,
       isDirectory: false,
-      filepath: key,
-      parentId,
+      filepath: fileKey,
+      parentId: parentFolderId,
       size: file.size,
       versionId,
       ownerId,
@@ -57,12 +137,16 @@ export async function uploadFileAndCreateEntry(file: File, projectId: string, ow
       createdAt: now,
       updatedAt: now,
     });
-    return newfile;
+
+    console.log("[DEBUG] File uploaded successfully.");
+    return newFile;
   } catch (error) {
-    console.error("Error uploading and creating file:", error);
+    console.error("[ERROR] Uploading and creating file failed:", error);
     throw error;
   }
 }
+
+
 
 
 export async function listFilesForProject(projectId: string) {
@@ -236,62 +320,17 @@ export async function checkAndDeleteExpiredFiles(
   }
 }
 
-export async function directory_builder(
-  parentId: string | null,
-  projectId: string,
-  sortBy: "name" | "date" | "size" = "name"
-): Promise<Array<{ directory: string; directoryId: string; files: any[] } | { fileId: string; filename: string }>> {
+export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>, projectId: string){
   try {
-    // Fetch all files within the project
-    const files = await listFilesForProject(projectId);
-    if (!files || files.length === 0) return [];
-
-    // Filter files by parentId (null, empty)
-    const filteredFiles = files.filter((file) => {
-      return parentId === null ? !file.parentId || !files.some(f => f.fileId === file.parentId) : file.parentId === parentId;
-    });
-    
-
-    // Sorting function based on user input with safeguard checks
-    const sortFiles = (files: any[]) => {
-      return files.sort((a, b) => {
-        switch (sortBy) {
-          case "date":
-            return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
-          case "size":
-            return (a.size || 0) - (b.size || 0);
-          case "name":
-          default:
-            return (a.filename || "").localeCompare(b.filename || "");
-        }
-      });
-    };
-
-    // Separate directories and files
-    const directories = filteredFiles.filter((file) => file.isDirectory);
-    const filesOnly = filteredFiles.filter((file) => !file.isDirectory);
-    // Recursively build directories
-    const structuredDirectories = await Promise.all(
-      directories.map(async (directory) => ({
-        directory: directory.filename || "Unnamed Directory",
-        directoryId: directory.fileId,
-        files: await directory_builder(directory.fileId, projectId, sortBy),
-      }))
-    );
-
-    // Combine directories and files
-    const structuredFiles = sortFiles([
-      ...structuredDirectories,
-      ...filesOnly.map((file) => ({
-        fileId: file.fileId,
-        filename: file.filename || "Unnamed File",
-        size: file.size || 0,
-        createdAt: file.createdAt || new Date().toISOString(),
-      })),
-    ]);
-    return structuredFiles;
-  } catch (error) {
-    console.error("Error building directory structure:", error);
-    return [];
+    await client.models.File.update({
+      fileId: id,
+      filepath: path,
+      projectId,
+      parentId: parentId
+    })
+    console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
+  } catch(error) {
+    console.error("Error updating file:", error);
+    alert("An error occurred while updating the file. Please try again.")
   }
 }

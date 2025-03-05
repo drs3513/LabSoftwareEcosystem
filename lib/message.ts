@@ -42,7 +42,7 @@ export async function getMessagesForFile(fileId: string) {
 
 
 
-export async function updateMessage(messageId: string, content: string) {
+export async function updateMessage(messageId: string, content: string, userId: string) {
   try {
     const now = new Date().toISOString();
 
@@ -60,7 +60,7 @@ export async function updateMessage(messageId: string, content: string) {
 
 
 
-export async function deleteMessage(messageId: string) {
+export async function deleteMessage(messageId: string, userId: string) {
   try {
     await client.models.Message.delete({ messageId });
   } catch (error) {
