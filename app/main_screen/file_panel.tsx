@@ -306,6 +306,7 @@ export default function FilePanel() {
     if(e.target != e.currentTarget){
       return
     }
+
     isLongPress.current = false;
     clearTimeout(timer.current);
 
@@ -374,7 +375,6 @@ export default function FilePanel() {
   }
 
   function handleSwitchSort(sortStyle: string){
-    console.log(sortStyle)
     setSort(sortStyle)
     setFiles(sort_files_with_path(files, sortStyle))
 
@@ -409,18 +409,23 @@ export default function FilePanel() {
           </SortContainer>
         </TopBarContainer>
         {files.length > 0 ? (
-            files.filter(file => (!search && file.visible) || (search && file.filename.toLowerCase().includes(searchTerm))).map((file) => (
+            files.filter(file => (!search && file.visible) || (search && file.filename.toLowerCase().includes(searchTerm.toLowerCase()))).map((file) => (
                 <File key={file.fileId}
                       $depth={(file.filepath.match(/\//g) || []).length}
                       $pickedUp={pickedUpFileId == file.fileId}
-                      $mouseX = {mouseCoords[0]}
-                      $mouseY = {mouseCoords[1]}
-                      $search = {search}
-                      onMouseDown = {() => file.fileId != pickedUpFileId ? onFilePickUp(file.fileId) : undefined}
-                      onMouseUp = {(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
+                      $mouseX={mouseCoords[0]}
+                      $mouseY={mouseCoords[1]}
+                      $search={search}
+                      onMouseDown={() => file.fileId != pickedUpFileId ? onFilePickUp(file.fileId) : undefined}
+                      onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
                       onClick={() => openCloseFolder(file.fileId)}
                       onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile')}>
-                  {file.isDirectory ? "📁" : "🗎"}  {file.filename}
+                  {file.isDirectory ? "📁" : "🗎"} {file.filename}
+                  <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                                        size={file.size} versionId={file.versionId} ownerId={file.ownerId}
+                                        projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
+                                        updatedAt={file.updatedAt} visible={file.visible} open={file.open}
+                                        isDirectory={file.isDirectory}></FileContext>
                 </File>
             ))
         ) : (
@@ -428,7 +433,9 @@ export default function FilePanel() {
         )}
 
         {createFilePanelUp ?
-            <CreateFilePanel initialPosX={createFilePanelInitX.current} initialPosY={createFilePanelInitY.current} parentFileId={contextMenuFileId} parentFilePath={contextMenuFilePath} isDirectory={createFileOrFolder.current} createFile={handleCreateFile} close={closeCreateFilePanel}/>
+            <CreateFilePanel initialPosX={createFilePanelInitX.current} initialPosY={createFilePanelInitY.current}
+                             parentFileId={contextMenuFileId} parentFilePath={contextMenuFilePath}
+                             isDirectory={createFileOrFolder.current} createFile={handleCreateFile} close={closeCreateFilePanel}/>
             : <></>
         }
 
@@ -559,7 +566,7 @@ const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: n
     top: props.$pickedUp ? props.$mouseY + "px" : "auto",
     left: props.$pickedUp ? props.$mouseX + "px" : "auto",
     marginLeft: props.$search ? "auto" : props.$pickedUp ? props.$depth * 20 : "auto" ,
-    width: props.$search ? props.$pickedUp ? "auto" : "100%" : "calc(100% - " + props.$depth * 20 + "px)" ,
+    width: props.$search ?  "calc(100% - " + props.$depth * 20 + "px)" :(props.$pickedUp ? "auto" : "calc(100% - " + props.$depth * 20 + "px)"),
     pointerEvents: props.$pickedUp ? "none" : "auto",
     opacity : props.$pickedUp ? 0.75 : 1,
     backgroundColor: props.$pickedUp ? "lightskyblue" : "white",
@@ -591,9 +598,31 @@ const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: n
   
   &:active {
     background-color: lightblue !important;
-    
+
     }
 `;
+
+const FileContextItem = styled.div`
+
+  height: 100%;
+  font-size: 12px;
+  background-color: inherit;
+  color: gray;
+  text-align: left;
+  overflow-y: auto;
+  pointer-events: none;
+`;
+
+export function FileContext(file: fileInfo ) {
+  const now = new Date()
+  const updated = new Date(file.updatedAt)
+
+  return (
+      <FileContextItem>
+        Last updated: {updated.toDateString() == now.toDateString() ? updated.toLocaleTimeString("en-US") : updated.toLocaleDateString("en-US") } Size: {file.size}
+      </FileContextItem>
+  );
+}
 
 const NoFiles = styled.div`
   color: gray;
