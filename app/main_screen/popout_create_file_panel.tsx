@@ -106,7 +106,7 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
                 }
             </TagDisplay>
             <Button onClick= {() => createFile(fileName.current, parentFilePath, parentFileId, isDirectory==="Folder", tags)}>
-                Create File
+                {isDirectory === "File" ? "Create File" : "Create Folder"}
             </Button>
             <Resize draggable={true} onDragStart={(e) => {initialResizeX.current = e.pageX; initialResizeY.current = e.pageY}} onDragEnd = {(e) => {handleResize(e)}}>
                 <svg viewBox={"0 0 24px 24px"}>
