@@ -448,9 +448,6 @@ export default function FilePanel() {
                 <ContextMenuItem onClick={(e) => {setCreateFilePanelUp(true); createFilePanelInitX.current=e.pageX; createFilePanelInitY.current=e.pageY; createFileOrFolder.current="Folder"}}>
                   Create Folder
                 </ContextMenuItem>
-                <ContextMenuItem>
-                  Open Chat
-                </ContextMenuItem>
               </ContextMenu>
           ) : contextMenu && contextMenuType=="fileFile" ? (
               <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
