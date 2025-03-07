@@ -27,6 +27,7 @@ const schema = a
         deletedAt: a.datetime(),
         projectowner: a.belongsTo("User","userId"),
         files: a.hasMany("File","projectId"),
+        whitelist: a.hasMany("Whitelist", "projectId"),
       }).identifier(["projectId"]),
 
       
@@ -38,13 +39,13 @@ const schema = a
         filepath: a.string().required(),
         parentId: a.id().required(),
         size: a.integer().required(),
+        storageId: a.id(),
         versionId: a.string().required(), // Sort key in secondary index
         ownerId: a.id().required(),
         projectId: a.id().required(),
         createdAt: a.datetime().required(),
         updatedAt: a.datetime().required(),
         messages: a.hasMany("Message", ["fileId","projectId"]),
-        whitelist: a.hasMany("Whitelist", ["fileId","projectId"]),
         tag: a.hasMany("Tag", ["fileId","projectId"]),
         isDeleted: a.boolean().required(),
         deletedAt: a.datetime(),
@@ -101,7 +102,6 @@ const schema = a
   .model({
     whitelistId: a.id().required(),
     userIds: a.id().required(), // User ID being whitelisted
-    fileId: a.id().required(), // File or Project
     createdAt: a.datetime().required(),
     projectId: a.id().required(),
     isAdmin: a.boolean().default(false), // Indicates if user is admin for this file/project
@@ -109,7 +109,7 @@ const schema = a
 
     // Relationships
     user: a.belongsTo("User", "userIds"),
-    file: a.belongsTo("File", ["fileId","projectId"]),
+    project: a.belongsTo("Project", "projectId"),
   })
   .identifier(["whitelistId"]),
 }).authorization((allow) => [

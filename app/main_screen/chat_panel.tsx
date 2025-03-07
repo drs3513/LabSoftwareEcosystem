@@ -19,12 +19,11 @@ interface Message {
 }
 
 export default function ChatPanel() {
-  const { fileId, userId } = useGlobalState();
+  const { projectId, fileId, userId } = useGlobalState();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; messageId: string } | null>(null);
-
   useEffect(() => {
     if (!fileId) return;
 
@@ -67,7 +66,7 @@ export default function ChatPanel() {
   }, [messages]);
 
   const handleSendMessage = async () => {
-    const {projectId} = useGlobalState();
+    
     if (input.trim() && fileId && userId) {
       try {
         const response = await createMessage(fileId, userId, input.trim(), projectId);
@@ -121,6 +120,12 @@ export default function ChatPanel() {
     setContextMenu(null);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSendMessage();
+    }
+  };
+
   return (
     <ChatContainer>
       <ChatMessagesWrapper>
@@ -145,7 +150,7 @@ export default function ChatPanel() {
         <div ref={chatEndRef} />
       </ChatMessagesWrapper>
       <InputContainer>
-        <Input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleSendMessage} placeholder="Type a message..." />
+        <Input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Type a message..." />
       </InputContainer>
       {contextMenu && (
         <ContextMenu $x={contextMenu.x} $y={contextMenu.y}>

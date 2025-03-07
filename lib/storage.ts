@@ -1,35 +1,32 @@
 import { uploadData, getUrl, remove, downloadData, getProperties } from "aws-amplify/storage";
 
 
-// Upload file and return S3 key and version ID
+// Upload file and return S3 key
 export async function uploadFile(
   file: File,
   userId: string,
+  projectId: string,
   filePath: string
-): Promise<{ key: string; versionId: string }> {
+): Promise<{ key: string }> {
   try {
-    const key = `uploads/${userId}${filePath}`;
+    const key = `uploads/${userId}/${projectId}${filePath}`;
     const fileReader = new FileReader();
-    fileReader.readAsArrayBuffer(file);
 
     return new Promise((resolve, reject) => {
       fileReader.onload = async (event) => {
         try {
-          const response = await uploadData({
+          // Upload the file
+          await uploadData({
             data: event.target?.result as ArrayBuffer,
             path: key,
             options: {
-              contentType: file.type,   
-              // Specify a target bucket using name assigned in Amplify Backend
-              bucket: 'filestorage142024'
+              contentType: file.type,
+              bucket: "filestorage142024", // Specify target bucket
             },
           });
 
-          // Get file properties (including versionId)
-          const properties = await getProperties({ path: key });
-          const versionId = properties?.versionId || "1"; // Default to "1" if no versionId
-
-          resolve({ key, versionId });
+          console.log(`Upload complete: ${key}`);
+          resolve({ key });
         } catch (error) {
           console.error("Error uploading file:", error);
           reject(error);
@@ -40,12 +37,43 @@ export async function uploadFile(
         console.error("File reading error:", error);
         reject(error);
       };
+
+      fileReader.readAsArrayBuffer(file);
     });
   } catch (error) {
     console.error("Error starting upload:", error);
     throw error;
   }
 }
+
+// Function to get version ID separately
+export async function getVersionId(filePath: string): Promise< string> {
+  
+  let retries = 5;
+  let delay = 1500; // Start with 1.5s delay
+  let versionId = "1"; // Default versionId if not found
+
+  while (retries > 0) {
+    try {
+      const properties = await getProperties({ path: filePath });
+      if (properties?.versionId) {
+        console.log(`Successfully retrieved versionId: ${properties.versionId}`);
+        return properties.versionId;
+      }
+    } catch (error) {
+      console.warn(`Retrying getProperties... Attempts left: ${retries}`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay *= 2; // Exponential backoff (1.5s → 3s → 6s)
+    }
+    retries--;
+  }
+
+  console.warn("Failed to retrieve file properties after retries. Using default versionId.");
+  return versionId;
+}
+
+
+
 
 
 export async function downloadFile(fileKey: string): Promise<Blob | string | object> {

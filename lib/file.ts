@@ -1,6 +1,6 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import {uploadFile} from "./storage";
+import {getVersionId, uploadFile} from "./storage";
 import {Nullable} from "@aws-amplify/data-schema";
 import { Timeout } from "aws-cdk-lib/aws-stepfunctions";
 const client = generateClient<Schema>();
@@ -41,112 +41,100 @@ export async function getVersionHistory(fileId: string): Promise<any[]> {
   }
 }
 
-export async function uploadFileAndCreateEntry(
-  file: File,
+
+export async function processAndUploadFiles(
+  dict: Record<string, any>,
   projectId: string,
   ownerId: string,
-  parentId: string,
-  isDirectory: boolean,
-  uploadedFiles: Set<string>
+  parentId: string, // Parent ID is required
+  currentPath: string = ""
 ) {
-  try {
-    if (!uploadedFiles) {
-      throw new Error("[ERROR] Uploaded files Set is undefined");
-    }
+  const projectFiles = await listFilesForProject(projectId);
+  let fileCounter = projectFiles.length + 1;
+  const now = new Date().toISOString();
 
-    const now = new Date().toISOString();
-    let projectFiles = await listFilesForProject(projectId);
-    let existingFilePaths = new Set(projectFiles.map(f => f.filepath));
+  // Define a root parent ID for the project
+  const rootParentId = `ROOT-${projectId}`;
 
-    const relativePath = file.webkitRelativePath || file.name;
-    const pathParts = relativePath.split("/");
-    const fileName = pathParts.pop() || ""; // Extract actual file name
-    const folderPath = pathParts.join("/"); // Extract folder path
+  async function recursivePrint(
+    obj: Record<string, any>,
+    depth: number = 0,
+    currentParentId: string = parentId || rootParentId, // Use rootParentId for top-level
+    currentFilePath: string = currentPath
+  ) {
+    for (const [key, value] of Object.entries(obj)) {
+      console.log(`${depth}${"  ".repeat(depth)}Key: ${key}`);
 
-    let parentFolderId = projectId; // Start at root project folder
-    let currentPath = "";
-    let createdFolders = new Set();
+      if (key !== "files") {
+        console.log(`Creating Directory: ${key}`);
 
-    // **Ensure all parent directories exist**
-    for (const part of pathParts) {
-      currentPath += (currentPath ? "/" : "") + part;
-      const folderId = `${projectId}_${currentPath.replace(/\//g, "_")}`;
+        // Create directory entry
+        const newFile = await createFile({
+          projectId,
+          fileId: `${projectId}F${fileCounter++}`,
+          filename: key,
+          isDirectory: true,
+          filepath: currentFilePath,
+          parentId: currentParentId, // Ensure valid parentId
+          size: 0,
+          versionId: "1",
+          ownerId,
+          isDeleted: false,
+          createdAt: now,
+          updatedAt: now,
+        });
 
-      // If directory already exists, continue to the next level
-      if (existingFilePaths.has(currentPath) || createdFolders.has(currentPath)) {
-        parentFolderId = folderId;
-        continue;
+        console.log(`Directory Created: ${newFile.data?.fileId}`, newFile);
+
+        // Recursively process children with updated `parentId`
+        await recursivePrint(value, depth + 1, newFile.data?.fileId, `${currentFilePath}/${key}`);
+      } else {
+        console.log(`Creating files inside: ${currentFilePath}`);
+        
+        for (const [fileKey, fileValue] of Object.entries(value)) {
+          if (!(fileValue instanceof File)) {
+            console.error(`Skipping ${fileKey}: Invalid file object`, fileValue);
+            continue;
+          }
+
+          console.log(`  Creating file: ${fileKey}`);
+          // Ensure correct file path
+          const folderPath = currentFilePath ? `${currentFilePath}/${fileKey}` : `/${fileKey}`;
+          
+          try {
+            const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
+            const versionId = await getVersionId(storageKey);
+            
+            // Create file entry
+            const newFile = await createFile({
+              projectId,
+              fileId: `${projectId}F${fileCounter++}`,
+              filename: fileKey,
+              isDirectory: false, // ✅ Ensure explicitly set for files
+              filepath: currentFilePath,
+              parentId: currentParentId, // Ensure valid parentId
+              storageId: storageKey,
+              size: fileValue.size ?? 0,
+              versionId,
+              ownerId,
+              isDeleted: false,
+              createdAt: now,
+              updatedAt: now,
+            });
+
+            console.log(`File Created: ${newFile.data?.fileId}`, newFile);
+          } catch (error) {
+            console.error(`Error processing file ${fileKey}:`, error);
+          }
+        }
       }
-
-      console.log(`[DEBUG] Creating missing folder: ${currentPath}`);
-
-      await createFile({
-        projectId,
-        fileId: folderId,
-        filename: part,
-        isDirectory: true,
-        filepath: currentPath,
-        parentId: parentFolderId,
-        size: 0,
-        versionId: "1",
-        ownerId,
-        isDeleted: false,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      // Track created directories to prevent redundant checks
-      createdFolders.add(currentPath);
-      existingFilePaths.add(currentPath);
-
-      // **Ensure directory creation completes before proceeding**
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      parentFolderId = folderId; // Update for the next directory level
     }
-
-    // **Ensure we are not re-uploading the same file (track by full path)**
-    const fileKey = `${folderPath}/${fileName}`;
-    if (uploadedFiles.has(fileKey)) {
-      console.log(`[DEBUG] Skipping duplicate upload: ${fileKey}`);
-      return;
-    }
-
-    uploadedFiles.add(fileKey); // Mark this file as uploaded
-
-    if (isDirectory) {
-      console.log(`[DEBUG] Directory created: ${folderPath}`);
-      return;
-    }
-
-    console.log(`[DEBUG] Uploading file: ${fileName} to ${folderPath || "upload/"}`);
-    const { key, versionId } = await uploadFile(file, projectId, parentFolderId);
-
-    // Create file entry in database
-    const newFile = await createFile({
-      projectId,
-      fileId: `${projectId}_F${projectFiles.length + 1}`,
-      filename: fileName,
-      isDirectory: false,
-      filepath: fileKey,
-      parentId: parentFolderId,
-      size: file.size,
-      versionId,
-      ownerId,
-      isDeleted: false,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    console.log("[DEBUG] File uploaded successfully.");
-    return newFile;
-  } catch (error) {
-    console.error("[ERROR] Uploading and creating file failed:", error);
-    throw error;
   }
+
+  console.log("Listing dictionary objects recursively:");
+  await recursivePrint(dict);
+  console.log("Processing complete.");
 }
-
-
 
 
 export async function listFilesForProject(projectId: string) {

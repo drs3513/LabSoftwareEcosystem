@@ -1,9 +1,8 @@
 "use client";
-import { FileUploader } from '@aws-amplify/ui-react-storage';
 import '@aws-amplify/ui-react/styles.css';
 import React, {useEffect, useRef, useState} from "react";
 import { useGlobalState } from "./GlobalStateContext";
-import {listFilesForProject, createFile, updateFileLocation, uploadFileAndCreateEntry} from "@/lib/file";
+import {listFilesForProject, processAndUploadFiles, updateFileLocation, uploadFileAndCreateEntry} from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
 import { generateClient } from "aws-amplify/api";
@@ -275,57 +274,79 @@ export default function FilePanel() {
 
 
   
-
-  const handleCreateFile = async (isDirectory: boolean) => {
+  const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId: string) => {
     const input = document.createElement("input");
     input.type = "file";
     input.multiple = true;
 
     if (isDirectory) {
-        input.webkitdirectory = true;
+        input.webkitdirectory = true; // Enable directory selection
     }
 
-    input.onchange = async (event: Event) => {
-        const target = event.target as HTMLInputElement;
-        if (!target.files || target.files.length === 0) return;
+    input.addEventListener("change", async (event) => {
+        const files = (event.target as HTMLInputElement).files;
+        if (!files) {
+            console.error("[ERROR] No files selected.");
+            return;
+        }
 
-        try {
-            const files = Array.from(target.files);
-            const uploadedFiles = new Set<string>(); 
+        let folderDict: Record<string, any> = {}; // Dictionary to store folder structure
 
-            for (const file of files) {
-                const relativePath = file.webkitRelativePath || file.name;
-                const pathParts = relativePath.split("/");
-                const fileName = pathParts.pop() || "";
-                const folderPath = pathParts.join("/");
+        function addToNestedDict(
+            dict: Record<string, any>,
+            pathParts: string[],
+            fileName: string,
+            fileObj: File
+        ) {
+            let currentLevel = dict;
 
-                let parentId = projectId;
-                let currentPath = "";
+            for (let i = 0; i < pathParts.length; i++) {
+                let part = pathParts[i];
 
-                for (const part of pathParts) {
-                    currentPath += (currentPath ? "/" : "") + part;
+                // If this folder does not exist in the dictionary, create it
+                if (!currentLevel[part]) {
+                    currentLevel[part] = { files: {} };
                 }
 
-                if (uploadedFiles.has(fileName)) {
-                    console.log(`[DEBUG] Skipping duplicate upload: ${fileName}`);
-                    continue;
-                }
-
-                console.log(`[DEBUG] Uploading file: ${fileName} under ${folderPath || "root"}`);
-                await uploadFileAndCreateEntry(file, projectId, userId as string, parentId, false, uploadedFiles);
-
-                uploadedFiles.add(fileName);
+                // Move deeper into the nested dictionary
+                currentLevel = currentLevel[part];
             }
 
-            console.log("[DEBUG] Folder and file upload process completed.");
-        } catch (error) {
-            console.error("[ERROR] Failed to create file or folder:", error);
-            alert("Failed to create file or folder. Please check the inputs.");
+            // Ensure files is an object where filenames are keys
+            currentLevel.files[fileName] = fileObj; // Store the actual file object
         }
-    };
+
+        // Populate the folder structure
+        if (isDirectory) {
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const relativePath = file.webkitRelativePath || file.name; // Get relative path
+                const pathParts = relativePath.split("/"); // Split into directory structure
+                const fileName = pathParts.pop() || ""; // Extract actual file name
+
+                addToNestedDict(folderDict, pathParts, fileName, file);
+            }
+        } else {
+            // If it's a single file, place it inside a `files` object
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                folderDict = { files: { [file.name]: file } };
+            }
+        }
+
+        console.log("[DEBUG] Final Folder Dictionary:", folderDict);
+
+        // Process dictionary and upload files
+        await processAndUploadFiles(folderDict, projectId, ownerId, "");
+    });
 
     input.click();
 };
+
+
+
+
+  
 
   // opens / closes a folder that is clicked
   function openCloseFolder(openFileId: string) {
@@ -465,10 +486,10 @@ export default function FilePanel() {
         {
           contextMenu && contextMenuType=="filePanel" ? (
               <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
-                <ContextMenuItem onClick={() => handleCreateFile(false)}>
+                <ContextMenuItem onClick={() => handleCreateFile(false, projectId, userId)}>
                   Create File
                 </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleCreateFile(true)}>
+                <ContextMenuItem onClick={() => handleCreateFile(true, projectId, userId)}>
                   Create Folder
                 </ContextMenuItem>
                 <ContextMenuItem>
@@ -489,10 +510,10 @@ export default function FilePanel() {
               </ContextMenu>
           ) : contextMenu && contextMenuType=="fileFolder" ? (
               <ContextMenu $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
-                <ContextMenuItem onClick={() => handleCreateFile(false)}>
+                <ContextMenuItem onClick={() => handleCreateFile(false, projectId, userId)}>
                   Create File
                 </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleCreateFile(true)}>
+                <ContextMenuItem onClick={() => handleCreateFile(true, projectId, userId)}>
                   Create Folder
                 </ContextMenuItem>
                 <ContextMenuItem>
@@ -560,8 +581,8 @@ const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: n
     position: props.$pickedUp ? "absolute" : undefined,
     top: props.$pickedUp ? props.$mouseY + "px" : "auto",
     left: props.$pickedUp ? props.$mouseX + "px" : "auto",
-    marginLeft: props.$search ? props.$pickedUp ? "auto" : props.$depth * 20 : "auto",
-    width: props.$search ? props.$pickedUp ? "auto" : "calc(100% - " + props.$depth * 20 + "px)" : "100%",
+    marginLeft: props.$search ? props.$pickedUp ? "auto" : props.$depth * 20 : "auto" ,
+    width: props.$search ? props.$pickedUp ? "100%": "calc(100% - " + props.$depth * 20 + "px)" : "auto" ,
     pointerEvents: props.$pickedUp ? "none" : "auto",
     opacity : props.$pickedUp ? 0.75 : 1,
     backgroundColor: props.$pickedUp ? "lightskyblue" : "white",
