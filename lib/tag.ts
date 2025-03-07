@@ -3,6 +3,14 @@ import type { Schema } from "@/amplify/data/resource";
 
 const client = generateClient<Schema>();
 
+/*
+export async function getTagsForProject(tagType: "file" | "message", projectId: string){
+    try {
+        await client.models.Tag.list().where
+    }
+
+}
+*/
 
 export async function createTag(tagType: "file" | "message", refId: string, tagName: string) {
   try {
@@ -33,6 +41,18 @@ export async function createTag(tagType: "file" | "message", refId: string, tagN
   } catch (error) {
     console.error("Error creating tag:", error);
   }
+}
+
+export async function listTags(){
+    try {
+        const response = await client.models.Tag.list();
+        const tags = response.data;
+        console.log(tags)
+        return tags
+    } catch (error) {
+        console.error("Error fetching tags:", error);
+        return [];
+    }
 }
 
 export async function getTagsForRef(refId: string) {
