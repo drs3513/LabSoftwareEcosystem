@@ -107,7 +107,7 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
                 ) : <></>
                 }
             </TagDisplay>
-            <Button onClick= {() => createFile(isDirectory == "Folder", projectId, userId, parentFileId)}>
+            <Button onClick= {() => createFile(isDirectory == "Folder", projectId as string, userId as string, parentFileId as string)}>
                 {isDirectory === "File" ? "Upload File" : "Upload Folder"}
             </Button>
             <Resize draggable={true} onDragStart={(e) => {initialResizeX.current = e.pageX; initialResizeY.current = e.pageY}} onDragEnd = {(e) => {handleResize(e)}}>
