@@ -56,7 +56,7 @@ interface fileInfoDict extends fileInfo{
 
 export default function FilePanel() {
 
-  function createContextMenu(e: React.MouseEvent<HTMLDivElement>, fileId: string | undefined, filepath: string | undefined, location: string){
+  function createContextMenu(e: React.MouseEvent<HTMLElement>, fileId: string | undefined, filepath: string | undefined, location: string){
     if(e.target != e.currentTarget){
       return
     }
@@ -381,7 +381,7 @@ export default function FilePanel() {
     }
   }
 
-  function onFilePlace(e: React.MouseEvent<HTMLDivElement>, overFileId: Nullable<string>, overFilePath: Nullable<string>) {
+  function onFilePlace(e: React.MouseEvent<HTMLElement>, overFileId: Nullable<string>, overFilePath: Nullable<string>) {
     if(e.target != e.currentTarget){
       return
     }
