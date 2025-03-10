@@ -177,15 +177,21 @@ const TagDisplayContainer = styled.div.attrs<{$height: number}>(props => ({
     }
 }))`
     display: flex;
-    flex-direction: column;
-    width: auto;
-    
-    overflow: scroll;
+    flex-direction: row;
+    width: 80%;
+    height: auto;
+    flex-wrap: wrap;
+
+    overflow: auto;
 `
 const TagDisplayIndex = styled.div`
-    margin: .5rem;
+    margin: .3rem;
     text-align: left;
-    border-bottom: 2px solid #ccc;
+    height: min-content;
+    padding: .5rem;
+    padding-top: .2rem;
+    background-color: #ccc;;
+    border-radius: 18px;
 `
 
 

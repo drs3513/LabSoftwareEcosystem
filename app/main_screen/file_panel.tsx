@@ -225,16 +225,6 @@ export default function FilePanel() {
     fetchFiles().then();
   }, [projectId]);
 
-  //uploads file
-  const handleUploadFile = async () => {
-    if (!uploadInputRef || !uploadInputRef.current) return;
-    try {
-      uploadInputRef.current.click();
-    } catch (error) {
-
-    }
-  }
-
 
   //creates a file
   const handleCreateFile = async (filename: string, filepath: string | undefined, parentId: string | undefined, isDirectory: boolean, tags: Array<string>) => {
@@ -401,7 +391,6 @@ export default function FilePanel() {
           onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel')}
           onMouseUp={(e) => onFilePlace(e, null, null)}
           onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
-        <input ref={uploadInputRef} id = "file" type = "file" hidden onChange={handleFileChange}></input>
         <TopBarContainer>
           <Input onChange={(e) => handleSearch(e)}>
 
@@ -572,25 +561,6 @@ const PanelContainer = styled.div`
   overflow-y: auto;
 `;
 
-const FileContextItem = styled.div`
-  width: 100%;
-  height: 100%;
-  font-size: 12px;
-  background-color: white;
-  color: gray;
-  text-align: left;
-  overflow-y: auto;
-`;
-
-export function FileContext(file: fileInfo ) {
-  const now = new Date()
-  const updated = new Date(file.updatedAt)
-  return (
-    <FileContextItem>
-      Last updated: {updated.toDateString() == now.toDateString() ? updated.toLocaleTimeString("en-US") : updated.toLocaleDateString("en-US") } Size: {file.size}
-    </FileContextItem>
-  );
-}
 const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: number, $mouseY: number, $search: boolean}>(props => ({
   style: {
     position: props.$pickedUp ? "absolute" : undefined,
