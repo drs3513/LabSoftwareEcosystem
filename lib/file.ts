@@ -49,6 +49,7 @@ export async function processAndUploadFiles(
   parentId: string, // Parent ID is required
   currentPath: string = ""
 ) {
+
   const projectFiles = await listFilesForProject(projectId);
   let fileCounter = projectFiles.length + 1;
   const now = new Date().toISOString();
@@ -74,7 +75,7 @@ export async function processAndUploadFiles(
           fileId: `${projectId}F${fileCounter++}`,
           filename: key,
           isDirectory: true,
-          filepath: currentFilePath,
+          filepath: currentFilePath + "/" + key,
           parentId: currentParentId, // Ensure valid parentId
           size: 0,
           versionId: "1",
@@ -106,12 +107,13 @@ export async function processAndUploadFiles(
             const versionId = await getVersionId(storageKey);
             
             // Create file entry
+            console.log(currentFilePath)
             const newFile = await createFile({
               projectId,
               fileId: `${projectId}F${fileCounter++}`,
               filename: fileKey,
               isDirectory: false, // ✅ Ensure explicitly set for files
-              filepath: currentFilePath,
+              filepath: currentFilePath + "/" + fileKey,
               parentId: currentParentId, // Ensure valid parentId
               storageId: storageKey,
               size: fileValue.size ?? 0,
@@ -143,8 +145,9 @@ export async function listFilesForProject(projectId: string) {
     const files = response.data; // Extract file array
 
     if (!files) return [];
-    let projfiles = files.filter((file) => file.projectId === projectId);
-    return projfiles; // Filter files by projectId
+
+    return files.filter((file) => file ? file.projectId === projectId: null); // Filter files by projectId
+
   } catch (error) {
     console.error("Error fetching files for project:", error);
     return [];
@@ -308,14 +311,20 @@ export async function checkAndDeleteExpiredFiles(
   }
 }
 
-export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>, projectId: string){
+export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>, projectId: string | null){
   try {
-    await client.models.File.update({
-      fileId: id,
-      filepath: path,
-      projectId,
-      parentId: parentId
-    })
+    if(parentId == null){
+      parentId = "ROOT-" + projectId
+    }
+    if(projectId){
+      await client.models.File.update({
+        fileId: id,
+        filepath: path,
+        projectId,
+        parentId: parentId
+      })
+    }
+    console.log("Also Here")
     console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
   } catch(error) {
     console.error("Error updating file:", error);
