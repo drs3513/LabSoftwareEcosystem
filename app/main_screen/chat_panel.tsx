@@ -69,7 +69,7 @@ export default function ChatPanel() {
     
     if (input.trim() && fileId && userId) {
       try {
-        const response = await createMessage(fileId, userId, input.trim(), projectId);
+        const response = await createMessage(fileId, userId, input.trim(), projectId as string);
         const newMessage: Message = response?.data ?? response;
 
         if (newMessage && "messageId" in newMessage && "content" in newMessage) {
