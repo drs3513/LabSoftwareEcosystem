@@ -78,6 +78,7 @@ export async function processAndUploadFiles(
           filepath: currentFilePath + "/" + key,
           parentId: currentParentId, // Ensure valid parentId
           size: 0,
+          storageId: null,
           versionId: "1",
           ownerId,
           isDeleted: false,
@@ -162,6 +163,7 @@ export async function createFile({
   isDirectory,
   filepath,
   parentId,
+  storageId,
   size,
   versionId,
   ownerId,
@@ -174,6 +176,7 @@ export async function createFile({
   filename: string;
   isDirectory: boolean;
   filepath: string;
+  storageId: string | null;
   parentId: string;
   size: number;
   versionId: string;
@@ -189,6 +192,7 @@ export async function createFile({
     isDirectory,
     filepath,
     parentId,
+    storageId,
     size,
     versionId,
     ownerId,
@@ -311,7 +315,7 @@ export async function checkAndDeleteExpiredFiles(
   }
 }
 
-export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>, projectId: string | null){
+export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>, projectId: string){
   try {
     if(parentId == null){
       parentId = "ROOT-" + projectId
