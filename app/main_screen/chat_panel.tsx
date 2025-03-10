@@ -66,23 +66,29 @@ export default function ChatPanel() {
   }, [messages]);
 
   const handleSendMessage = async () => {
-    
     if (input.trim() && fileId && userId) {
       try {
         const response = await createMessage(fileId, userId, input.trim(), projectId as string);
-        const newMessage: Message = response?.data ?? response;
-
-        if (newMessage && "messageId" in newMessage && "content" in newMessage) {
-          setMessages((prevMessages) => [...prevMessages, newMessage]);
-          setInput("");
-        } else {
-          console.error("Invalid message response:", response);
+        
+        if (!response) {
+          throw new Error("createMessage returned undefined");
         }
+  
+        const newMessage = response?.data ?? response;
+  
+        if (!newMessage || !("messageId" in newMessage && "content" in newMessage)) {
+          console.error("Invalid message response:", response);
+          return;
+        }
+  
+        setMessages((prevMessages) => [...prevMessages, newMessage]);
+        setInput("");
       } catch (error) {
         console.error("Error sending message:", error);
       }
     }
   };
+  
 
   const handleContextMenu = (e: React.MouseEvent, messageId: string) => {
     e.preventDefault();
