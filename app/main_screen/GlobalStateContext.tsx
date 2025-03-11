@@ -24,8 +24,8 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
   const [contextMenu, setContextMenu] = useState<boolean>(false);
   const [contextMenuType, setContextMenuType] = useState<string>("file");
   useEffect(() => {
-    if (user?.signInDetails?.loginId) {
-      setUserId(user.signInDetails.loginId); // Automatically assign userId
+    if (user?.userId) {
+      setUserId(user.userId); // Automatically assign userId
     }
   }, [user]);
 

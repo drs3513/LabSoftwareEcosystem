@@ -4,7 +4,7 @@ import type { Schema } from "@/amplify/data/resource";
 const client = generateClient<Schema>();
 
 
-export async function createMessage(fileId: string, userId: string | undefined, content: string) {
+export async function createMessage(fileId: string, userId: string, content: string, projectId: string) {
   try {
     const fileMessages = await getMessagesForFile(fileId);
     const messageCount = fileMessages.length || 0;
@@ -13,14 +13,13 @@ export async function createMessage(fileId: string, userId: string | undefined, 
 
     const newMessage = await client.models.Message.create({
       messageId,
+      projectId,
       fileId,
       userId,
       content,
       createdAt: now,
       updatedAt: now, 
     });
-
-    console.log("Created message:", newMessage);
     return newMessage;
   } catch (error) {
     console.error("Error creating message:", error);
@@ -43,7 +42,7 @@ export async function getMessagesForFile(fileId: string) {
 
 
 
-export async function updateMessage(messageId: string, content: string) {
+export async function updateMessage(messageId: string, content: string, userId: string) {
   try {
     const now = new Date().toISOString();
 
@@ -51,9 +50,8 @@ export async function updateMessage(messageId: string, content: string) {
       messageId,
       content,
       updatedAt: now, 
+      isUpdated: true,
     });
-
-    console.log("Updated message:", updatedMessage);
     return updatedMessage;
   } catch (error) {
     console.error("Error updating message:", error);
@@ -62,10 +60,9 @@ export async function updateMessage(messageId: string, content: string) {
 
 
 
-export async function deleteMessage(messageId: string) {
+export async function deleteMessage(messageId: string, userId: string) {
   try {
     await client.models.Message.delete({ messageId });
-    console.log(`Deleted message: ${messageId}`);
   } catch (error) {
     console.error("Error deleting message:", error);
   }

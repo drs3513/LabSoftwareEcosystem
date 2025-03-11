@@ -1,4 +1,5 @@
 import { generateClient } from "aws-amplify/data";
+import { useGlobalState } from "@/app/main_screen/GlobalStateContext";
 import type { Schema } from "@/amplify/data/resource";
 
 const client = generateClient<Schema>();
@@ -14,6 +15,7 @@ export async function getTagsForProject(tagType: "file" | "message", projectId: 
 
 export async function createTag(tagType: "file" | "message", refId: string, tagName: string) {
   try {
+    const {projectId} = useGlobalState();
     const tagId = `tag-${Math.floor(Math.random() * 100000)}`;
     const now = new Date().toISOString();
     let newTag;
@@ -22,6 +24,7 @@ export async function createTag(tagType: "file" | "message", refId: string, tagN
               tagId,
              tagType,
              fileId:refId,
+             projectId,
               tagName,
               createdAt: now,
         });
