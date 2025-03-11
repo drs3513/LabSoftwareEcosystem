@@ -12,17 +12,24 @@ export async function createMessage(fileId: string, userId: string, content: str
     const now = new Date().toISOString();
 
     const newMessage = await client.models.Message.create({
-      messageId,
-      projectId,
+      messageId, 
+      projectId, 
       fileId,
       userId,
       content,
       createdAt: now,
       updatedAt: now, 
+      isUpdated: false,
+      isDeleted: false,
     });
+    if (newMessage.errors) {
+      console.error("Error creating message:", newMessage.errors);
+      return { data: null, errors: newMessage.errors };
+    }
     return newMessage;
   } catch (error) {
     console.error("Error creating message:", error);
+    return { data: null, errors: [error] };
   }
 }
 
@@ -45,14 +52,23 @@ export async function getMessagesForFile(fileId: string) {
 export async function updateMessage(messageId: string, content: string, userId: string) {
   try {
     const now = new Date().toISOString();
-
-    const updatedMessage = await client.models.Message.update({
-      messageId,
-      content,
-      updatedAt: now, 
-      isUpdated: true,
-    });
+    const message = await client.models.Message.get({ messageId });
+    if (!message) {
+      throw new Error("Message not found");
+    }
+    if (message.data?.userId !== userId) {
+      throw new Error("You do not have permission to update this message");
+    } else {
+      console.log("User has permission to update the message");
+      // Proceed to update the message
+      const updatedMessage = await client.models.Message.update({
+        messageId,
+        content,
+        updatedAt: now,
+        isUpdated: true,
+      });
     return updatedMessage;
+    }
   } catch (error) {
     console.error("Error updating message:", error);
   }
@@ -62,7 +78,29 @@ export async function updateMessage(messageId: string, content: string, userId: 
 
 export async function deleteMessage(messageId: string, userId: string) {
   try {
-    await client.models.Message.delete({ messageId });
+    const message = await client.models.Message.get({ messageId });
+      if (!message) {
+        throw new Error("Message not found");
+      }
+      if (message.data?.userId !== userId) {
+        throw new Error("You do not have permission to delete this message");
+      } else {
+        console.log("User has permission to delete the message");
+        // Log the message data for debugging
+        console.log("Message data before deletion:", message.data);
+  
+        // Update the message to mark it as deleted
+        const updatedMessage = await client.models.Message.update({
+          messageId,
+          content: "", // Clear the content
+          isDeleted: true, // Mark as deleted
+          updatedAt: new Date().toISOString(),
+        });
+  
+        // Log the updated message for debugging
+        console.log("Updated message:", updatedMessage);
+        return updatedMessage;
+      }
   } catch (error) {
     console.error("Error deleting message:", error);
   }

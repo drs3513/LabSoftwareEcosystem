@@ -11,10 +11,12 @@ interface Message {
   messageId: string;
   fileId: string;
   userId: string;
+  projectId: string;
   content: string;
   createdAt: string;
-  edited?: boolean;
-  deleted?: boolean;
+  updatedAt?: string;
+  isUpdated?: boolean;
+  isDeleted?: boolean;
   email?: string;
 }
 
@@ -65,15 +67,43 @@ export default function ChatPanel() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenu) {
+        setContextMenu(null);
+      }
+    };
+
+    document.addEventListener("click", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("click", handleClickOutside);
+    };
+  }, [contextMenu]);
+
   const handleSendMessage = async () => {
     
     if (input.trim() && fileId && userId) {
       try {
-        const response = await createMessage(fileId, userId, input.trim(), projectId);
+        const response = await createMessage(fileId, userId, input.trim(), projectId!);
+        console.log("createMessage response:", response); // Log the full response for debugging
+
         const newMessage: Message = response?.data ?? response;
 
         if (newMessage && "messageId" in newMessage && "content" in newMessage) {
-          setMessages((prevMessages) => [...prevMessages, newMessage]);
+          setMessages((prevMessages) => [
+            ...prevMessages,
+            {
+              messageId: newMessage.messageId,
+              fileId: newMessage.fileId,
+              userId: newMessage.userId,
+              projectId: newMessage.projectId,
+              content: newMessage.content,
+              createdAt: newMessage.createdAt,
+              updatedAt: newMessage.updatedAt,
+              isUpdated: newMessage.isUpdated,
+            },
+          ]);
           setInput("");
         } else {
           console.error("Invalid message response:", response);
@@ -96,7 +126,7 @@ export default function ChatPanel() {
         await updateMessage(messageId, newContent, userId!);
         setMessages((prevMessages) =>
           prevMessages.map((msg) =>
-            msg.messageId === messageId ? { ...msg, content: newContent, edited: true } : msg
+            msg.messageId === messageId ? { ...msg, content: newContent, updatedAt: new Date().toISOString(), isUpdated: true } : msg
           )
         );
       } catch (error) {
@@ -111,7 +141,7 @@ export default function ChatPanel() {
       await deleteMessage(messageId, userId!);
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
-          msg.messageId === messageId ? { ...msg, content: "", deleted: true } : msg
+          msg.messageId === messageId ? { ...msg, content: "", isDeleted: true } : msg
         )
       );
     } catch (error) {
@@ -133,16 +163,20 @@ export default function ChatPanel() {
           <ChatMessage
             key={msg.messageId}
             $sender={msg.userId === userId}
-            onContextMenu={msg.deleted ? undefined : (e) => handleContextMenu(e, msg.messageId)}
+            onContextMenu={msg.isDeleted ? undefined : (e) => handleContextMenu(e, msg.messageId)}
           >
-            {msg.deleted ? (
+            {msg.isDeleted ? (
               <DeletedMessageBox>Message deleted</DeletedMessageBox>
             ) : (
               <Chat_Body $sender={msg.userId === userId}>
                 <div>{msg.content}</div>
                 <ChatSender>{msg.userId === userId ? "You" : msg.email}</ChatSender>
-                <ChatTimeStamp>{new Date(msg.createdAt).toLocaleDateString()}{" "}{new Date(msg.createdAt).toLocaleTimeString()}</ChatTimeStamp>
-                {msg.edited && <ChatUpdateStatus>Edited</ChatUpdateStatus>}
+                <ChatTimeStamp>
+                  {msg.isUpdated
+                    ? `${new Date(msg.updatedAt!).toLocaleDateString()} ${new Date(msg.updatedAt!).toLocaleTimeString()}`
+                    : `${new Date(msg.createdAt).toLocaleDateString()} ${new Date(msg.createdAt).toLocaleTimeString()}`}
+                </ChatTimeStamp>
+                {msg.isUpdated && <ChatUpdateStatus>Edited</ChatUpdateStatus>}
               </Chat_Body>
             )}
           </ChatMessage>
@@ -161,8 +195,6 @@ export default function ChatPanel() {
     </ChatContainer>
   );
 }
-
-
 
 
 const ChatContainer = styled.div`

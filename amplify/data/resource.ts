@@ -74,6 +74,7 @@ const schema = a
         createdAt: a.datetime().required(),
         updatedAt: a.datetime(),
         isUpdated: a.boolean().default(false),
+        isDeleted: a.boolean().default(false),
         tag: a.hasMany("Tag","messageId"),
         file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
         
