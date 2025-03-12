@@ -11,13 +11,14 @@ export enum Role {
 }
 
 //  Whitelist User (with Role)
-export async function whitelistUser(fileId: string, userEmail: string, role: Role) {
+export async function whitelistUser(fileId: string, projectId: string,  userEmail: string, role: Role) {
   try {
     const now = new Date().toISOString();
     const whitelistId = `${fileId}-${userEmail}`;
     const response = await client.models.Whitelist.create({
       whitelistId,
       userIds: userEmail,
+      projectId,
       fileId,
       createdAt: now,
       isAdmin: role === Role.ADMIN || role === Role.HEAD, 

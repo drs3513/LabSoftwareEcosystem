@@ -1,15 +1,143 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
+import {getVersionId, uploadFile} from "./storage";
 import {Nullable} from "@aws-amplify/data-schema";
-
+import { Timeout } from "aws-cdk-lib/aws-stepfunctions";
 const client = generateClient<Schema>();
 
 
 export async function listFiles(setFiles: (files: Array<Schema["File"]["type"]>) => void) {
-  client.models.File.observeQuery().subscribe({
+  const subscription = client.models.File.observeQuery().subscribe({
     next: (data) => setFiles([...data.items]),
-  });
+    error: (error) => {
+      console.error("Error observing messages:", error);
+    },
+  }); 
+  return () => {
+    if (subscription) {
+      subscription.unsubscribe();
+    }
+  };
 }
+
+// Retrieve all versions of a file using manual sorting
+export async function getVersionHistory(fileId: string): Promise<any[]> {
+  try {
+    const response = await client.models.File.list({
+      filter: {
+        fileId: { eq: fileId }, // Query all versions with the same fileId
+      },
+    });
+
+    if (!response.data || response.data.length === 0) {
+      return [];
+    }
+
+    // Manually sort by versionId in descending order
+    return response.data.sort((a, b) => parseInt(b.versionId) - parseInt(a.versionId));
+  } catch (error) {
+    console.error("Error listing file versions:", error);
+    throw error;
+  }
+}
+
+
+export async function processAndUploadFiles(
+  dict: Record<string, any>,
+  projectId: string,
+  ownerId: string,
+  parentId: string, // Parent ID is required
+  currentPath: string = ""
+) {
+
+  const projectFiles = await listFilesForProject(projectId);
+  let fileCounter = projectFiles.length + 1;
+  const now = new Date().toISOString();
+
+  // Define a root parent ID for the project
+  const rootParentId = `ROOT-${projectId}`;
+
+  async function recursivePrint(
+    obj: Record<string, any>,
+    depth: number = 0,
+    currentParentId: string = parentId || rootParentId, // Use rootParentId for top-level
+    currentFilePath: string = currentPath
+  ) {
+    for (const [key, value] of Object.entries(obj)) {
+      console.log(`${depth}${"  ".repeat(depth)}Key: ${key}`);
+
+      if (key !== "files") {
+        console.log(`Creating Directory: ${key}`);
+
+        // Create directory entry
+        const newFile = await createFile({
+          projectId,
+          fileId: `${projectId}F${fileCounter++}`,
+          filename: key,
+          isDirectory: true,
+          filepath: currentFilePath + "/" + key,
+          parentId: currentParentId, // Ensure valid parentId
+          size: 0,
+          versionId: "1",
+          ownerId,
+          isDeleted: false,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        console.log(`Directory Created: ${newFile.data?.fileId}`, newFile);
+
+        // Recursively process children with updated `parentId`
+        await recursivePrint(value, depth + 1, newFile.data?.fileId, `${currentFilePath}/${key}`);
+      } else {
+        console.log(`Creating files inside: ${currentFilePath}`);
+        
+        for (const [fileKey, fileValue] of Object.entries(value)) {
+          if (!(fileValue instanceof File)) {
+            console.error(`Skipping ${fileKey}: Invalid file object`, fileValue);
+            continue;
+          }
+
+          console.log(`  Creating file: ${fileKey}`);
+          // Ensure correct file path
+          const folderPath = currentFilePath ? `${currentFilePath}/${fileKey}` : `/${fileKey}`;
+          
+          try {
+            const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
+            const versionId = await getVersionId(storageKey);
+            
+            // Create file entry
+            console.log(currentFilePath)
+            const newFile = await createFile({
+              projectId,
+              fileId: `${projectId}F${fileCounter++}`,
+              filename: fileKey,
+              isDirectory: false, // ✅ Ensure explicitly set for files
+              filepath: currentFilePath + "/" + fileKey,
+              parentId: currentParentId, // Ensure valid parentId
+              storageId: storageKey,
+              size: fileValue.size ?? 0,
+              versionId,
+              ownerId,
+              isDeleted: false,
+              createdAt: now,
+              updatedAt: now,
+            });
+
+            console.log(`File Created: ${newFile.data?.fileId}`, newFile);
+          } catch (error) {
+            console.error(`Error processing file ${fileKey}:`, error);
+          }
+        }
+      }
+    }
+  }
+
+  console.log("Listing dictionary objects recursively:");
+  await recursivePrint(dict);
+  console.log("Processing complete.");
+}
+
 
 export async function listFilesForProject(projectId: string) {
   try {
@@ -17,49 +145,96 @@ export async function listFilesForProject(projectId: string) {
     const files = response.data; // Extract file array
 
     if (!files) return [];
-    return files.filter((file) => file.projectId === projectId);; // Filter files by projectId
+
+    return files.filter((file) => file ? file.projectId === projectId: null); // Filter files by projectId
+
   } catch (error) {
     console.error("Error fetching files for project:", error);
     return [];
   }
 }
 
-export async function createFile(projectId: string, filename:string, isDirectory: boolean, filepath: string, ownerId: string, size: number, versionId: string, parentId: (string|undefined)) {
+
+export async function createFile({
+  projectId,
+  fileId,
+  filename,
+  isDirectory,
+  filepath,
+  parentId,
+  size,
+  versionId,
+  ownerId,
+  isDeleted = false,
+  createdAt,
+  updatedAt,
+}: {
+  projectId: string;
+  fileId: string;
+  filename: string;
+  isDirectory: boolean;
+  filepath: string;
+  parentId: string;
+  size: number;
+  versionId: string;
+  ownerId: string;
+  isDeleted?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}) {
+  return client.models.File.create({
+    fileId,
+    projectId,
+    filename,
+    isDirectory,
+    filepath,
+    parentId,
+    size,
+    versionId,
+    ownerId,
+    isDeleted,
+    createdAt,
+    updatedAt,
+  });
+}
+
+// Retrieve the latest version of a file using the composite primary key
+export async function getLatestFileVersion(fileId: string) {
   try {
-    // Fetch all files for the project
-    const projectFiles = await listFilesForProject(projectId);
-    const fileCount = projectFiles.length || 0;
-    const fileId = `${projectId}F${fileCount + 1}`;
-    const now = new Date().toISOString();
-    const newFile = await client.models.File.create({
-      fileId,
-      filename,
-      filepath,
-      versionId,
-      projectId,
-      parentId,
-      size: size,
-      isDeleted: false,
-      isDirectory: isDirectory,
-      ownerId,
-      createdAt: now,
-      updatedAt: now,
+    const response = await client.models.File.list({
+      filter: {
+        fileId: { eq: fileId }, // Query all versions with the same fileId
+      },
     });
 
-    return newFile;
+    if (response.data.length === 0) {
+      throw new Error("No versions found for this file.");
+    }
+
+    //Sort by versionId in descending order
+    const sortedVersions = response.data.sort((a, b) => 
+      parseInt(b.versionId) - parseInt(a.versionId)
+    );
+
+    return sortedVersions[0].versionId; // Return the latest version
   } catch (error) {
-    console.log("HERE")
-    console.error("Error creating file:", error);
-    alert("An error occurred while creating the file. Please try again.");
+    console.error("Error retrieving the latest file version:", error);
+    throw error;
   }
 }
 
-export async function updatefile(id: string) {
+
+
+export async function updatefile(id: string, projectId: string) {
   try{  
     
     const now = new Date().toISOString();
+    const latestver = (await getVersionHistory(id)).length + 1;
+    const versionId = latestver.toString();
     await client.models.File.update({
         fileId: id,
+        projectId,
+        versionId: versionId,
         updatedAt: now,
       });
       alert("File updated successfully.");
@@ -69,25 +244,11 @@ export async function updatefile(id: string) {
     }
 }
 
-export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>){
-  try {
-    await client.models.File.update({
-      fileId: id,
-      filepath: path,
-      parentId: parentId
-    })
-    console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
-  } catch(error) {
-    console.error("Error updating file:", error);
-    alert("An error occurred while updating the file. Please try again.")
-  }
-}
 
-
-export async function deleteFile(id: string) {
+export async function deleteFile(id: string, version: string, projectId: string) {
   try {
     const confirmDelete = window.confirm(
-      `Are you sure you want to delete the file with ID: ${id}?`
+      `Are you sure you want to delete the version: ${version}  of file with ID: ${id}?`
     );
 
     if (!confirmDelete) {
@@ -99,6 +260,8 @@ export async function deleteFile(id: string) {
 
     await client.models.File.update({
       fileId: id,
+      versionId: version,
+      projectId,
       isDeleted: true,
       deletedAt: now,
     });
@@ -137,7 +300,7 @@ export async function checkAndDeleteExpiredFiles(
     });
 
     for (const file of expiredFiles) {
-      await client.models.File.delete({ fileId: file.fileId });
+      await client.models.File.delete({ fileId: file.fileId, projectId: file.projectId});
     }
 
     if (expiredFiles.length > 0) {
@@ -148,65 +311,23 @@ export async function checkAndDeleteExpiredFiles(
   }
 }
 
-export async function directory_builder(
-  parentId: string | null,
-  projectId: string,
-  sortBy: "name" | "date" | "size" = "name"
-): Promise<Array<{ directory: string; directoryId: string; files: any[] } | { fileId: string; filename: string }>> {
+export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>, projectId: string | null){
   try {
-    // Fetch all files within the project
-    const files = await listFilesForProject(projectId);
-    if (!files || files.length === 0) return [];
-
-    // Filter files by parentId (null, empty)
-    const filteredFiles = files.filter((file) => {
-      return parentId === null ? !file.parentId || !files.some(f => f.fileId === file.parentId) : file.parentId === parentId;
-    });
-    
-
-    // Sorting function based on user input with safeguard checks
-    const sortFiles = (files: any[]) => {
-      return files.sort((a, b) => {
-        switch (sortBy) {
-          case "date":
-            return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
-          case "size":
-            return (a.size || 0) - (b.size || 0);
-          case "name":
-          default:
-            return (a.filename || "").localeCompare(b.filename || "");
-        }
-      });
-    };
-
-    // Separate directories and files
-    const directories = filteredFiles.filter((file) => file.isDirectory);
-    const filesOnly = filteredFiles.filter((file) => !file.isDirectory);
-    // Recursively build directories
-    const structuredDirectories = await Promise.all(
-      directories.map(async (directory) => ({
-        directory: directory.filename || "Unnamed Directory",
-        directoryId: directory.fileId,
-        files: await directory_builder(directory.fileId, projectId, sortBy),
-      }))
-    );
-
-    // Combine directories and files
-    const structuredFiles = sortFiles([
-      ...structuredDirectories,
-      ...filesOnly.map((file) => ({
-        fileId: file.fileId,
-        filename: file.filename || "Unnamed File",
-        size: file.size || 0,
-        createdAt: file.createdAt || new Date().toISOString(),
-      })),
-    ]);
-    return structuredFiles;
-  } catch (error) {
-    console.error("Error building directory structure:", error);
-    return [];
+    if(parentId == null){
+      parentId = "ROOT-" + projectId
+    }
+    if(projectId){
+      await client.models.File.update({
+        fileId: id,
+        filepath: path,
+        projectId,
+        parentId: parentId
+      })
+    }
+    console.log("Also Here")
+    console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
+  } catch(error) {
+    console.error("Error updating file:", error);
+    alert("An error occurred while updating the file. Please try again.")
   }
 }
-
-
-

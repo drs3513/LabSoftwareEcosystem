@@ -1,5 +1,6 @@
 import styled from "styled-components";
 import React, {useRef, useState} from "react";
+import { useGlobalState } from "./GlobalStateContext";
 
 interface props{
     initialPosX: number;
@@ -7,7 +8,7 @@ interface props{
     parentFileId: string | undefined;
     parentFilePath: string | undefined;
     isDirectory: string;
-    createFile: (filename: string, filepath: string | undefined, parentId: string | undefined, isDirectory: boolean, tags: Array<string>) => void;
+    createFile: (isDirectory: boolean, projectId: string, ownerId: string, parentId: string) => void;
     close: ()=>void;
 }
 
@@ -29,6 +30,7 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
     const initialResizeX = useRef(0);
     const initialResizeY = useRef(0);
     const fileName = useRef("");
+    const {projectId, userId} = useGlobalState();
 
     function handleInsertTag(e: React.KeyboardEvent<HTMLInputElement>){
         const inputBox = e.target as HTMLInputElement
@@ -76,12 +78,12 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
         >
             <Header draggable={true} onDragStart={(e) => handleStartDrag(e)}
                     onDragEnd={(e) => handleEndDrag(e)}>
-                {isDirectory === "File" ? "Create File" : "Create Folder"}
+                {isDirectory === "File" ? "File Upload" : "Folder Upload"}
                 <CloseButton onClick={close}>
                     X
                 </CloseButton>
             </Header>
-            <Input placeholder={"File Name"} onChange={(e) => fileName.current = e.target.value}></Input>
+
             <TagInputContainer>
                 <InputSmall onKeyDown={e => handleInsertTag(e)} placeholder={"Tag"}></InputSmall>
             </TagInputContainer>
@@ -105,8 +107,8 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
                 ) : <></>
                 }
             </TagDisplay>
-            <Button onClick= {() => createFile(fileName.current, parentFilePath, parentFileId, isDirectory==="Folder", tags)}>
-                {isDirectory === "File" ? "Create File" : "Create Folder"}
+            <Button onClick= {() => createFile(isDirectory == "Folder", projectId, userId, parentFileId)}>
+                {isDirectory === "File" ? "Upload File" : "Upload Folder"}
             </Button>
             <Resize draggable={true} onDragStart={(e) => {initialResizeX.current = e.pageX; initialResizeY.current = e.pageY}} onDragEnd = {(e) => {handleResize(e)}}>
                 <svg viewBox={"0 0 24px 24px"}>
@@ -173,7 +175,7 @@ const TagLabel = styled.h3`
 
 const TagDisplayContainer = styled.div.attrs<{$height: number}>(props => ({
     style : {
-        height: "calc("+props.$height+ "px - 5rem - 5rem - 4rem - 5rem - 24px)"
+        height: "calc("+props.$height+ "px - 5rem - 4rem - 5rem - 24px)"
     }
 }))`
     display: flex;
