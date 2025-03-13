@@ -97,29 +97,48 @@ export default function ChatPanel() {
     };
   }, [contextMenu]);
 
-  const handleSendMessage = async () => { 
-    if (input.trim() && fileId && userId) {
+  const handleSendMessage = async () => {
+    if (!input.trim()) {
+      console.log("Message input is empty. Aborting send.");
+      return;
+    }
+    
+    if (!fileId || !userId || !projectId) {
+      console.error("Missing required fields:", { fileId, userId, projectId });
+      return;
+    }
+  
+    console.log("Sending message with the following data:");
+    console.log("fileId:", fileId);
+    console.log("userId:", userId);
+    console.log("projectId:", projectId);
+    console.log("content:", input.trim());
+  
     try {
       const response = await createMessage(fileId, userId, input.trim(), projectId as string);
-      
+  
+      console.log("Raw response from createMessage:", response);
+  
       if (!response) {
         throw new Error("createMessage returned undefined");
       }
-
+  
       const newMessage = response?.data ?? response;
-
+  
       if (!newMessage || !("messageId" in newMessage && "content" in newMessage)) {
         console.error("Invalid message response:", response);
         return;
       }
-
+  
+      console.log("Successfully sent message:", newMessage);
+  
       setMessages((prevMessages) => [...prevMessages, newMessage]);
       setInput("");
     } catch (error) {
       console.error("Error sending message:", error);
     }
-  }
   };
+  
 
   const handleContextMenu = (e: React.MouseEvent, messageId: string, msguserId: string) => {
     e.preventDefault();
