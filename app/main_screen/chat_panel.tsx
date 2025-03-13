@@ -23,7 +23,8 @@ export default function ChatPanel() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; messageId: string } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; messageId: string, msguserId: string } | null>(null);
   useEffect(() => {
     if (!fileId) return;
 
@@ -35,14 +36,31 @@ export default function ChatPanel() {
           const sortedMessages = data.items.sort(
             (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           );
-
           const messagesWithEmails = await Promise.all(
             sortedMessages.map(async (msg) => {
               const user = await client.models.User.get({ userId: msg.userId });
-              return {
-                ...msg,
-                email: user?.data?.username,
-              };
+              if(!msg?.isDeleted){
+                  if(msg?.isUpdated){
+                    return {
+                      ...msg,
+                      email: user?.data?.username,
+                      edited: msg.isUpdated,
+                    };
+                  }
+                  else{
+                    return {
+                      ...msg,
+                      email: user?.data?.username,
+                    };
+                  }
+                }
+              else{
+                return{
+                  ...msg,
+                  content: "",
+                  deleted: true,
+                }
+              }
             })
           );
 
@@ -65,50 +83,54 @@ export default function ChatPanel() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-        if (contextMenu) {
-            setContextMenu(null);
-        }
+      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
+        setContextMenu(null);
+      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
-    
     return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [contextMenu]);
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = async () => { 
     if (input.trim() && fileId && userId) {
-      try {
-        const response = await createMessage(fileId, userId, input.trim(), projectId as string);
-        
-        if (!response) {
-          throw new Error("createMessage returned undefined");
-        }
-  
-        const newMessage = response?.data ?? response;
-  
-        if (!newMessage || !("messageId" in newMessage && "content" in newMessage)) {
-          console.error("Invalid message response:", response);
-          return;
-        }
-  
-        setMessages((prevMessages) => [...prevMessages, newMessage]);
-        setInput("");
-      } catch (error) {
-        console.error("Error sending message:", error);
+    try {
+      const response = await createMessage(fileId, userId, input.trim(), projectId as string);
+      
+      if (!response) {
+        throw new Error("createMessage returned undefined");
       }
+
+      const newMessage = response?.data ?? response;
+
+      if (!newMessage || !("messageId" in newMessage && "content" in newMessage)) {
+        console.error("Invalid message response:", response);
+        return;
+      }
+
+      setMessages((prevMessages) => [...prevMessages, newMessage]);
+      setInput("");
+    } catch (error) {
+      console.error("Error sending message:", error);
     }
+  }
   };
 
-  const handleContextMenu = (e: React.MouseEvent, messageId: string) => {
+  const handleContextMenu = (e: React.MouseEvent, messageId: string, msguserId: string) => {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, messageId });
+    setContextMenu({ x: e.clientX, y: e.clientY, messageId, msguserId });
   };
 
-  const handleUpdateMessage = async (messageId: string) => {
+  const handleUpdateMessage = async (messageId: string, messageuserId: string)=> {
+    if(messageuserId != userId){
+      alert("You do not have acces to this message");
+      return;
+    }
     const newContent = prompt("Enter new message content:");
     if (newContent) {
       try {
@@ -125,9 +147,13 @@ export default function ChatPanel() {
     setContextMenu(null);
   };
 
-  const handleDeleteMessage = async (messageId: string) => {
+  const handleDeleteMessage = async (messageId: string, messageuserId: string)=> {
+    if(messageuserId != userId){
+      alert("You do not have acces to this message");
+      return;
+    }
     try {
-      await deleteMessage(messageId, userId!);
+      await deleteMessage(messageId, userId as string);
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
           msg.messageId === messageId ? { ...msg, content: "", deleted: true } : msg
@@ -152,7 +178,7 @@ export default function ChatPanel() {
           <ChatMessage
             key={msg.messageId}
             $sender={msg.userId === userId}
-            onContextMenu={msg.deleted ? undefined : (e) => handleContextMenu(e, msg.messageId)}
+            onContextMenu={msg.deleted ? undefined : (e) => handleContextMenu(e, msg.messageId, msg.userId)}
           >
             {msg.deleted ? (
               <DeletedMessageBox>Message deleted</DeletedMessageBox>
@@ -172,9 +198,9 @@ export default function ChatPanel() {
         <Input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Type a message..." />
       </InputContainer>
       {contextMenu && (
-        <ContextMenu $x={contextMenu.x} $y={contextMenu.y}>
-          <ContextMenuItem onClick={() => handleUpdateMessage(contextMenu.messageId)}>Update</ContextMenuItem>
-          <ContextMenuItem onClick={() => handleDeleteMessage(contextMenu.messageId)}>Delete</ContextMenuItem>
+        <ContextMenu ref={contextMenuRef} $x={contextMenu.x} $y={contextMenu.y}>
+          <ContextMenuItem onClick={() => handleUpdateMessage(contextMenu.messageId, contextMenu.msguserId)}>Update</ContextMenuItem>
+          <ContextMenuItem onClick={() => handleDeleteMessage(contextMenu.messageId, contextMenu.msguserId)}>Delete</ContextMenuItem>
         </ContextMenu>
       )}
     </ChatContainer>
