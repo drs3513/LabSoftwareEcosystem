@@ -1,4 +1,34 @@
 import { uploadData, getUrl, remove, downloadData, getProperties } from "aws-amplify/storage";
+import { S3Client, ListObjectVersionsCommand } from "@aws-sdk/client-s3";
+
+const s3Client = new S3Client({ region: "us-east-1" });
+
+export async function getVersionIdFromS3(filePath: string): Promise<string | undefined> {
+  try {
+    let bucketName = "filestorage142024";
+    const command = new ListObjectVersionsCommand({
+      Bucket: bucketName,
+      Prefix: filePath, // The file path acts as the key
+    });
+
+    const response = await s3Client.send(command);
+
+    if (response.Versions && response.Versions.length > 0) {
+      const latestVersion = response.Versions[0].VersionId; // Get the most recent version
+      console.log(`File: ${filePath}, Version ID: ${latestVersion}`);
+      return latestVersion;
+    }
+  } catch (error) {
+    console.error("[ERROR] Failed to fetch version ID:", error);
+  }
+
+  return undefined;
+}
+
+
+
+
+
 
 
 // Upload file and return S3 key

@@ -113,7 +113,7 @@ export async function processAndUploadFiles(
               projectId,
               fileId: `${projectId}F${fileCounter++}`,
               filename: fileKey,
-              isDirectory: false, // ✅ Ensure explicitly set for files
+              isDirectory: false, // Ensure explicitly set for files
               filepath: currentFilePath + "/" + fileKey,
               parentId: currentParentId, // Ensure valid parentId
               storageId: storageKey,

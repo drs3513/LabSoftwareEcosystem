@@ -38,6 +38,7 @@ const schema = a
         isDirectory: a.boolean().default(false),
         filepath: a.string().required(),
         parentId: a.id().required(),
+        filetype: a.string(),
         size: a.integer().required(),
         storageId: a.id(),
         versionId: a.string().required(), // Sort key in secondary index
@@ -74,6 +75,8 @@ const schema = a
         createdAt: a.datetime().required(),
         updatedAt: a.datetime(),
         isUpdated: a.boolean().default(false),
+        isDeleted: a.boolean().default(false),
+        path: a.string(),
         tag: a.hasMany("Tag","messageId"),
         file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
         
@@ -96,7 +99,7 @@ const schema = a
         file: a.belongsTo("File", ["fileId","projectId"]),
         message: a.belongsTo("Message", "messageId"),})
     .identifier(["tagId"]),
-
+      
     // Whitelist model
   Whitelist: a
   .model({
@@ -104,7 +107,6 @@ const schema = a
     userIds: a.id().required(), // User ID being whitelisted
     createdAt: a.datetime().required(),
     projectId: a.id().required(),
-    isAdmin: a.boolean().default(false), // Indicates if user is admin for this file/project
     role: a.enum(["USER", "ADMIN", "HEAD"]), // Role-specific permission
 
     // Relationships

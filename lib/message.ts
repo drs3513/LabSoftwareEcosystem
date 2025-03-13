@@ -62,7 +62,7 @@ export async function updateMessage(messageId: string, content: string, userId: 
 
 export async function deleteMessage(messageId: string, userId: string) {
   try {
-    await client.models.Message.delete({ messageId });
+    await client.models.Message.update({ messageId, isDeleted: true, });
   } catch (error) {
     console.error("Error deleting message:", error);
   }

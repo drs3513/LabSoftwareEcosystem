@@ -7,6 +7,10 @@ import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
 import { generateClient } from "aws-amplify/api";
 import type { Schema } from "@/amplify/data/resource";
+<<<<<<< Updated upstream
+=======
+import {getVersionIdFromS3} from "@/lib/storage";
+>>>>>>> Stashed changes
 
 const client = generateClient<Schema>();
 
@@ -250,7 +254,11 @@ export default function FilePanel() {
     };
     useEffect(() => {
       if (!projectId) return;
+<<<<<<< Updated upstream
       
+=======
+    
+>>>>>>> Stashed changes
       let unsubscribe: (() => void) | undefined;
     
       const fetchSubscription = async () => {
