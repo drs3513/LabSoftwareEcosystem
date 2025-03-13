@@ -111,7 +111,7 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
                 {isDirectory === "File" ? "Upload File" : "Upload Folder"}
             </Button>
             <Resize draggable={true} onDragStart={(e) => {initialResizeX.current = e.pageX; initialResizeY.current = e.pageY}} onDragEnd = {(e) => {handleResize(e)}}>
-                <svg viewBox={"0 0 24px 24px"}>
+                <svg viewBox={"0 0 24 24"}>
                     <path d={"M21 15L15 21M21 8L8 21"} stroke="black" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
             </Resize>
