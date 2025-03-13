@@ -20,7 +20,6 @@ export async function whitelistUser(fileId: string, projectId: string,  userEmai
       userIds: userEmail,
       projectId,
       createdAt: now,
-      isAdmin: role === Role.ADMIN || role === Role.HEAD, 
       role: role,
     });
     return response;
