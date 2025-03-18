@@ -1,21 +1,11 @@
 import { generateClient } from "aws-amplify/data";
-import { useGlobalState } from "@/app/main_screen/GlobalStateContext";
 import type { Schema } from "@/amplify/data/resource";
 
 const client = generateClient<Schema>();
 
-/*
-export async function getTagsForProject(tagType: "file" | "message", projectId: string){
-    try {
-        await client.models.Tag.list().where
-    }
-
-}
-*/
-
-export async function createTag(tagType: "file" | "message", refId: string, tagName: string) {
+export async function createTag(tagType: "file" | "message", fileId: string, projectId: string, tagName: string) {
   try {
-    const {projectId} = useGlobalState();
+    console.log(projectId)
     const tagId = `tag-${Math.floor(Math.random() * 100000)}`;
     const now = new Date().toISOString();
     let newTag;
@@ -23,7 +13,7 @@ export async function createTag(tagType: "file" | "message", refId: string, tagN
         newTag = await client.models.Tag.create({
               tagId,
              tagType,
-             fileId:refId,
+             fileId:fileId,
              projectId,
               tagName,
               createdAt: now,
@@ -33,29 +23,18 @@ export async function createTag(tagType: "file" | "message", refId: string, tagN
          newTag = await client.models.Tag.create({
             tagId,
             tagType,
-            messageId:refId,
+            messageId:fileId,
             tagName,
             createdAt: now,
       });
     }
 
     console.log("Created tag:", newTag);
-    return newTag;
+    return true;
   } catch (error) {
     console.error("Error creating tag:", error);
+    return false
   }
-}
-
-export async function listTags(){
-    try {
-        const response = await client.models.Tag.list();
-        const tags = response.data;
-        console.log(tags)
-        return tags
-    } catch (error) {
-        console.error("Error fetching tags:", error);
-        return [];
-    }
 }
 
 export async function getTagsForRef(refId: string) {
@@ -71,9 +50,21 @@ export async function getTagsForRef(refId: string) {
       return [];
     }
   }
-  
 
+  export async function listTagsForProject(projectId: string){
+    try {
+        const response = await client.models.Tag.list({
+            filter: {
+                projectId: {eq: projectId}
+            }
+        })
+        console.log(response.data)
+        return response.data
+    } catch(error) {
+        console.error(error)
+    }
 
+  }
 export async function deleteTag(tagId: string) {
   try {
     await client.models.Tag.delete({ tagId });
