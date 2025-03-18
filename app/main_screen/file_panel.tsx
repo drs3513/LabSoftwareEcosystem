@@ -356,8 +356,10 @@ export default function FilePanel() {
       }
     };
     document.addEventListener("click", handleClickOutside);
+    document.addEventListener("contextmenu", handleClickOutside);
     return () => {
       document.removeEventListener("click", handleClickOutside);
+      document.removeEventListener("contextmenu", handleClickOutside);
     };
   }, [contextMenu]);
 
@@ -910,7 +912,8 @@ const ContextMenuPopout = styled.div<{$index: number}>`
 `;
 
 const ContextMenuWrapper = styled.div<{$x: number, $y: number}>`
-    position: absolute;
+    position: fixed;
+    z-index: 2;
     left: ${(props) => props.$x}px;
     top: ${(props) => props.$y}px;
     display: flex;
@@ -945,7 +948,7 @@ const PanelContainer = styled.div`
   height: 100%;
   background-color: white;
   text-align: center;
-  overflow-y: auto;
+  overflow-y: scroll;
 `;
 
 const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: number, $mouseY: number, $search: boolean}>(props => ({
@@ -998,7 +1001,9 @@ const NoFiles = styled.div`
 const TopBarContainer = styled.div`
   display: flex;
   padding: 0.5rem;
-
+  position: sticky;
+  top: 0;
+  background-color: white;
 
 `;
 const Input = styled.input`
