@@ -5,4 +5,5 @@ export const storage = defineStorage({
   access: (allow) => ({
     "uploads/*": [allow.authenticated.to(["list", "write", "delete","get"])], // Correct syntax
   }),
+  versioned: true,
 });

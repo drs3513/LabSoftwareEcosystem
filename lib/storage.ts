@@ -1,34 +1,50 @@
 import { uploadData, getUrl, remove, downloadData, getProperties } from "aws-amplify/storage";
 import { S3Client, ListObjectVersionsCommand } from "@aws-sdk/client-s3";
-
+import { fetchAuthSession } from "aws-amplify/auth";
 const s3Client = new S3Client({ region: "us-east-1" });
 
-export async function getVersionIdFromS3(filePath: string): Promise<string | undefined> {
+export async function getFileVersions(key: string): Promise<string | null> {
   try {
-    let bucketName = "filestorage142024";
-    const command = new ListObjectVersionsCommand({
-      Bucket: bucketName,
-      Prefix: filePath, // The file path acts as the key
+    const session = await fetchAuthSession();
+    if (!session || !session.credentials) {
+      throw new Error("No valid credentials found");
+    }
+
+    const response = await fetch("/api/s3-versions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        credentials: session.credentials,
+        key, // Send the file key dynamically
+      }),
     });
 
-    const response = await s3Client.send(command);
-
-    if (response.Versions && response.Versions.length > 0) {
-      const latestVersion = response.Versions[0].VersionId; // Get the most recent version
-      console.log(`File: ${filePath}, Version ID: ${latestVersion}`);
-      return latestVersion;
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status} ${response.statusText}`);
     }
+
+    const data = await response.json();
+    const versions = data.versions.filter((v: any) => v.key === key);
+
+    if (versions.length === 0) {
+      console.warn(`No versions found for key: ${key}`);
+      return null;
+    }
+
+    // Sort versions by lastModified timestamp (newest first)
+    versions.sort(
+      (a: any, b: any) =>
+        new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
+    );
+
+    return versions[0].versionId; // Return latest version ID
   } catch (error) {
-    console.error("[ERROR] Failed to fetch version ID:", error);
+    console.error("Error fetching latest version ID from API:", error);
+    return null;
   }
-
-  return undefined;
 }
-
-
-
-
-
 
 
 // Upload file and return S3 key
@@ -54,8 +70,6 @@ export async function uploadFile(
               bucket: "filestorage142024", // Specify target bucket
             },
           });
-
-          console.log(`Upload complete: ${key}`);
           resolve({ key });
         } catch (error) {
           console.error("Error uploading file:", error);
@@ -76,35 +90,21 @@ export async function uploadFile(
   }
 }
 
-// Function to get version ID separately
-export async function getVersionId(filePath: string): Promise< string> {
-  
-  let retries = 5;
-  let delay = 1500; // Start with 1.5s delay
-  let versionId = "1"; // Default versionId if not found
-
-  while (retries > 0) {
-    try {
-      const properties = await getProperties({ path: filePath });
-      if (properties?.versionId) {
-        console.log(`Successfully retrieved versionId: ${properties.versionId}`);
-        return properties.versionId;
+export async function getFileProperties(filePath: string, userId:string, projectId: string) {
+  const key = `uploads/${userId}/${projectId}${filePath}`;
+  try {
+    const result = await getProperties({
+      path: key,
+      // Alternatively, path: ({ identityId }) => `album/${identityId}/1.jpg`
+      options: {
+        // Specify a target bucket using name assigned in Amplify Backend
+        bucket: 'filestorage142024'
       }
-    } catch (error) {
-      console.warn(`Retrying getProperties... Attempts left: ${retries}`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      delay *= 2; // Exponential backoff (1.5s → 3s → 6s)
-    }
-    retries--;
+    });
+  } catch (error) {
+    console.error('Error ', error);
   }
-
-  console.warn("Failed to retrieve file properties after retries. Using default versionId.");
-  return versionId;
 }
-
-
-
-
 
 export async function downloadFile(fileKey: string): Promise<Blob | string | object> {
   try {

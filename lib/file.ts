@@ -1,6 +1,6 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import {getVersionId, uploadFile} from "./storage";
+import {getFileVersions, uploadFile} from "./storage";
 import {Nullable} from "@aws-amplify/data-schema";
 import { Timeout } from "aws-cdk-lib/aws-stepfunctions";
 const client = generateClient<Schema>();
@@ -64,10 +64,8 @@ export async function processAndUploadFiles(
     currentFilePath: string = currentPath
   ) {
     for (const [key, value] of Object.entries(obj)) {
-      console.log(`${depth}${"  ".repeat(depth)}Key: ${key}`);
 
       if (key !== "files") {
-        console.log(`Creating Directory: ${key}`);
 
         // Create directory entry
         const newFile = await createFile({
@@ -86,29 +84,23 @@ export async function processAndUploadFiles(
           updatedAt: now,
         });
 
-        console.log(`Directory Created: ${newFile.data?.fileId}`, newFile);
-
         // Recursively process children with updated `parentId`
         await recursivePrint(value, depth + 1, newFile.data?.fileId, `${currentFilePath}/${key}`);
       } else {
-        console.log(`Creating files inside: ${currentFilePath}`);
         
         for (const [fileKey, fileValue] of Object.entries(value)) {
           if (!(fileValue instanceof File)) {
             console.error(`Skipping ${fileKey}: Invalid file object`, fileValue);
             continue;
           }
-
-          console.log(`  Creating file: ${fileKey}`);
           // Ensure correct file path
           const folderPath = currentFilePath ? `${currentFilePath}/${fileKey}` : `/${fileKey}`;
           
           try {
             const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
-            const versionId = await getVersionId(storageKey);
+            const versionId = await getFileVersions(storageKey) as string;
             
             // Create file entry
-            console.log(currentFilePath)
             const newFile = await createFile({
               projectId,
               fileId: `${projectId}F${fileCounter++}`,
@@ -124,8 +116,6 @@ export async function processAndUploadFiles(
               createdAt: now,
               updatedAt: now,
             });
-
-            console.log(`File Created: ${newFile.data?.fileId}`, newFile);
           } catch (error) {
             console.error(`Error processing file ${fileKey}:`, error);
           }
@@ -133,10 +123,7 @@ export async function processAndUploadFiles(
       }
     }
   }
-
-  console.log("Listing dictionary objects recursively:");
   await recursivePrint(dict);
-  console.log("Processing complete.");
 }
 
 
@@ -328,8 +315,6 @@ export async function updateFileLocation(id: string, path: string, parentId: Nul
         parentId: parentId
       })
     }
-    console.log("Also Here")
-    console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
   } catch(error) {
     console.error("Error updating file:", error);
     alert("An error occurred while updating the file. Please try again.")
