@@ -1,6 +1,7 @@
 "use client";
-import React, {createContext, useContext, useState, useEffect, ReactNode, ReactElement} from "react";
+import React, {createContext, useContext, useState, useEffect, ReactNode} from "react";
 import { useAuthenticator } from "@aws-amplify/ui-react";
+
 
 interface GlobalStateContextType {
   projectId: string | null;
@@ -13,6 +14,8 @@ interface GlobalStateContextType {
   contextMenuType: string;
   setContextMenuType: (val: string) => void;
 }
+
+
 
 const GlobalStateContext = createContext<GlobalStateContextType | undefined>(undefined);
 

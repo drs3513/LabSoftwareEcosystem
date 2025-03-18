@@ -2,7 +2,7 @@
 import TopBar from "./top_bar"
 import styled from 'styled-components'
 import PanelManager from "./panel_manager"
-
+import NotificationView from "./notification_view"
 
 const Body = styled.div`
     display: flex;
@@ -16,7 +16,7 @@ export default function Home() {
       <Body>
         <TopBar/>
         <PanelManager/>
-
+          <NotificationView/>
       </Body>
   );
 }

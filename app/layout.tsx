@@ -7,6 +7,7 @@ import "@aws-amplify/ui-react/styles.css";
 import outputs from "@/amplify_outputs.json";
 import styled from "styled-components"
 import { GlobalStateProvider } from "./main_screen/GlobalStateContext";
+import {NotificationStateProvider} from "./NotificationStateContext"
 Amplify.configure(outputs);
 
 const Body = styled.body`
@@ -24,7 +25,9 @@ export default function RootLayout({
       <Body>
         <Authenticator>
           <GlobalStateProvider>
-            {children}
+            <NotificationStateProvider>
+              {children}
+            </NotificationStateProvider>
           </GlobalStateProvider>
         </Authenticator>
       </Body>

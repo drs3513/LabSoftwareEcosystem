@@ -2,7 +2,6 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import {getVersionId, uploadFile} from "./storage";
 import {Nullable} from "@aws-amplify/data-schema";
-import { Timeout } from "aws-cdk-lib/aws-stepfunctions";
 const client = generateClient<Schema>();
 
 
@@ -138,15 +137,19 @@ export async function processAndUploadFiles(
   console.log("Processing complete.");
 }
 
-
+//PD : I updated this function to use 'filter' attribute
 export async function listFilesForProject(projectId: string) {
   try {
-    const response = await client.models.File.list(); // Fetch all files
+    const response = await client.models.File.list({
+      filter: {
+        projectId: { eq: projectId }, // Query all files with the same projectId
+      },
+    }); // Fetch all files
     const files = response.data; // Extract file array
 
     if (!files) return [];
 
-    return files.filter((file) => file ? file.projectId === projectId: null); // Filter files by projectId
+    return files;
 
   } catch (error) {
     console.error("Error fetching files for project:", error);
