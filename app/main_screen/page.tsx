@@ -2,14 +2,15 @@
 import TopBar from "./top_bar"
 import styled from 'styled-components'
 import PanelManager from "./panel_manager"
-import { useGlobalState } from "./GlobalStateContext";
-
+import NotificationView from "./notification_view"
 
 const Body = styled.div`
     display: flex;
     flex-direction: column;
     height: 100vh;
-    width: 100%;
+    width: 100vw;
+    overflow: hidden;
+    overflow-y: hidden;
 
 `
 export default function Home() {
@@ -23,7 +24,7 @@ export default function Home() {
       <Body onClick={(e) => removeContextMenu(e)}>
         <TopBar/>
         <PanelManager/>
-
+          <NotificationView/>
       </Body>
   );
 }
