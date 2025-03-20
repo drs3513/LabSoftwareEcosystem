@@ -14,18 +14,12 @@ const Body = styled.div`
 
 `
 export default function Home() {
-    const { fileId, projectId, userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId } = useGlobalState();
-
-    function removeContextMenu(e){
-        setContextMenu(false);
-        setContextMenuType("None");
-    }
-  return (
-      <Body onClick={(e) => removeContextMenu(e)}>
-        <TopBar/>
-        <PanelManager/>
-          <NotificationView/>
-      </Body>
-  );
-}
+    return (
+        <Body>
+          <TopBar/>
+          <PanelManager/>
+            <NotificationView/>
+        </Body>
+    );
+  }
 
