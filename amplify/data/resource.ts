@@ -59,7 +59,8 @@ const schema = a
       })
       .identifier(["fileId","projectId"]) // Use only `fileId` as primary key
       .secondaryIndexes((index) => [
-        index("fileId").sortKeys(["versionId"]), //Secondary index
+        index("fileId").sortKeys(["versionId"])
+        .name("Version"), //Secondary index
       ]),
     
 

@@ -116,6 +116,9 @@ export async function processAndUploadFiles(
               createdAt: now,
               updatedAt: now,
             });
+            if (!newFile?.data?.fileId) {
+              console.error(`[FAILURE] Failed to create DB record for: ${key}`, newFile);
+            }
           } catch (error) {
             console.error(`Error processing file ${fileKey}:`, error);
           }
@@ -172,6 +175,7 @@ export async function createFile({
   createdAt: string;
   updatedAt: string;
 }) {
+  console.log(`Creating file ${filename} with parent ${parentId}`);
   return client.models.File.create({
     fileId,
     projectId,
