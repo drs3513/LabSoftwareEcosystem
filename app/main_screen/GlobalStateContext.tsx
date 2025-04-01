@@ -13,6 +13,8 @@ interface GlobalStateContextType {
   setContextMenu: (val: boolean) => void;
   contextMenuType: string;
   setContextMenuType: (val: string) => void;
+  heldKeys: string[];
+  setHeldKeys: (val: string[]) => void;
 }
 
 
@@ -26,6 +28,7 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<boolean>(false);
   const [contextMenuType, setContextMenuType] = useState<string>("file");
+  const [heldKeys, setHeldKeys] = useState<Array<string>>([]);
   useEffect(() => {
     if (user?.userId) {
       setUserId(user.userId); // Automatically assign userId
@@ -34,7 +37,7 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
 
   return (
     <GlobalStateContext.Provider value={{ projectId, setProjectId, fileId, setFileId, userId, contextMenu, setContextMenu,
-      contextMenuType, setContextMenuType}}>
+      contextMenuType, setContextMenuType, heldKeys, setHeldKeys}}>
       {children}
     </GlobalStateContext.Provider>
   );

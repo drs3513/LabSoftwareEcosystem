@@ -14,6 +14,15 @@ import CreateFilePanel from "./popout_create_file_panel"
 
 const client = generateClient<Schema>();
 
+function compare_two_numbers(num_1: number, num_2: number) {
+  if(num_1 < num_2){
+    return -1
+  } else if(num_1 > num_2){
+    return 1
+  } else {
+    return 0
+  }
+}
 
 function compare_file_date(file_1: any, file_2: any){
   let date_1 = new Date(file_1.updatedAt)
@@ -79,7 +88,7 @@ export default function FilePanel() {
     setContextMenuTagPopout(false);
   }
 
-  const { projectId, userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId } = useGlobalState();
+  const { projectId, userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId, heldKeys, setHeldKeys} = useGlobalState();
   const { createTag } = useNotificationState();
 
   const [contextMenuPosition, setContextMenuPosition] = useState([0,0])
@@ -97,9 +106,10 @@ export default function FilePanel() {
   filesRef.current = files
 
   const [searchTerm, setSearchTerm] = useState<Array<string>>([])
-  const [tagSearchTerm, setTagSearchTerm] = useState<Array<string>>([])
-  const [authorSearchTerm, setAuthorSearchTerm] = useState<Array<string>>([])
 
+  const [tagSearchTerm, setTagSearchTerm] = useState<Array<string>>([])
+
+  const [authorSearchTerm, setAuthorSearchTerm] = useState<Array<string>>([])
 
   const filesByParentId = useRef<{[key: string]: [number]}>({})
 
@@ -114,6 +124,13 @@ export default function FilePanel() {
   const [search, setSearch] = useState(false)
 
   const [pickedUpFileId, setPickedUpFileId] = useState<string | undefined>(undefined)
+  const [pickedUpFileGroup, setPickedUpFileGroup] = useState<number[] | undefined>(undefined)
+
+  const [selectedFileGroup, setSelectedFileGroup] = useState<number[] | undefined>(undefined)
+
+
+
+  const [cutFileId, setCutFileId] = useState<fileInfo | undefined>(undefined)
 
   const timer = useRef(setTimeout(() => {}, 500));
 
@@ -124,7 +141,7 @@ export default function FilePanel() {
   const createFilePanelInitY = useRef(0);
   const createFileOrFolder = useRef("File");
 
-
+  const shiftKey = useRef(false)
 
   //sorts files to be displayed by the user
   //TODO allow toggle of sort mode through setting 'sort' state
@@ -363,7 +380,28 @@ export default function FilePanel() {
     };
   }, [contextMenu]);
 
+  useEffect(() => {
+      const recordKeyPress = (e: KeyboardEvent) => {
+        shiftKey.current = e.shiftKey
+        if(e.ctrlKey){
+          if(e.key == "x"){
+            placeHeldFile()
+          }
+        }
+      };
+      const forgetKeyPress = (e: KeyboardEvent) => {
+        setHeldKeys([...heldKeys].filter((keyVal) => keyVal != e.key))
+      }
+      document.addEventListener("keydown", recordKeyPress)
+      document.addEventListener("keyup", forgetKeyPress)
 
+      return () => {
+        document.removeEventListener("keydown", recordKeyPress)
+        document.removeEventListener("keyup", forgetKeyPress)
+      }
+
+      }
+  )
 
   const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId: string, parentId: string, tags: string[]) => {
     setCreateFilePanelUp(false)
@@ -444,16 +482,17 @@ export default function FilePanel() {
 
 
   // opens / closes a folder that is clicked
-  function openCloseFolder(openFileId: string) {
+  function openCloseFolder(e, openFileId: string) {
+    setSelectedFileGroup(undefined)
     if(search){
       return
     }
-    console.log("Here")
-    console.log(openFileId in filesByParentId)
+    //console.log("Here")
+    //console.log(openFileId in filesByParentId)
     if(openFileId in filesByParentId.current && filesByParentId.current[openFileId].length > 0){
       filesRef.current[filesByFileId.current[openFileId]].open = !filesRef.current[filesByFileId.current[openFileId]].open
-      console.log("opening file")
-      console.log(filesRef.current[filesByFileId.current[openFileId]])
+      //console.log("opening file")
+      //console.log(filesRef.current[filesByFileId.current[openFileId]])
     }
     if (openFileId in filesByParentId.current) {
       if(filesByParentId.current[openFileId].length > 0){
@@ -493,25 +532,52 @@ export default function FilePanel() {
       return
     }
 
+
+
     isLongPress.current = false;
     clearTimeout(timer.current);
+    if(pickedUpFileGroup != undefined) {
+      const pickedUpFileGroupCopy = pickedUpFileGroup.sort(compare_two_numbers)
+      for(let currIndex = pickedUpFileGroupCopy[0]; currIndex <= pickedUpFileGroupCopy[1]; currIndex++){
 
-    if(pickedUpFileId !== undefined){
-      files[filesByFileId.current[pickedUpFileId]].parentId = overFileId
-      const pickedUpFileIdCopy = pickedUpFileId
-      setPickedUpFileId(undefined)
+        if(files[currIndex].visible){
+          files[currIndex].parentId = overFileId
+          recursiveGeneratePaths(files[currIndex].fileId, overFilePath != null ? overFilePath + "/" : "/")
 
-      recursiveGeneratePaths(pickedUpFileIdCopy, overFilePath !== null ? overFilePath + "/" : "/")
-
-      if(overFileId){
-        if(overFileId in filesByParentId.current && filesByParentId.current[overFileId].length > 0 && !files[filesByParentId.current[overFileId][0]].visible){
-          files[filesByFileId.current[pickedUpFileId]].visible = false
-          recursiveCloseFolder(pickedUpFileId)
+          if(overFileId){
+            if(overFileId in filesByParentId.current && filesByParentId.current[overFileId].length > 0 && !files[filesByParentId.current[overFileId][0]].visible){
+              files[currIndex].visible = false
+              recursiveCloseFolder(files[currIndex].fileId)
+            }
+          }
+        }
+        files[currIndex].parentId = overFileId;
+        files[currIndex].filepath = overFilePath + "/" + files[currIndex].fileId;
+        if(overFileId && overFileId in filesByParentId.current && filesByParentId.current[overFileId].length > 0 && !files[filesByParentId.current[overFileId][0]].visible) {
+          files[currIndex].visible = false
         }
       }
+      setPickedUpFileGroup(undefined)
       setFiles(sort_files_with_path(files))
+    } else {
+      if(pickedUpFileId !== undefined){
+        files[filesByFileId.current[pickedUpFileId]].parentId = overFileId
+        const pickedUpFileIdCopy = pickedUpFileId
+        setPickedUpFileId(undefined)
 
+        recursiveGeneratePaths(pickedUpFileIdCopy, overFilePath !== null ? overFilePath + "/" : "/")
+
+        if(overFileId){
+          if(overFileId in filesByParentId.current && filesByParentId.current[overFileId].length > 0 && !files[filesByParentId.current[overFileId][0]].visible){
+            files[filesByFileId.current[pickedUpFileId]].visible = false
+            recursiveCloseFolder(pickedUpFileId)
+          }
+        }
+        setFiles(sort_files_with_path(files))
+
+      }
     }
+
 
   }
 
@@ -523,13 +589,25 @@ export default function FilePanel() {
     isLongPress.current = true
     timer.current = setTimeout(() => {
       if(isLongPress.current){
-        recursiveCloseFolder(currFileId);
-        setPickedUpFileId(currFileId);
+        console.log("Here!")
+        console.log(filesByFileId.current[currFileId])
+        console.log(selectedFileGroup)
+        if(selectedFileGroup != undefined && (selectedFileGroup.length == 2 && (filesByFileId.current[currFileId] >= selectedFileGroup[0] && filesByFileId.current[currFileId] <= selectedFileGroup[1]) || (filesByFileId.current[currFileId] >= selectedFileGroup[1] && filesByFileId.current[currFileId] <= selectedFileGroup[0]))){
+          setPickedUpFileGroup(selectedFileGroup)
+          console.log("did it")
+        }
+        else {
+          recursiveCloseFolder(currFileId);
+          setPickedUpFileId(currFileId);
+        }
 
-      }
-    }, 500)
+      }}, 500)
+
+
 
   }
+
+
 
   //Recursively generates new 'path' values for all subdirectories of that which was placed
   function recursiveGeneratePaths(currFileId: Nullable<string>, pathAppend: string) {
@@ -548,6 +626,22 @@ export default function FilePanel() {
     }
 
 
+  }
+
+  function selectFile(index: number){
+    console.log("Here")
+    setSelectedFileGroup([index])
+    console.log(selectedFileGroup)
+  }
+  function selectFileGroup(index: number){
+    if(!selectedFileGroup){
+      setSelectedFileGroup([index])
+    } else {
+      setSelectedFileGroup([...selectedFileGroup.filter((val, i) => i < 1), index])
+    }
+  }
+  function placeHeldFile(){
+    return
   }
   //search query parser
   function handleSearch(e: ChangeEvent<HTMLInputElement>){
@@ -614,7 +708,8 @@ export default function FilePanel() {
       <PanelContainer
           onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel')}
           onMouseUp={(e) => onFilePlace(e, "ROOT-"+projectId, null)}
-          onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
+          onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}
+          onClick = {(e) => e.target == e.currentTarget ? setSelectedFileGroup(undefined) : undefined}>
         <TopBarContainer>
           <Input onChange={(e) => handleSearch(e)}>
 
@@ -637,22 +732,24 @@ export default function FilePanel() {
             !search ? (
                 files.filter(
                     file =>
-                        (file.visible)).map((file) => (
+                        (file.visible)).map((file, index) => (
                     <File key={file.fileId}
                           $depth={(file.filepath.match(/\//g) || []).length}
-                          $pickedUp={pickedUpFileId == file.fileId}
+                          $pickedUp={pickedUpFileId == file.fileId || (pickedUpFileGroup != undefined &&  (pickedUpFileGroup.length == 2 && (pickedUpFileGroup[0] <= pickedUpFileGroup[1] && pickedUpFileGroup[0] <= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] >= filesByFileId.current[file.fileId]) || (pickedUpFileGroup[0] > pickedUpFileGroup[1] && pickedUpFileGroup[0] >= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] <= filesByFileId.current[file.fileId])))}
                           $mouseX={mouseCoords[0]}
                           $mouseY={mouseCoords[1]}
-                          $search={search}
+                          $selected = {selectedFileGroup != undefined && ((selectedFileGroup.length == 1 && selectedFileGroup[0] == filesByFileId.current[file.fileId]) || (selectedFileGroup.length == 2 && (selectedFileGroup[0] <= selectedFileGroup[1] && selectedFileGroup[0] <= filesByFileId.current[file.fileId] && selectedFileGroup[1] >= filesByFileId.current[file.fileId]) || (selectedFileGroup[0] > selectedFileGroup[1] && selectedFileGroup[0] >= filesByFileId.current[file.fileId] && selectedFileGroup[1] <= filesByFileId.current[file.fileId])))}
+                          $indexDiff = {selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] < selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[0] : selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] > selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[1] : 0}
                           onMouseDown={() => file.fileId != pickedUpFileId ? onFilePickUp(file.fileId) : undefined}
                           onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
-                          onClick={() => openCloseFolder(file.fileId)}
+                          onClick={(e) => e.altKey ? openCloseFolder(e, file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(filesByFileId.current[file.fileId])}
                           onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile')}>
                       {file.isDirectory ? "📁" : "🗎"} {file.filename}
                       <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
                                             size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                             projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
-                                            updatedAt={file.updatedAt} visible={file.visible} open={file.open}
+                                            updatedAt={file.updatedAt} visible={file.visible}
+                                            open={file.open}
                                             isDirectory={file.isDirectory}></FileContext>
                     </File>
                 )
@@ -663,16 +760,17 @@ export default function FilePanel() {
                         (
                             (searchTerm.length == 0 || searchTerm.some((term) => (file.filename.toLowerCase().includes(term.toLowerCase())))) &&
                             (tagSearchTerm.length == 0 || tagSearchTerm.every((term) => tags.some((tag) => tag.fileId == file.fileId && tag.tagName.toLowerCase().includes(term.toLowerCase()))))
-                        )).sort(sort_style_map[sort]).map((file) => (
+                        )).sort(sort_style_map[sort]).map((file, index) => (
                     <File key={file.fileId}
-                          $depth={(file.filepath.match(/\//g) || []).length}
-                          $pickedUp={pickedUpFileId == file.fileId}
+                          $depth={0}
+                          $pickedUp={pickedUpFileId == file.fileId || (pickedUpFileGroup != undefined && (pickedUpFileGroup.length == 2 && (pickedUpFileGroup[0] <= pickedUpFileGroup[1] && pickedUpFileGroup[0] <= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] >= filesByFileId.current[file.fileId]) || (pickedUpFileGroup[0] > pickedUpFileGroup[1] && pickedUpFileGroup[0] >= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] <= filesByFileId.current[file.fileId])))}
                           $mouseX={mouseCoords[0]}
                           $mouseY={mouseCoords[1]}
-                          $search={search}
+                          $selected = {selectedFileGroup != undefined && ((selectedFileGroup.length == 1 && selectedFileGroup[0] == filesByFileId.current[file.fileId]) || (selectedFileGroup.length == 2 && selectedFileGroup[0] <= filesByFileId.current[file.fileId] && selectedFileGroup[1] >= filesByFileId.current[file.fileId]))}
+                          $indexDiff = {selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] < selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[0] : selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] > selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[1] : 0}
                           onMouseDown={() => file.fileId != pickedUpFileId ? onFilePickUp(file.fileId) : undefined}
                           onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
-                          onClick={() => openCloseFolder(file.fileId)}
+                          onClick={(e) => e.altKey ? openCloseFolder(e, file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(filesByFileId.current[file.fileId])}
                           onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile')}>
                       {file.isDirectory ? "📁" : "🗎"} {file.filename}
                       <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
@@ -951,16 +1049,16 @@ const PanelContainer = styled.div`
   overflow-y: scroll;
 `;
 
-const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: number, $mouseY: number, $search: boolean}>(props => ({
+const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: number, $mouseY: number, $selected: boolean, $indexDiff: number}>(props => ({
   style: {
     position: props.$pickedUp ? "absolute" : undefined,
-    top: props.$pickedUp ? props.$mouseY + "px" : "auto",
-    left: props.$pickedUp ? props.$mouseX + "px" : "auto",
-    marginLeft: props.$search ? 0  : props.$pickedUp ? props.$depth * 20 : "auto" ,
-    width: props.$search ?  "100%" :(props.$pickedUp ? "auto" : "calc(100% - " + props.$depth * 20 + "px)"),
+    top: props.$pickedUp ? props.$mouseY + props.$indexDiff*2 + "px" : "auto",
+    left: props.$pickedUp ? props.$mouseX + props.$indexDiff*2 + "px" : "auto",
+    marginLeft: props.$pickedUp ? props.$depth * 20 : "auto" ,
+    width: props.$pickedUp ? "auto" : "calc(100% - " + props.$depth * 20 + "px)",
     pointerEvents: props.$pickedUp ? "none" : "auto",
     opacity : props.$pickedUp ? 0.75 : 1,
-    backgroundColor: props.$pickedUp ? "lightskyblue" : "white",
+    backgroundColor: props.$pickedUp ? "lightskyblue" : props.$selected ? "lightblue" : "white",
     borderRadius: props.$pickedUp ? "10px" : "0"
   }
 }))`

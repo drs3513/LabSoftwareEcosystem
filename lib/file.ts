@@ -327,7 +327,6 @@ export async function updateFileLocation(id: string, path: string, parentId: Nul
         parentId: parentId
       })
     }
-    console.log("Also Here")
     console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
   } catch(error) {
     console.error("Error updating file:", error);

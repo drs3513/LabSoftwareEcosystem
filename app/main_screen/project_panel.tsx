@@ -6,11 +6,12 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import styled from "styled-components";
 import { useAuthenticator } from "@aws-amplify/ui-react";
+import {boolean} from "zod";
 
 const client = generateClient<Schema>();
 
 export default function ProjectPanel() {
-  const { setProjectId } = useGlobalState();
+  const { projectId, setProjectId } = useGlobalState();
   const { user } = useAuthenticator();
   const [projects, setProjects] = useState<Array<{ projectId: string; projectName: string }>>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -26,7 +27,11 @@ export default function ProjectPanel() {
               projectId: proj.projectId,
               projectName: proj.projectName,
             }))
+
           );
+          if(data.items.length > 0){
+            setProjectId(data.items[0].projectId)
+          }
         }
         setLoading(false);
       },
@@ -45,7 +50,7 @@ export default function ProjectPanel() {
         <LoadingText>Loading projects...</LoadingText>
       ) : projects.length > 0 ? (
         projects.map((project) => (
-          <Project key={project.projectId} onClick={() => setProjectId(project.projectId)}>
+          <Project key={project.projectId} onClick={() => setProjectId(project.projectId) } $selected={projectId == project.projectId}>
             📁 {project.projectName}
           </Project>
         ))
@@ -64,15 +69,21 @@ const PanelContainer = styled.div`
   padding: 1rem;
   text-align: center;
   overflow-y: auto;
+  
 `;
 
-const Project = styled.div`
+const Project = styled.div<{$selected: boolean}>`
+
   background-color: white;
+  filter: ${(props) => props.$selected ? "drop-shadow(0px 0px 5px cornflowerblue)" : "none"};
   padding: 1rem;
   border-bottom: 1px solid #ddd;
   cursor: pointer;
   &:hover {
-    background-color: grey;
+    background-color: lightblue;
+  }
+  &:last-child{
+    border-bottom-style: none;
   }
 `;
 
