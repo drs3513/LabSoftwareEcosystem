@@ -49,8 +49,10 @@ export async function processAndUploadFiles(
   currentPath: string = ""
 ) {
 
+
   const projectFiles = await listFilesForProject(projectId);
   let fileCounter = projectFiles.length + 1;
+
   const now = new Date().toISOString();
 
   // Define a root parent ID for the project
@@ -62,6 +64,7 @@ export async function processAndUploadFiles(
     currentParentId: string = parentId || rootParentId, // Use rootParentId for top-level
     currentFilePath: string = currentPath
   ) {
+
     for (const [key, value] of Object.entries(obj)) {
       console.log(`${depth}${"  ".repeat(depth)}Key: ${key}`);
 
@@ -83,14 +86,19 @@ export async function processAndUploadFiles(
           createdAt: now,
           updatedAt: now,
         });
+        if(newFile.data !== null){
+          console.log(`Directory Created: ${newFile.data?.fileId}`, newFile);
+          // Recursively process children with updated `parentId`
+          await recursivePrint(value, depth + 1, newFile.data?.fileId, `${currentFilePath}/${key}`);
+        } else {
+          console.log('Directory Failed to upload')
+        }
 
-        console.log(`Directory Created: ${newFile.data?.fileId}`, newFile);
 
-        // Recursively process children with updated `parentId`
-        await recursivePrint(value, depth + 1, newFile.data?.fileId, `${currentFilePath}/${key}`);
+
       } else {
         console.log(`Creating files inside: ${currentFilePath}`);
-        
+
         for (const [fileKey, fileValue] of Object.entries(value)) {
           if (!(fileValue instanceof File)) {
             console.error(`Skipping ${fileKey}: Invalid file object`, fileValue);
@@ -100,11 +108,11 @@ export async function processAndUploadFiles(
           console.log(`  Creating file: ${fileKey}`);
           // Ensure correct file path
           const folderPath = currentFilePath ? `${currentFilePath}/${fileKey}` : `/${fileKey}`;
-          
+
           try {
             const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
             const versionId = await getVersionId(storageKey);
-            
+
             // Create file entry
             console.log(currentFilePath)
             const newFile = await createFile({
@@ -131,10 +139,10 @@ export async function processAndUploadFiles(
       }
     }
   }
-
   console.log("Listing dictionary objects recursively:");
   await recursivePrint(dict);
   console.log("Processing complete.");
+  return true
 }
 
 //PD : I updated this function to use 'filter' attribute
@@ -157,6 +165,37 @@ export async function listFilesForProject(projectId: string) {
   }
 }
 
+export async function listFilesForProjectAndParentIds(projectId: string, parentIds: string[]){
+
+  try {
+    console.log(projectId)
+    console.log(parentIds)
+    const response = await client.models.File.list({
+      filter: {
+        and: [
+          { projectId: { eq: projectId } },
+          {
+            or: parentIds.map(parentId => ({
+              parentId: { eq: parentId }
+            }))
+          }
+        ]
+      },
+
+    });
+
+    console.log(response.data)
+    console.log("^")
+    const files = response.data
+    if(!files) return [];
+
+    return files;
+
+  } catch (error) {
+    console.error("Error fetching files for project:", error);
+    return [];
+  }
+}
 
 export async function createFile({
   projectId,

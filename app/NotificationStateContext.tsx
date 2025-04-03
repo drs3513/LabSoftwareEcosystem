@@ -1,5 +1,6 @@
 import React, {createContext, useContext, useState, ReactNode, useRef} from "react";
 import {createTag as backendCreateTag} from "@/lib/tag";
+import {processAndUploadFiles as backendProcessAndUploadFiles} from "@/lib/file";
 
 //USAGE GUIDE : For many calls to backend functions, functionality may be as simple as creating a reference to whichever API call you are interested in, and redefining the instance of 'functionName' in your component to be in NotificationStateContext, as opposed to whichever library it came from
 //HOWEVER : If you would like to add notifications directly to a front-end component (without pushing through to the notification manager), try to use only "pushNotification", as this is the only necessary feature for updating notifications
@@ -9,6 +10,7 @@ interface NotificationStateContextType {
   pushNotification: (val: notification) => void;
   removeNotification: (index: number) => void;
   createTag: (tagType: "file" | "message", fileId: string, projectId: string, tagName: string) => void;
+  processAndUploadFiles: (dict: Record<string, any>,  projectId: string, ownerId: string, parentId: string) => void;
 }
 interface notification {
   taskType: string;
@@ -43,8 +45,23 @@ export function NotificationStateProvider({ children }: {children: ReactNode}) {
 
   }
 
+  async function processAndUploadFiles(dict: Record<string, any>,
+                                       projectId: string,
+                                       ownerId: string,
+                                       parentId: string) {
+    pushNotification({taskType: "upload", message: `Uploading \"${dict}\" please do not close application!`})
+
+    if(await backendProcessAndUploadFiles(dict, projectId, ownerId, parentId)){
+      pushNotification({taskType: "upload", message: 'Upload Complete!'})
+    } else {
+      pushNotification({taskType: "error", message: 'Something went wrong!'})
+    }
+
+  }
+
+
   return (
-      <NotificationStateContext.Provider value = {{activeNotifications, pushNotification, removeNotification, createTag}}>
+      <NotificationStateContext.Provider value = {{activeNotifications, pushNotification, removeNotification, createTag, processAndUploadFiles}}>
         {children}
       </NotificationStateContext.Provider>
   )

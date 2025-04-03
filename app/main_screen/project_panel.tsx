@@ -11,7 +11,7 @@ import {boolean} from "zod";
 const client = generateClient<Schema>();
 
 export default function ProjectPanel() {
-  const { projectId, setProjectId } = useGlobalState();
+  const { projectId, setProjectId, setVisibleParentIds } = useGlobalState();
   const { user } = useAuthenticator();
   const [projects, setProjects] = useState<Array<{ projectId: string; projectName: string }>>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -43,14 +43,17 @@ export default function ProjectPanel() {
 
     return () => subscription.unsubscribe(); // Unsubscribe on unmount
   }, [user]);
-
+  function setProject(projectId: string){
+    setProjectId(projectId)
+    setVisibleParentIds(["ROOT-"+projectId])
+  }
   return (
     <PanelContainer>
       {loading ? (
         <LoadingText>Loading projects...</LoadingText>
       ) : projects.length > 0 ? (
         projects.map((project) => (
-          <Project key={project.projectId} onClick={() => setProjectId(project.projectId) } $selected={projectId == project.projectId}>
+          <Project key={project.projectId} onClick={() => setProject(project.projectId)} $selected={projectId == project.projectId}>
             📁 {project.projectName}
           </Project>
         ))

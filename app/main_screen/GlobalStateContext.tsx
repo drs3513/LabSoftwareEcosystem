@@ -4,8 +4,10 @@ import { useAuthenticator } from "@aws-amplify/ui-react";
 
 
 interface GlobalStateContextType {
-  projectId: string | null;
-  setProjectId: (id: string | null) => void;
+  projectId: string | undefined;
+  setProjectId: (id: string | undefined) => void;
+  visibleParentIds: string[];
+  setVisibleParentIds: (val: string[]) => void;
   fileId: string | undefined;
   setFileId: (id: string | undefined) => void;
   userId: string | null;
@@ -23,7 +25,8 @@ const GlobalStateContext = createContext<GlobalStateContextType | undefined>(und
 
 export function GlobalStateProvider({ children }: { children: ReactNode }) {
   const { user } = useAuthenticator(); // Get authenticated user
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | undefined>(undefined);
+  const [visibleParentIds, setVisibleParentIds] = useState<string[]>([]);
   const [fileId, setFileId] = useState<string | undefined>(undefined);
   const [userId, setUserId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<boolean>(false);
@@ -36,7 +39,7 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   return (
-    <GlobalStateContext.Provider value={{ projectId, setProjectId, fileId, setFileId, userId, contextMenu, setContextMenu,
+    <GlobalStateContext.Provider value={{ projectId, setProjectId, visibleParentIds, setVisibleParentIds, fileId, setFileId, userId, contextMenu, setContextMenu,
       contextMenuType, setContextMenuType, heldKeys, setHeldKeys}}>
       {children}
     </GlobalStateContext.Provider>

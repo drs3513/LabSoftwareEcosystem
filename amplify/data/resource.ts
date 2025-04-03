@@ -1,5 +1,8 @@
-import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
+import {type ClientSchema, a, defineData, defineFunction} from "@aws-amplify/backend";
+import { echoHandler } from '../functions/echo/resource'
+import {listFilesByProjectIdAndParentIdsHandler} from "../functions/listFilesByProjectIdAndParentIds/resource";
 import { ApiKey } from "aws-cdk-lib/aws-apigateway";
+
 
 const schema = a
   .schema({
@@ -49,7 +52,6 @@ const schema = a
         tag: a.hasMany("Tag", ["fileId","projectId"]),
         isDeleted: a.boolean().required(),
         deletedAt: a.datetime(),
-    
         parent: a.belongsTo("File", ["parentId","projectId"]),
         children: a.hasMany("File", ["parentId","projectId"]),
     
@@ -60,6 +62,31 @@ const schema = a
       .secondaryIndexes((index) => [
         index("fileId").sortKeys(["versionId"]), //Secondary index
       ]),
+
+
+
+      listFilesByProjectIdAndParentIds: a
+          .query()
+          .arguments({
+              projectId: a.string(),
+              parentIds: a.string().array()
+          })
+          .returns(a.ref('File').array())
+          .handler(a.handler.custom({
+              dataSource: a.ref('File'),
+              entry: '../functions/listFilesByProjectIdAndParentIds/handler.js'
+          })),
+      //BatchUpdateFile: a
+      //    .mutation()
+      //    .arguments({
+//
+      //})
+      //    .returns(
+      //        a.ref('Post').array()
+      //    )
+      //    .handler(
+      //    a.handler.function().async()
+      //),
     
 
 
@@ -112,8 +139,9 @@ const schema = a
     project: a.belongsTo("Project", "projectId"),
   })
   .identifier(["whitelistId"]),
+
 }).authorization((allow) => [
-  allow.authenticated().to(["create", "update", "delete", "read"]),
+  allow.authenticated(),
 ]);
 export type Schema = ClientSchema<typeof schema>;
 
