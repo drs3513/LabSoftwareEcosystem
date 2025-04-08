@@ -1,6 +1,6 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import {getFileVersions, uploadFile} from "./storage";
+import {deleteFileFromStorage, getFileVersions, uploadFile} from "./storage";
 import {Nullable} from "@aws-amplify/data-schema";
 import { Timeout } from "aws-cdk-lib/aws-stepfunctions";
 const client = generateClient<Schema>();
@@ -47,83 +47,155 @@ export async function processAndUploadFiles(
   projectId: string,
   ownerId: string,
   parentId: string, // Parent ID is required
-  currentPath: string = ""
+  currentPath: string = "",
+  uploadTaskRef?: React.MutableRefObject<{
+    isCanceled: boolean;
+    uploadedFiles: { storageKey?: string, fileId?: string }[];
+  }>
 ) {
-
   const now = new Date().toISOString();
-  // Define a root parent ID for the project
   const rootParentId = `ROOT-${projectId}`;
+  const uploadedFiles: { storageKey?: string, fileId?: string }[] = [];
 
   async function recursivePrint(
     obj: Record<string, any>,
     depth: number = 0,
-    currentParentId: string = parentId || rootParentId, // Use rootParentId for top-level
+    currentParentId: string = parentId || rootParentId,
     currentFilePath: string = currentPath
   ) {
-    for (const [key, value] of Object.entries(obj)) {
+    try {
+      if (uploadTaskRef?.current?.isCanceled) {
+        console.warn("[CANCEL] Upload task was canceled mid-process.");
+        await abortUpload(uploadTaskRef.current.uploadedFiles, projectId);
+        throw new Error("Upload canceled by user.");
+      }
+      for (const [key, value] of Object.entries(obj)) {
+        const uuid = crypto.randomUUID();
 
-      const uuid = crypto.randomUUID();
-      if (key !== "files") {
-        // Create directory entry
-        const newFile = await createFile({
-          projectId,
-          fileId: `${uuid}`,
-          filename: key,
-          isDirectory: true,
-          filepath: currentFilePath + "/" + key,
-          parentId: currentParentId, // Ensure valid parentId
-          size: 0,
-          storageId: null,
-          versionId: "1",
-          ownerId,
-          isDeleted: false,
-          createdAt: now,
-          updatedAt: now,
-        });
+        if (key !== "files") {
+          // Create directory entry
+          const newFile = await createFile({
+            projectId,
+            fileId: uuid,
+            filename: key,
+            isDirectory: true,
+            filepath: `${currentFilePath}/${key}`,
+            parentId: currentParentId,
+            size: 0,
+            storageId: null,
+            versionId: "1",
+            ownerId,
+            isDeleted: false,
+            createdAt: now,
+            updatedAt: now,
+          });
 
-        // Recursively process children with updated `parentId`
-        await recursivePrint(value, depth + 1, newFile.data?.fileId, `${currentFilePath}/${key}`);
-      } else {
-        
-        for (const [fileKey, fileValue] of Object.entries(value)) {
-          const uuid = crypto.randomUUID();
-          if (!(fileValue instanceof File)) {
-            console.error(`Skipping ${fileKey}: Invalid file object`, fileValue);
-            continue;
+          const nextParentId = newFile?.data?.fileId;
+          if (!nextParentId) {
+            console.error(`[ABORT] Failed to create directory ${key}`);
+            await abortUpload(uploadedFiles, projectId);
+            throw new Error("Failed to create directory");
           }
-          // Ensure correct file path
-          const folderPath = currentFilePath ? `${currentFilePath}/${fileKey}` : `/${fileKey}`;
-          
-          try {
-            const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
-            const versionId = await getFileVersions(storageKey) as string;
-            // Create file entry
-            const newFile = await createFile({
-              projectId,
-              fileId: `${uuid}`,
-              filename: fileKey,
-              isDirectory: false, // Ensure explicitly set for files
-              filepath: currentFilePath + "/" + fileKey,
-              parentId: currentParentId, // Ensure valid parentId
-              storageId: storageKey,
-              size: fileValue.size ?? 0,
-              versionId: versionId ? versionId : '1',
-              ownerId,
-              isDeleted: false,
-              createdAt: now,
-              updatedAt: now,
-            });
-            if (!newFile?.data?.fileId) {
-              console.error(`[FAILURE] Failed to create DB record for: ${uuid} : ${key}`, newFile);
+          uploadedFiles.push({ fileId: newFile?.data?.fileId });
+          uploadTaskRef?.current?.uploadedFiles.push({  fileId: newFile?.data?.fileId });
+
+          await recursivePrint(value, depth + 1, nextParentId, `${currentFilePath}/${key}`);
+        } else {
+          for (const [fileKey, fileValue] of Object.entries(value)) {
+
+            const fileUuid = crypto.randomUUID();
+            if (!(fileValue instanceof File)) {
+              console.error(`Skipping ${fileKey}: Invalid file object`, fileValue);
+              continue;
             }
-          } catch (error) {
-            console.error(`Error processing file ${fileKey}:`, error);
+
+            const folderPath = currentFilePath ? `${currentFilePath}/${fileKey}` : `/${fileKey}`;
+
+            try {
+              const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
+              const versionId = await getFileVersions(storageKey) || '1';
+
+              const newFile = await createFile({
+                projectId,
+                fileId: fileUuid,
+                filename: fileKey,
+                isDirectory: false,
+                filepath: `${currentFilePath}/${fileKey}`,
+                parentId: currentParentId,
+                storageId: storageKey,
+                size: fileValue.size ?? 0,
+                versionId,
+                ownerId,
+                isDeleted: false,
+                createdAt: now,
+                updatedAt: now,
+              });
+
+              if (!newFile?.data?.fileId) {
+                console.error(`[FAILURE] Failed to create DB record for: ${fileUuid} : ${fileKey}`, newFile);
+                await abortUpload(uploadedFiles, projectId);
+                throw new Error("DB record creation failed");
+              }
+
+              // Track uploaded file for cleanup
+              uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
+              uploadTaskRef?.current?.uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
+
+            } catch (error) {
+              console.error(`[ABORT] Error processing file ${fileKey}:`, error);
+              await abortUpload(uploadedFiles, projectId);
+              throw error;
+            }
           }
         }
       }
+    } catch (error) {
+      console.error("[ABORT] Upload failed during recursion:", error);
+      await abortUpload(uploadedFiles, projectId);
+      throw error;
     }
   }
-  await recursivePrint(dict);
+
+  try {
+    await recursivePrint(dict);
+  } catch (e) {
+    console.warn("[FINAL] Upload process was aborted.");
+  }
+}
+
+
+export async function abortUpload(
+  uploadedFiles: { storageKey?: string, fileId?: string }[],
+  projectId: string
+) {
+  console.warn("[ABORT] Cleaning up uploaded files...");
+
+  // Reverse the list to delete children before parents
+  for (let i = uploadedFiles.length - 1; i >= 0; i--) {
+    const { storageKey, fileId } = uploadedFiles[i];
+
+    try {
+      if (storageKey) {
+        await deleteFileFromStorage(storageKey);
+        console.log(`[ABORT] Deleted storage: ${storageKey}`);
+      }
+
+      if (fileId) {
+        await deleteFileFromDB(fileId, projectId);
+        console.log(`[ABORT] Deleted DB record: ${fileId}`);
+      }
+    } catch (err) {
+      console.error(`[ABORT] Failed to delete ${storageKey ?? fileId}`, err);
+    }
+  }
+
+  console.warn("[ABORT] Upload aborted. Cleaned up uploaded files in reverse order.");
+}
+
+
+
+export async function deleteFileFromDB(fileId: string, projectId: string): Promise<void> {
+  await client.models.File.delete({fileId, projectId});
 }
 
 

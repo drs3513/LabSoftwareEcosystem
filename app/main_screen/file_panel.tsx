@@ -77,6 +77,9 @@ export default function FilePanel() {
   }
 
   const folderDownloadTask = useRef<{ isCanceled: boolean; cancel: () => void } | null>(null);
+  
+  const uploadTask = useRef<{  isCanceled: boolean;  uploadedFiles: { storageKey?: string, fileId?: string }[];  cancel: () => void; }>({ isCanceled: false, uploadedFiles: [], cancel: () => {} });
+  
 
   const { projectId, userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId } = useGlobalState();
 
@@ -641,8 +644,23 @@ const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId
 
   console.log("[DEBUG] Final Folder Dictionary:", folderDict);
 
+  uploadTask.current = {
+    isCanceled: false,
+    uploadedFiles: [],
+    cancel: () => {
+      uploadTask.current!.isCanceled = true;
+    }
+  };
+
   // Process dictionary and upload files
-  await processAndUploadFiles(folderDict, projectId, ownerId, parentId);
+  await processAndUploadFiles(folderDict, projectId, ownerId, parentId, "", uploadTask);
+};
+
+const cancelUpload = () => {
+  if (uploadTask.current) {
+    uploadTask.current.cancel();
+    console.warn("[CANCEL] Upload cancel requested.");
+  }
 };
 
 
