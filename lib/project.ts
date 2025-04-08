@@ -7,9 +7,8 @@ const client = generateClient<Schema>();
 export async function createProject(userId: string, projectName: string) {
   try {
     // Fetch the current number of projects
-    const projects = await client.models.Project.list();
-    const projectCount = projects.data.length || 0;
-    const projectId = `P${projectCount + 1}`;
+    const uuid = crypto.randomUUID();
+    const projectId = `${uuid}`;
     const now = new Date().toISOString();
 
     const newProject = await client.models.Project.create({

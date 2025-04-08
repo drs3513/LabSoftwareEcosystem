@@ -50,10 +50,7 @@ export async function processAndUploadFiles(
   currentPath: string = ""
 ) {
 
-  const projectFiles = await listFilesForProject(projectId);
-  let fileCounter = projectFiles.length + 1;
   const now = new Date().toISOString();
-
   // Define a root parent ID for the project
   const rootParentId = `ROOT-${projectId}`;
 
@@ -65,12 +62,12 @@ export async function processAndUploadFiles(
   ) {
     for (const [key, value] of Object.entries(obj)) {
 
+      const uuid = crypto.randomUUID();
       if (key !== "files") {
-
         // Create directory entry
         const newFile = await createFile({
           projectId,
-          fileId: `${projectId}F${fileCounter++}`,
+          fileId: `${uuid}`,
           filename: key,
           isDirectory: true,
           filepath: currentFilePath + "/" + key,
@@ -89,6 +86,7 @@ export async function processAndUploadFiles(
       } else {
         
         for (const [fileKey, fileValue] of Object.entries(value)) {
+          const uuid = crypto.randomUUID();
           if (!(fileValue instanceof File)) {
             console.error(`Skipping ${fileKey}: Invalid file object`, fileValue);
             continue;
@@ -99,25 +97,24 @@ export async function processAndUploadFiles(
           try {
             const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
             const versionId = await getFileVersions(storageKey) as string;
-            
             // Create file entry
             const newFile = await createFile({
               projectId,
-              fileId: `${projectId}F${fileCounter++}`,
+              fileId: `${uuid}`,
               filename: fileKey,
               isDirectory: false, // Ensure explicitly set for files
               filepath: currentFilePath + "/" + fileKey,
               parentId: currentParentId, // Ensure valid parentId
               storageId: storageKey,
               size: fileValue.size ?? 0,
-              versionId,
+              versionId: versionId ? versionId : '1',
               ownerId,
               isDeleted: false,
               createdAt: now,
               updatedAt: now,
             });
             if (!newFile?.data?.fileId) {
-              console.error(`[FAILURE] Failed to create DB record for: ${key}`, newFile);
+              console.error(`[FAILURE] Failed to create DB record for: ${uuid} : ${key}`, newFile);
             }
           } catch (error) {
             console.error(`Error processing file ${fileKey}:`, error);
