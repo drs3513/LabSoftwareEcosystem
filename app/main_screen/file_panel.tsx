@@ -11,6 +11,11 @@ import { generateClient } from "aws-amplify/api";
 import type { Schema } from "@/amplify/data/resource";
 import CreateFilePanel from "./popout_create_file_panel"
 
+//SVG imports
+import Image from "next/image";
+import icon_alphanumericsort from "/assets/icons/sort-alphabetical-outlined-rounded.svg";
+import icon_chronosort from "/assets/icons/sort-high-to-low-outlined-rounded.svg";
+
 
 const client = generateClient<Schema>();
 
@@ -617,18 +622,17 @@ export default function FilePanel() {
           onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
         <TopBarContainer>
           <Input onChange={(e) => handleSearch(e)}>
-
           </Input>
           <SortContainer>
             <SortSelector
                 $selected = {sort ==='alphanumeric'}
                 onClick={() => handleSwitchSort("alphanumeric")}>
-              A
+              <Image src={icon_alphanumericsort} alt="" layout="fill" objectFit='contain'/>
             </SortSelector>
             <SortSelector
                 $selected = {sort ==='alphanumeric-reverse'}
-                onClick = {() => handleSwitchSort("alphanumeric-reverse")}>
-              B
+                onClick = {() => handleSwitchSort("alphanumeric-reverse")}> 
+              <Image src={icon_chronosort} alt="" layout="fill" objectFit='contain'/>
             </SortSelector>
 
           </SortContainer>
@@ -648,7 +652,7 @@ export default function FilePanel() {
                           onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
                           onClick={() => openCloseFolder(file.fileId)}
                           onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile')}>
-                      {file.isDirectory ? "📁" : "🗎"} {file.filename}
+                          {file.isDirectory ? "📁" : "🗎"} {file.filename}
                       <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
                                             size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                             projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
