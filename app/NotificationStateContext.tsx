@@ -49,7 +49,7 @@ export function NotificationStateProvider({ children }: {children: ReactNode}) {
                                        projectId: string,
                                        ownerId: string,
                                        parentId: string) {
-    pushNotification({taskType: "upload", message: `Uploading \"${dict}\" please do not close application!`})
+    pushNotification({taskType: "upload", message: `Uploading, please do not close application!`})
 
     if(await backendProcessAndUploadFiles(dict, projectId, ownerId, parentId)){
       pushNotification({taskType: "upload", message: 'Upload Complete!'})

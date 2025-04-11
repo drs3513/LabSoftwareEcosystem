@@ -43,7 +43,6 @@ const Notification = styled.div`
     background-color: white;
     border-radius: 10px;
     filter: drop-shadow(0px 0px 1px #000000);
-
 `
 const NotificationDeleteButton = styled.button`
     border: none;

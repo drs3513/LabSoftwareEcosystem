@@ -1,7 +1,10 @@
 import styled from 'styled-components'
 import ChatPanel from './chat_panel'
-import FilePanel from './file_panel'
-import ProjectPanel from './project_panel'
+import FilePanel from '@/app/main_screen/[pid]/[id]/file_panel'
+import ProjectPanel from './[pid]/[id]/project_panel'
+import {useRouter} from "next/navigation"
+import {useEffect} from "react";
+
 const Body = styled.div<{$background?:string; $width:string}>`
         width: ${props => props.$width};
         height: 100%;
@@ -26,7 +29,7 @@ export default function Panel(props: Props ) {
                 <Body $background={props.backgroundcolor} $width={props.width}>
                     <FilePanel/>
                 </Body>
-            );
+            )
         case 3:
             return (
                 <Body $background={props.backgroundcolor} $width={props.width}>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useGlobalState } from "./GlobalStateContext";
+import { useGlobalState } from "@/app/GlobalStateContext";
 import { getMessagesForFile, createMessage, updateMessage, deleteMessage } from "@/lib/message";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";

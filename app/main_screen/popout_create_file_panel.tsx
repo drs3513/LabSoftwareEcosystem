@@ -1,6 +1,6 @@
 import styled from "styled-components";
 import React, {useRef, useState} from "react";
-import { useGlobalState } from "./GlobalStateContext";
+import { useGlobalState } from "../GlobalStateContext";
 
 interface props{
     initialPosX: number;

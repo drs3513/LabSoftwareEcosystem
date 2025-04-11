@@ -65,7 +65,7 @@ export async function getTagsForRef(refId: string) {
     }
 
   }
-export async function deleteTag(tagId: string) {
+export async function deleteTag(tag:string) {
   try {
     await client.models.Tag.delete({ tagId });
     console.log(`Deleted tag: ${tagId}`);
