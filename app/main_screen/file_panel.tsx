@@ -10,7 +10,8 @@ import type { Schema } from "@/amplify/data/resource";
 import CreateFilePanel from "./popout_create_file_panel"
 import { startDownloadTask, downloadFolderAsZip } from "@/lib/storage";
 import { isCancelError } from "aws-amplify/storage";
-
+import ConflictModal from './conflictModal'
+import ReactDOM from 'react-dom'
 
 
 const client = generateClient<Schema>();
@@ -78,6 +79,14 @@ export default function FilePanel() {
 
   const folderDownloadTask = useRef<{ isCanceled: boolean; cancel: () => void } | null>(null);
   
+  const uploadQueue = useRef<Array<{
+    folderDict: Record<string, any>,
+    ownerId: string,
+    projectId: string,
+    parentId: string
+  }>>([]);
+  const uploading = useRef(false);
+  
   const uploadTask = useRef<{  isCanceled: boolean;  uploadedFiles: { storageKey?: string, fileId?: string }[];  cancel: () => void; }>({ isCanceled: false, uploadedFiles: [], cancel: () => {} });
   
 
@@ -124,74 +133,19 @@ export default function FilePanel() {
     setDragging(true);
   }
 
-  async function handleDrop(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    setDragging(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [downloadProgressMap, setDownloadProgressMap] = useState<Record<string, number>>({});
+  const [completedUploads, setCompletedUploads] = useState<number[]>([]);
+  const [showProgressPanel, setShowProgressPanel] = useState(true);
 
-    const items = e.dataTransfer.items;
-    if (!items) return;
-
-    let folderDict: Record<string, any> = {};
-
-    async function processItems(item: DataTransferItem, path = "") {
-      if (item.kind === "file") {
-        const file = item.getAsFile();
-        if (!file) return;
-
-        // Handle folders
-        if ((item as any).webkitGetAsEntry) {
-          const entry = (item as any).webkitGetAsEntry();
-          if (entry?.isDirectory) {
-            await readDirectory(entry, path);
-            return;
-          }
-        }
-
-        // Handle regular files
-        addToNestedDict(folderDict, path.split("/"), file.name, file);
-      }
-    }
-
-    async function readDirectory(entry: any, path: string) {
-      const reader = entry.createReader();
-      reader.readEntries(async (entries: any) => {
-        for (const entry of entries) {
-          await processItems(entry, `${path}/${entry.name}`);
-        }
-      });
-    }
-
-    function addToNestedDict(
-      dict: Record<string, any>,
-      pathParts: string[],
-      fileName: string,
-      fileObj: File
-    ) {
-      let currentLevel = dict;
-      for (let part of pathParts) {
-        if (!currentLevel[part]) currentLevel[part] = { files: {} };
-        currentLevel = currentLevel[part];
-      }
-      currentLevel.files[fileName] = fileObj;
-    }
-
-    for (let i = 0; i < items.length; i++) {
-      await processItems(items[i]);
-    }
-
-    console.log("[DEBUG] Files Ready for Upload:", folderDict);
-
-    await processAndUploadFiles(folderDict, projectId as string, userId as string, "ROOT-" + projectId);
-  }
-
+  
   const activeDownloads = new Map<string, ReturnType<typeof startDownloadTask>>();
 
   const handleDownload = async (filePath: string, fileId: string,fileuser: string) => {
     filePath = `uploads/${fileuser}/${projectId}${filePath}`;
     const task = startDownloadTask(filePath, (percent) => {
-      console.log(`[PROGRESS] ${filePath}: ${percent.toFixed(2)}%`);
-      // Optional: trigger visual progress update here
-    });
+      setDownloadProgressMap(prev => ({ ...prev, [fileId]: percent }));
+    });    
   
     activeDownloads.set(fileId, task);
   
@@ -206,7 +160,6 @@ export default function FilePanel() {
       a.click();
       URL.revokeObjectURL(url);
   
-      console.log(`[SUCCESS] Downloaded: ${filePath}`);
     } catch (error) {
       if (isCancelError(error)) {
         console.warn(`[CANCELLED] Download cancelled: ${filePath}`);
@@ -380,8 +333,7 @@ export default function FilePanel() {
           open: file.fileId in filesByFileId.current ? filesRef.current[filesByFileId.current[file.fileId]].open && (file.parentId in filesByFileId.current ? filesRef.current[filesByFileId.current[file.parentId]].open : true) : false,
           isDirectory: file.isDirectory
         }));
-        //
-        console.log(temp_files)
+        
         setFiles(sort_files_with_path(temp_files));
         return temp_files;
       },
@@ -439,7 +391,6 @@ const handleFileInput = async (isDirectory: boolean, projectId: string, ownerId:
           }
 
           const fileArray = Array.from(files);
-          console.log("[INFO] Files collected from input:", fileArray);
 
           // Now that files are selected, call handleCreateFile
           handleCreateFile(isDirectory, projectId, ownerId, parentId, fileArray);
@@ -460,134 +411,116 @@ const handleFileDrag = async (
   ownerId: string,
   parentId: string
 ) => {
-  console.log("[DEBUG] Drag event detected.");
   event.preventDefault();
 
-  const supportsFileSystemAccessAPI =
-    "getAsFileSystemHandle" in DataTransferItem.prototype;
-  const supportsWebkitGetAsEntry =
-    "webkitGetAsEntry" in DataTransferItem.prototype;
+  const supportsWebkitGetAsEntry = "webkitGetAsEntry" in DataTransferItem.prototype;
 
-  console.log("[DEBUG] FileSystemAccessAPI supported:", supportsFileSystemAccessAPI);
-  console.log("[DEBUG] WebkitGetAsEntry supported:", supportsWebkitGetAsEntry);
-
-  if (!supportsFileSystemAccessAPI && !supportsWebkitGetAsEntry) {
-    console.error("[ERROR] File System Access API not supported.");
+  if (!supportsWebkitGetAsEntry) {
+    console.error("[ERROR] webkitGetAsEntry not supported in this browser.");
     return;
   }
 
-  const elem = event.currentTarget as HTMLElement;
-  elem.style.outline = "";
-
-  const items = Array.from(event.dataTransfer.items).filter((item) => item.kind === "file");
-  console.log(`[DEBUG] ${items.length} items detected in the drag event.`);
+  const items: {
+    index: number;
+    item: DataTransferItem;
+    entry: any;
+    file: File | null;
+  }[] = [];
+  
+  Array.from(event.dataTransfer.items).forEach((item, index) => {
+    if (item.kind !== "file") return;
+  
+    const entry = (item as any).webkitGetAsEntry?.();
+    const file = item.getAsFile?.() ?? null;
+  
+    items.push({ index, item, entry, file });
+  
+    const entryType = entry
+      ? entry.isDirectory
+        ? "directory"
+        : entry.isFile
+        ? "file"
+        : "unknown"
+      : "null";
+  
+    const name = file?.name || "(no fallback file)";
+  });
 
   const files: File[] = [];
   const directories: string[] = [];
 
-  async function readDirectory(entry: any, path: string) {
-    console.log(`[DEBUG] Reading directory: ${path}`);
-    const reader = entry.createReader();
+  const readEntry = async (entry: any, path = ""): Promise<void> => {
 
-    const readEntries = async (): Promise<any[]> =>
-      new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+    if (entry.isFile) {
+      await new Promise<void>((resolve, reject) => {
+        entry.file((file: File) => {
+          const fullPath = path ? `${path}/${file.name}` : file.name;
+          const fileWithPath = new window.File([file], fullPath, { type: file.type });
 
-    let batch: any[] = [];
-    do {
-      batch = await readEntries();
-      console.log(`[DEBUG] Read ${batch.length} entries from: ${path}`);
-      for (const subEntry of batch) {
-        await processEntry(subEntry, `${path}/${subEntry.name}`);
-      }
-    } while (batch.length > 0);
-  }
+          Object.defineProperty(fileWithPath, "webkitRelativePath", {
+            value: fullPath,
+          });
 
-  async function processEntry(entry: any, path: string = ""): Promise<void> {
-    console.log(`[DEBUG] Processing entry: ${entry.name}`);
-  
-    if ('kind' in entry) {
-      if (entry.kind === "directory") {
-        directories.push(path);
-        const dirHandle = entry as FileSystemDirectoryHandle;
-  
-        for await (const [name, handle] of dirHandle.entries()) {
-          const nextPath = path ? `${path}/${name}` : name;
-          await processEntry(handle, nextPath);
-        }
-      } else if (entry.kind === "file") {
-        const file = await entry.getFile();
-        const newFile = new window.File([file], path, { type: file.type });
+          files.push(fileWithPath);
+          resolve();
+        }, reject);
+      });
+    } else if (entry.isDirectory) {
+      directories.push(path || entry.name);
+      const reader = entry.createReader();
 
-        // Fix: set webkitRelativePath so it parses correctly later
-        Object.defineProperty(newFile, "webkitRelativePath", {
-          value: path,
-        });
-
-        files.push(newFile);
-      }
-    } else if ('isDirectory' in entry || 'isFile' in entry) {
-      if (entry.isDirectory) {
-        directories.push(path);
-        const reader = entry.createReader();
-  
-        const readEntries = async (): Promise<any[]> =>
-          new Promise((resolve, reject) => reader.readEntries(resolve, reject));
-  
+      const readAll = async () => {
         let batch: any[] = [];
         do {
-          batch = await readEntries();
-          for (const childEntry of batch) {
-            const nextPath = path ? `${path}/${childEntry.name}` : childEntry.name;
-            await processEntry(childEntry, nextPath);
+          batch = await new Promise<any[]>((resolve, reject) =>
+            reader.readEntries(resolve, reject)
+          );
+           for (const subEntry of batch) {
+            await readEntry(subEntry, path ? `${path}/${entry.name}` : entry.name);
           }
         } while (batch.length > 0);
-      } else if (entry.isFile) {
-        entry.file((file: File) => {
-          
-          const newFile = new window.File([file], path, { type: file.type });
+      };
 
-          // Fix: set webkitRelativePath so it parses correctly later
-          Object.defineProperty(newFile, "webkitRelativePath", {
-            value: path,
-          });
-           files.push(newFile);
-        }, (error: any) => {
-          console.error(`[ERROR] Failed to read file: ${entry.name}`, error);
-        });
-      }
+      await readAll();
+    }
+  };
+
+  for (const { index, entry, file } of items) {
+    
+  
+    if (!entry && file) {
+      Object.defineProperty(file, "webkitRelativePath", { value: file.name });
+      files.push(file);
+      continue;
+    }
+  
+    if (!entry) {
+      console.warn(`[WARNING] Item ${index} appears to be empty or unsupported — skipped.`);
+      continue;
+    }
+  
+    const entryType = entry.isDirectory ? "directory" : entry.isFile ? "file" : "unknown";
+    
+    try {
+      await readEntry(entry);
+      } catch (err) {
+      console.error(`[ERROR] Failed to process entry ${index}: ${entry.name}`, err);
     }
   }
   
   
+  
+  
 
-  for (const item of items) {
-    let entry: any;
-    if (supportsFileSystemAccessAPI) {
-      entry = await (item as any).getAsFileSystemHandle?.();
-    } else {
-      entry = (item as any).webkitGetAsEntry?.();
-    }
-
-    if (entry) {
-      const type = entry.kind || (entry.isDirectory ? "directory" : "file");
-      console.log(`[DEBUG] Entry found: ${entry.name}, Type: ${type}`);
-      await processEntry(entry, entry.name);
-    } else {
-      console.warn(`[WARNING] Could not retrieve entry for item.`);
-    }
-  }
-
-  console.log("[INFO] Final processed files:", files.map(f => f.name));
-  console.log("[INFO] Final processed directories:", directories);
-
+  
   if (files.length === 0 && directories.length === 0) {
     console.error("[ERROR] No valid files or directories found.");
     return;
   }
 
-  console.log("[DEBUG] Calling handleCreateFile() with processed entries...");
-  handleCreateFile(directories.length > 0, projectId, ownerId, parentId, files);
+   handleCreateFile(directories.length > 0, projectId, ownerId, parentId, files);
 };
+
 
 
 
@@ -596,53 +529,36 @@ const handleFileDrag = async (
 
 /** Processes files and uploads them */
 const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId: string, parentId: string, files: File[]) => {
-  setCreateFilePanelUp(false);
+  let globalDecision: 'overwrite' | 'version' | 'cancel' | null = null;
+  let applyToAll = false;
+
+  const showConflictModal = (filename: string) => {
+    return new Promise<'overwrite' | 'version' | 'cancel'>(resolve => {
+      const modalRoot = document.createElement("div");
+      document.body.appendChild(modalRoot);
+
+      const cleanup = () => {
+        ReactDOM.unmountComponentAtNode(modalRoot);
+        document.body.removeChild(modalRoot);
+      };
+
+      const handleResolve = (choice: typeof globalDecision, all: boolean) => {
+        if (all) {
+          globalDecision = choice;
+          applyToAll = true;
+        }
+        cleanup();
+        resolve(choice);
+      };
+
+      ReactDOM.render(<ConflictModal filename={filename} onResolve={handleResolve} />, modalRoot);
+    });
+  };
 
   if (!files || files.length === 0) {
-      console.error("[ERROR] No files received.");
-      return;
+    console.error("[ERROR] No files received.");
+    return;
   }
-
-  let folderDict: Record<string, any> = {}; // Dictionary to store folder structure
-
-  function addToNestedDict(
-      dict: Record<string, any>,
-      pathParts: string[],
-      fileName: string,
-      fileObj: File
-  ) {
-      let currentLevel = dict;
-
-      for (let i = 0; i < pathParts.length; i++) {
-          let part = pathParts[i];
-
-          if (!currentLevel[part]) {
-              currentLevel[part] = { files: {} };
-          }
-
-          currentLevel = currentLevel[part];
-      }
-
-      currentLevel.files[fileName] = fileObj; // Store the actual file object
-  }
-
-  // Populate the folder structure
-  if (isDirectory) {
-    
-      for (let file of files) {
-          const relativePath = file.webkitRelativePath || file.name; // Get relative path
-          const pathParts = relativePath.split("/"); // Split into directory structure
-          const fileName = pathParts.pop() || ""; // Extract actual file name
-
-          addToNestedDict(folderDict, pathParts, fileName, file);
-      }
-  } else {
-      for (let file of files) {
-          folderDict = { files: { [file.name]: file } };
-      }
-  }
-
-  console.log("[DEBUG] Final Folder Dictionary:", folderDict);
 
   uploadTask.current = {
     isCanceled: false,
@@ -652,9 +568,73 @@ const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId
     }
   };
 
-  // Process dictionary and upload files
-  await processAndUploadFiles(folderDict, projectId, ownerId, parentId, "", uploadTask);
+  const folderDict: Record<string, any> = {};
+
+  for (const file of files) {
+    if (uploadTask.current.isCanceled) break;
+
+    const fullPath = file.webkitRelativePath || file.name;
+    const pathParts = fullPath.split("/");
+    const fileName = pathParts.pop()!;
+    const filePath = "/" + fullPath;
+
+    const conflict = filesRef.current.find(
+      f => f.filepath === filePath && f.projectId === projectId
+    );
+
+    let decision: 'overwrite' | 'version' | 'cancel' = 'overwrite';
+
+    if (conflict && !applyToAll) {
+      decision = await showConflictModal(file.name);
+      if (decision === 'cancel') continue;
+    }
+
+    if (conflict && applyToAll && globalDecision) {
+      decision = globalDecision;
+      if (decision === 'cancel') continue;
+    }
+
+    let actualName = fileName;
+    if (decision === 'version') {
+      const versionTag = `__v${Date.now()}`;
+      const base = fileName.includes(".") ? fileName.substring(0, fileName.lastIndexOf(".")) : fileName;
+      const ext = fileName.includes(".") ? fileName.substring(fileName.lastIndexOf(".")) : "";
+      actualName = `${base}${ext}`;
+    }
+
+    // Place the file into the shared folderDict
+    let current = folderDict;
+    for (const part of pathParts) {
+      if (!current[part]) current[part] = { files: {} };
+      current = current[part];
+    }
+
+    if (!current.files) current.files = {};
+    current.files[actualName] = file;
+  }
+  uploadQueue.current.push({
+    folderDict,
+    ownerId,
+    projectId,
+    parentId,
+  });  
+  await processAndUploadFiles(folderDict, projectId, ownerId, parentId, "", uploadTask,
+    (percent: number) => setUploadProgress(percent));
+    
+    // After upload finishes, remove from queue and reset progress
+    uploadQueue.current.shift();
+    setCompletedUploads((prev) => [...prev, 0]);
+    
+    // Delay removal of visual trace
+    setTimeout(() => {
+      setCompletedUploads((prev) => prev.slice(1));
+    }, 3000); // Keeps the completed upload visible for 3 seconds
+    
+    setUploadProgress(null);
+    
 };
+
+
 
 const cancelUpload = () => {
   if (uploadTask.current) {
@@ -669,12 +649,8 @@ const cancelUpload = () => {
     if(search){
       return
     }
-    console.log("Here")
-    console.log(openFileId in filesByParentId)
     if(openFileId in filesByParentId.current && filesByParentId.current[openFileId].length > 0){
       filesRef.current[filesByFileId.current[openFileId]].open = !filesRef.current[filesByFileId.current[openFileId]].open
-      console.log("opening file")
-      console.log(filesRef.current[filesByFileId.current[openFileId]])
     }
     if (openFileId in filesByParentId.current) {
       if(filesByParentId.current[openFileId].length > 0){
@@ -828,6 +804,8 @@ const cancelUpload = () => {
 
           </SortContainer>
         </TopBarContainer>
+        
+
         {files.length > 0 ? (
             files.filter(file => (!search && file.visible) || (search && file.filename.toLowerCase().includes(searchTerm.toLowerCase()))).map((file) => (
                 <File key={file.fileId}
@@ -851,6 +829,64 @@ const cancelUpload = () => {
         ) : (
             <NoFiles>No files available.</NoFiles>
         )}
+
+    {showProgressPanel && (uploadQueue.current.length > 0 || Object.keys(downloadProgressMap).length > 0 || completedUploads.length > 0) && (
+      <ProgressPanel>
+        <ProgressHeader>
+          Transfers
+          <DismissButton onClick={() => setShowProgressPanel(false)} title="Close Panel">
+            ✖
+          </DismissButton>
+        </ProgressHeader>
+
+        {/* Uploads */}
+        {uploadQueue.current.map((_, index) => {
+          const isActive = index === 0 && uploadProgress !== null;
+          const isCompleted = completedUploads.includes(index);
+
+          return (
+            <div key={`upload-${index}`} style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", opacity: isCompleted ? 0.5 : 1 }}>
+              <ProgressBarContainer style={{ flex: 1 }}>
+                <ProgressBarFill percent={isActive ? uploadProgress ?? 0 : isCompleted ? 100 : 0} />
+              </ProgressBarContainer>
+              <ProgressLabel style={{ marginLeft: "8px" }}>
+                {isCompleted
+                  ? `✅ Completed batch ${index + 1}`
+                  : isActive
+                  ? `Uploading batch ${index + 1} (${uploadProgress?.toFixed(0)}%)`
+                  : `Queued batch ${index + 1}`}
+              </ProgressLabel>
+              {isActive && (
+                <CancelButton onClick={cancelUpload} title="Cancel Upload">
+                  ✖
+                </CancelButton>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Downloads */}
+        {Object.entries(downloadProgressMap).map(([fileId, percent]) => (
+          <div key={`download-${fileId}`} style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center" }}>
+            <ProgressBarContainer style={{ flex: 1 }}>
+              <ProgressBarFill percent={percent} />
+            </ProgressBarContainer>
+            <ProgressLabel style={{ marginLeft: "8px" }}>
+              {percent >= 100
+                ? `✅ Downloaded ${fileId}`
+                : `Downloading ${fileId} (${percent.toFixed(0)}%)`}
+            </ProgressLabel>
+            {percent < 100 && (
+              <CancelButton onClick={() => cancelDownload(fileId)} title="Cancel Download">
+                ✖
+              </CancelButton>
+            )}
+          </div>
+        ))}
+      </ProgressPanel>
+    )}
+
+
 
     {createFilePanelUp ? (
         <CreateFilePanel
@@ -1125,4 +1161,79 @@ const Input = styled.input`
 const DropText = styled.p`
   font-size: 16px;
   color: #555;
+`;
+
+/*--------------------------------------------------------------------
+Comps for Progress display
+--------------------------------------------------------------------*/
+const ProgressBarContainer = styled.div`
+  width: 100%;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  height: 10px;
+  margin: 10px 0;
+  position: relative;
+`;
+
+const ProgressBarFill = styled.div<{ percent: number }>`
+  height: 100%;
+  width: ${(props) => props.percent}%;
+  background-color: #007bff;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+`;
+
+const ProgressLabel = styled.span`
+  font-size: 12px;
+  margin-left: 8px;
+  color: #555;
+`;
+
+const CancelButton = styled.button`
+  margin-left: 8px;
+  border: none;
+  background: transparent;
+  color: red;
+  font-size: 16px;
+  cursor: pointer;
+
+  &:hover {
+    color: darkred;
+  }
+`;
+const ProgressPanel = styled.div`
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  width: 300px;
+  max-height: 50vh;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ccc;
+  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  border-radius: 8px;
+  z-index: 999;
+`;
+
+const ProgressHeader = styled.h4`
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  text-align: left;
+  color: #333;
+`;
+
+const DismissButton = styled.button`
+  background: none;
+  border: none;
+  color: #888;
+  float: right;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  margin-left: auto;
+
+  &:hover {
+    color: #333;
+  }
 `;

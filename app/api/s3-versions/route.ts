@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { S3Client, ListObjectVersionsCommand } from "@aws-sdk/client-s3";
 
-const BUCKET_NAME = "amplify-awsamplifygen2-da-filestorage142024bucket6-ffnkcarhx9vc";
+const BUCKET_NAME = process.env.NEXT_PUBLIC_S3_BUCKET_NAME!;
 const REGION = "us-east-1";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { credentials, key } = body;
-
+    console.log("[DEBUG] Using bucket:", process.env.NEXT_PUBLIC_S3_BUCKET_NAME);
     if (!credentials) {
       console.error("No credentials provided.");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

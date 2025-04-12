@@ -46,16 +46,34 @@ export async function processAndUploadFiles(
   dict: Record<string, any>,
   projectId: string,
   ownerId: string,
-  parentId: string, // Parent ID is required
+  parentId: string,
   currentPath: string = "",
   uploadTaskRef?: React.MutableRefObject<{
     isCanceled: boolean;
     uploadedFiles: { storageKey?: string, fileId?: string }[];
-  }>
+  }>,
+  setProgress?: (percent: number) => void
 ) {
   const now = new Date().toISOString();
   const rootParentId = `ROOT-${projectId}`;
   const uploadedFiles: { storageKey?: string, fileId?: string }[] = [];
+  let fileCount = 0;
+  let processed = 0;
+
+  // First, count all files
+  function countFiles(obj: Record<string, any>): number {
+    let count = 0;
+    for (const [key, value] of Object.entries(obj)) {
+      if (key === "files") {
+        count += Object.keys(value).length;
+      } else {
+        count += countFiles(value);
+      }
+    }
+    return count;
+  }
+
+  fileCount = countFiles(dict);
 
   async function recursivePrint(
     obj: Record<string, any>,
@@ -69,11 +87,12 @@ export async function processAndUploadFiles(
         await abortUpload(uploadTaskRef.current.uploadedFiles, projectId);
         throw new Error("Upload canceled by user.");
       }
+
       for (const [key, value] of Object.entries(obj)) {
         const uuid = crypto.randomUUID();
 
         if (key !== "files") {
-          // Create directory entry
+          // Create directory
           const newFile = await createFile({
             projectId,
             fileId: uuid,
@@ -92,22 +111,18 @@ export async function processAndUploadFiles(
 
           const nextParentId = newFile?.data?.fileId;
           if (!nextParentId) {
-            console.error(`[ABORT] Failed to create directory ${key}`);
             await abortUpload(uploadedFiles, projectId);
             throw new Error("Failed to create directory");
           }
-          uploadedFiles.push({ fileId: newFile?.data?.fileId });
-          uploadTaskRef?.current?.uploadedFiles.push({  fileId: newFile?.data?.fileId });
+
+          uploadedFiles.push({ fileId: nextParentId });
+          uploadTaskRef?.current?.uploadedFiles.push({ fileId: nextParentId });
 
           await recursivePrint(value, depth + 1, nextParentId, `${currentFilePath}/${key}`);
         } else {
           for (const [fileKey, fileValue] of Object.entries(value)) {
-
             const fileUuid = crypto.randomUUID();
-            if (!(fileValue instanceof File)) {
-              console.error(`Skipping ${fileKey}: Invalid file object`, fileValue);
-              continue;
-            }
+            if (!(fileValue instanceof File)) continue;
 
             const folderPath = currentFilePath ? `${currentFilePath}/${fileKey}` : `/${fileKey}`;
 
@@ -132,17 +147,20 @@ export async function processAndUploadFiles(
               });
 
               if (!newFile?.data?.fileId) {
-                console.error(`[FAILURE] Failed to create DB record for: ${fileUuid} : ${fileKey}`, newFile);
                 await abortUpload(uploadedFiles, projectId);
                 throw new Error("DB record creation failed");
               }
 
-              // Track uploaded file for cleanup
               uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
               uploadTaskRef?.current?.uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
 
+              processed++;
+              if (setProgress && fileCount > 0) {
+                const percent = (processed / fileCount) * 100;
+                setProgress(percent);
+              }
+
             } catch (error) {
-              console.error(`[ABORT] Error processing file ${fileKey}:`, error);
               await abortUpload(uploadedFiles, projectId);
               throw error;
             }
@@ -150,7 +168,6 @@ export async function processAndUploadFiles(
         }
       }
     } catch (error) {
-      console.error("[ABORT] Upload failed during recursion:", error);
       await abortUpload(uploadedFiles, projectId);
       throw error;
     }
@@ -162,6 +179,8 @@ export async function processAndUploadFiles(
     console.warn("[FINAL] Upload process was aborted.");
   }
 }
+
+
 
 
 export async function abortUpload(

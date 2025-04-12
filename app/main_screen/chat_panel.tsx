@@ -30,6 +30,7 @@ export default function ChatPanel() {
 
     const subscription = client.models.Message.observeQuery({
       filter: { fileId: { eq: fileId } },
+      
     }).subscribe({
       next: async (data) => {
         if (data.items && Array.isArray(data.items)) {

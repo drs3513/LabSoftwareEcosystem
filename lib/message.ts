@@ -1,13 +1,12 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { randomUUID } from "crypto";
 
 const client = generateClient<Schema>();
 
 
 export async function createMessage(fileId: string, userId: string, content: string, projectId: string) {
   try {
-    const uuid = randomUUID();
+    const uuid = crypto.randomUUID();
     const messageId = `${uuid}`;
     const now = new Date().toISOString();
 
