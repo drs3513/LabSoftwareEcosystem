@@ -2,7 +2,7 @@
 import '@aws-amplify/ui-react/styles.css';
 import React, {ChangeEvent, useEffect, useRef, useState, DragEvent} from "react";
 import { useGlobalState } from "./GlobalStateContext";
-import {listFilesForProject, processAndUploadFiles, updateFileLocation} from "@/lib/file";
+import {deleteFile, listFilesForProject, processAndUploadFiles, updateFileLocation} from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
 import { generateClient } from "aws-amplify/api";
@@ -10,9 +10,8 @@ import type { Schema } from "@/amplify/data/resource";
 import CreateFilePanel from "./popout_create_file_panel"
 import { startDownloadTask, downloadFolderAsZip } from "@/lib/storage";
 import { isCancelError } from "aws-amplify/storage";
-import ConflictModal from './conflictModal'
-import ReactDOM from 'react-dom'
-
+import ConflictModal from './conflictModal';
+import ReactDOM from 'react-dom';
 
 const client = generateClient<Schema>();
 
@@ -314,11 +313,13 @@ export default function FilePanel() {
 
   const observeFiles = () => {
     const subscription = client.models.File.observeQuery({
-      filter: { projectId: { eq: projectId? projectId : undefined } },
+      filter: { projectId: { eq: projectId? projectId : undefined }, },
+      
     }).subscribe({
       next: async ({ items }) => {
 
-        let temp_files = items.map(file => ({
+        let temp_files = items.filter(file => !file.isDeleted)
+        .map(file => ({
           fileId: file.fileId,
           filename: file.filename,
           filepath: file.filepath,
@@ -520,10 +521,6 @@ const handleFileDrag = async (
 
    handleCreateFile(directories.length > 0, projectId, ownerId, parentId, files);
 };
-
-
-
-
 
 
 
@@ -729,6 +726,45 @@ const cancelUpload = () => {
 
   }
 
+  async function recursiveDeleteFolder(fileId: string) {
+    if (!fileId || !projectId) return;
+  
+    const fileIndex = filesByFileId.current[fileId];
+    const file = files[fileIndex];
+  
+    if (file.isDirectory && filesByParentId.current[fileId]) {
+      for (const childIndex of filesByParentId.current[fileId]) {
+        const child = files[childIndex];
+        await recursiveDeleteFolder(child.fileId); // Recursive delete
+      }
+    }
+  
+    // Finally delete the folder/file itself
+    await deleteFile(file.fileId, file.versionId, projectId);
+  }
+
+  async function handleDelete(fileId: string) {
+    const file = files.find(f => f.fileId === fileId);
+    if (!file || !projectId) return;
+  
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete ${file.isDirectory ? 'folder' : 'file'}: "${file.filename}"?`
+    );
+  
+    if (!confirmDelete) {
+      console.log("Deletion canceled by user.");
+      return;
+    }
+  
+    if (file.isDirectory) {
+      await recursiveDeleteFolder(fileId);
+    } else {
+      await deleteFile(fileId, file.versionId, projectId);
+    }
+  }
+  
+  
+
   //Recursively generates new 'path' values for all subdirectories of that which was placed
   function recursiveGeneratePaths(currFileId: Nullable<string>, pathAppend: string) {
     let newPathAppend: string = pathAppend
@@ -926,6 +962,9 @@ const cancelUpload = () => {
                 <ContextMenuItem>
                   Properties
                 </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
+                  Delete File
+                </ContextMenuItem>
                 <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
                   Open Chat
                 </ContextMenuItem>
@@ -945,7 +984,7 @@ const cancelUpload = () => {
                 <ContextMenuItem onClick={(e) => {setCreateFilePanelUp(true); createFilePanelInitX.current=e.pageX; createFilePanelInitY.current=e.pageY; createFileOrFolder.current="Folder"}}>
                   Create Folder
                 </ContextMenuItem>
-                <ContextMenuItem>
+                <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
                   Delete Folder
                 </ContextMenuItem>
                 <ContextMenuItem>

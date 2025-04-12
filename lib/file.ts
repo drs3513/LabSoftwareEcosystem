@@ -330,14 +330,6 @@ export async function updatefile(id: string, projectId: string) {
 
 export async function deleteFile(id: string, version: string, projectId: string) {
   try {
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete the version: ${version}  of file with ID: ${id}?`
-    );
-
-    if (!confirmDelete) {
-      alert("File deletion canceled.");
-      return;
-    }
 
     const now = new Date().toISOString();
 
@@ -348,8 +340,6 @@ export async function deleteFile(id: string, version: string, projectId: string)
       isDeleted: true,
       deletedAt: now,
     });
-
-    alert("File deleted successfully.");
 
   } catch (error) {
     console.error("Error deleting file:", error);
