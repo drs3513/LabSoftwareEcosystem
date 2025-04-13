@@ -180,6 +180,50 @@ export async function processAndUploadFiles(
   }
 }
 
+export async function Restorefile(fileId: string, versionId: string, projectId: string) {
+  await client.models.File.update({
+    fileId,
+    versionId,
+    projectId,
+    isDeleted: false,
+    deletedAt: null
+  });
+}
+
+
+export async function hardDeleteFile(fileId: string, projectId: string) {
+  try {
+    // Step 1: Get the file by ID
+    const file = await client.models.File.get({ fileId, projectId });
+
+    if (!file) {
+      alert("File not found.");
+      return;
+    }
+
+    // Step 2: Delete from S3
+    if (file?.data?.storageId) {
+      await deleteFileFromStorage(file?.data?.storageId);
+      console.log(`[HARD DELETE] Deleted from storage: ${file?.data?.storageId}`);
+    }
+
+    // Step 3: Delete from database
+    await client.models.File.delete({
+      fileId: file?.data?.fileId,
+      projectId: file?.data?.projectId,
+    });
+
+    console.log(`[HARD DELETE] Deleted DB record: ${file?.data?.fileId}`);
+    alert("File permanently deleted.");
+  } catch (error) {
+    console.error("[HARD DELETE ERROR]", error);
+    alert("An error occurred while hard deleting the file.");
+  }
+}
+
+
+
+
 
 
 

@@ -2,7 +2,7 @@
 import '@aws-amplify/ui-react/styles.css';
 import React, {ChangeEvent, useEffect, useRef, useState, DragEvent} from "react";
 import { useGlobalState } from "./GlobalStateContext";
-import {deleteFile, listFilesForProject, processAndUploadFiles, updateFileLocation} from "@/lib/file";
+import {Restorefile, deleteFile, hardDeleteFile, listFilesForProject, processAndUploadFiles, updateFileLocation} from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
 import { generateClient } from "aws-amplify/api";
@@ -136,6 +136,9 @@ export default function FilePanel() {
   const [downloadProgressMap, setDownloadProgressMap] = useState<Record<string, number>>({});
   const [completedUploads, setCompletedUploads] = useState<number[]>([]);
   const [showProgressPanel, setShowProgressPanel] = useState(true);
+
+
+  const [showRecycleBin, setShowRecycleBin] = useState(false);
 
   
   const activeDownloads = new Map<string, ReturnType<typeof startDownloadTask>>();
@@ -318,7 +321,8 @@ export default function FilePanel() {
     }).subscribe({
       next: async ({ items }) => {
 
-        let temp_files = items.filter(file => !file.isDeleted)
+        let temp_files = items
+        .filter(file => showRecycleBin ? file.isDeleted : !file.isDeleted)
         .map(file => ({
           fileId: file.fileId,
           filename: file.filename,
@@ -355,7 +359,7 @@ export default function FilePanel() {
       const unsubscribe = observeFiles();
       return () => unsubscribe();
     }
-  }, [projectId]);
+  }, [projectId, showRecycleBin]);
 
   // Close context menu when clicking outside
   useEffect(() => {
@@ -739,7 +743,7 @@ const cancelUpload = () => {
       }
     }
   
-    // Finally delete the folder/file itself
+    // delete the folder/file itself
     await deleteFile(file.fileId, file.versionId, projectId);
   }
 
@@ -760,6 +764,23 @@ const cancelUpload = () => {
       await recursiveDeleteFolder(fileId);
     } else {
       await deleteFile(fileId, file.versionId, projectId);
+    }
+  }
+
+  async function handleRestore(fileId: string, versionId: string) {
+     await Restorefile(fileId, versionId, projectId as string);
+  }
+  
+  
+  async function handleHardDelete(fileId: string) {
+    console.log(`${fileId}`);
+    const confirmed = window.confirm("This will permanently delete this file and all versions. Continue?");
+    if (!confirmed || !projectId) return;
+  
+    try {
+      await hardDeleteFile(fileId, projectId);
+    } catch (err) {
+      console.error("Hard delete failed:", err);
     }
   }
   
@@ -818,11 +839,13 @@ const cancelUpload = () => {
   }
 
   return (
+    <>
       <PanelContainer
           onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel',undefined)}
           onMouseUp={(e) => onFilePlace(e, "ROOT-"+projectId, null)}
           onMouseMove = {(e) => setMouseCoords([e.clientX, e.clientY])}>
         <TopBarContainer>
+        
           <Input onChange={(e) => handleSearch(e)}>
 
           </Input>
@@ -865,64 +888,6 @@ const cancelUpload = () => {
         ) : (
             <NoFiles>No files available.</NoFiles>
         )}
-
-    {showProgressPanel && (uploadQueue.current.length > 0 || Object.keys(downloadProgressMap).length > 0 || completedUploads.length > 0) && (
-      <ProgressPanel>
-        <ProgressHeader>
-          Transfers
-          <DismissButton onClick={() => setShowProgressPanel(false)} title="Close Panel">
-            ✖
-          </DismissButton>
-        </ProgressHeader>
-
-        {/* Uploads */}
-        {uploadQueue.current.map((_, index) => {
-          const isActive = index === 0 && uploadProgress !== null;
-          const isCompleted = completedUploads.includes(index);
-
-          return (
-            <div key={`upload-${index}`} style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", opacity: isCompleted ? 0.5 : 1 }}>
-              <ProgressBarContainer style={{ flex: 1 }}>
-                <ProgressBarFill percent={isActive ? uploadProgress ?? 0 : isCompleted ? 100 : 0} />
-              </ProgressBarContainer>
-              <ProgressLabel style={{ marginLeft: "8px" }}>
-                {isCompleted
-                  ? `✅ Completed batch ${index + 1}`
-                  : isActive
-                  ? `Uploading batch ${index + 1} (${uploadProgress?.toFixed(0)}%)`
-                  : `Queued batch ${index + 1}`}
-              </ProgressLabel>
-              {isActive && (
-                <CancelButton onClick={cancelUpload} title="Cancel Upload">
-                  ✖
-                </CancelButton>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Downloads */}
-        {Object.entries(downloadProgressMap).map(([fileId, percent]) => (
-          <div key={`download-${fileId}`} style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center" }}>
-            <ProgressBarContainer style={{ flex: 1 }}>
-              <ProgressBarFill percent={percent} />
-            </ProgressBarContainer>
-            <ProgressLabel style={{ marginLeft: "8px" }}>
-              {percent >= 100
-                ? `✅ Downloaded ${fileId}`
-                : `Downloading ${fileId} (${percent.toFixed(0)}%)`}
-            </ProgressLabel>
-            {percent < 100 && (
-              <CancelButton onClick={() => cancelDownload(fileId)} title="Cancel Download">
-                ✖
-              </CancelButton>
-            )}
-          </div>
-        ))}
-      </ProgressPanel>
-    )}
-
-
 
     {createFilePanelUp ? (
         <CreateFilePanel
@@ -1031,7 +996,96 @@ const cancelUpload = () => {
           )
         }
       </PanelContainer>
+  
+      {/* Progress Panel, uploads/downloads UI */}
+      {showProgressPanel && (
+        <ProgressPanel>
+          <ProgressHeader>
+            Transfers
+            <DismissButton onClick={() => setShowProgressPanel(false)} title="Close Panel">
+              ✖
+            </DismissButton>
+          </ProgressHeader>
+  
+          {uploadQueue.current.map((_, index) => {
+            const isActive = index === 0 && uploadProgress !== null;
+            const isCompleted = completedUploads.includes(index);
+            return (
+              <div key={`upload-${index}`} style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", opacity: isCompleted ? 0.5 : 1 }}>
+                <ProgressBarContainer style={{ flex: 1 }}>
+                  <ProgressBarFill percent={isActive ? uploadProgress ?? 0 : isCompleted ? 100 : 0} />
+                </ProgressBarContainer>
+                <ProgressLabel style={{ marginLeft: "8px" }}>
+                  {isCompleted
+                    ? `✅ Completed batch ${index + 1}`
+                    : isActive
+                      ? `Uploading batch ${index + 1} (${uploadProgress?.toFixed(0)}%)`
+                      : `Queued batch ${index + 1}`}
+                </ProgressLabel>
+                {isActive && (
+                  <CancelButton onClick={cancelUpload} title="Cancel Upload">
+                    ✖
+                  </CancelButton>
+                )}
+              </div>
+            );
+          })}
+  
+          {Object.entries(downloadProgressMap).map(([fileId, percent]) => (
+            <div key={`download-${fileId}`} style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center" }}>
+              <ProgressBarContainer style={{ flex: 1 }}>
+                <ProgressBarFill percent={percent} />
+              </ProgressBarContainer>
+              <ProgressLabel style={{ marginLeft: "8px" }}>
+                {percent >= 100
+                  ? `✅ Downloaded ${fileId}`
+                  : `Downloading ${fileId} (${percent.toFixed(0)}%)`}
+              </ProgressLabel>
+              {percent < 100 && (
+                <CancelButton onClick={() => cancelDownload(fileId)} title="Cancel Download">
+                  ✖
+                </CancelButton>
+              )}
+            </div>
+          ))}
+        </ProgressPanel>
+      )}
+  
+      {/* Recycle Bin Button */}
+      {!showRecycleBin && (
+        <FloatingRecycleButton onClick={() => setShowRecycleBin(true)} title="Recycle Bin">
+          🗑️
+        </FloatingRecycleButton>
+      )}
+
+      {showRecycleBin && (
+        <FloatingRecycleButton onClick={() => setShowRecycleBin(false)} title="Back to Files">
+          📁
+        </FloatingRecycleButton>
+      )}
+
+      {showRecycleBin && (
+          <RecycleBinPanel>
+            <RecycleBinHeader>🗑️ Recycle Bin</RecycleBinHeader>
+            {files.length === 0 ? (
+              <NoFiles>No deleted files.</NoFiles>
+            ) : (
+              files.map(file => (
+                <File key={file.fileId} $depth={0} $pickedUp={false} $mouseX={0} $mouseY={0} $search={false}>
+                  🗎 {file.filename}
+                  <RecycleFileActions>
+                    <button onClick={() => handleRestore(file.fileId, file.versionId)}>Restore</button>
+                    <button onClick={() => handleHardDelete(file.fileId)}>Delete Permanently</button>
+                  </RecycleFileActions>
+                </File>
+              ))
+            )}
+          </RecycleBinPanel>
+        )}
+
+    </>
   );
+  
 
 }
 
@@ -1274,5 +1328,60 @@ const DismissButton = styled.button`
 
   &:hover {
     color: #333;
+  }
+`;
+
+const FloatingRecycleButton = styled.button`
+  position: fixed;
+  bottom: 1.5rem;
+  left: 1.5rem;
+  width: 48px;
+  height: 48px;
+  font-size: 24px;
+  background-color: #f0f0f0;
+  border: 2px solid #ccc;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 1000;
+  box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.2);
+
+  &:hover {
+    background-color: #ddd;
+  }
+`;
+const RecycleBinPanel = styled.div`
+  position: absolute;
+  top: 3.5rem;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #fff5f5;
+  overflow-y: auto;
+  z-index: 500;
+  padding: 1rem;
+  border-top: 2px solid #ddd;
+`;
+
+const RecycleBinHeader = styled.h3`
+  margin-top: 0;
+  color: #c00;
+`;
+
+const RecycleFileActions = styled.div`
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-start;
+
+  button {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+    border: 1px solid #ccc;
+    background-color: #eee;
+    cursor: pointer;
+
+    &:hover {
+      background-color: #ddd;
+    }
   }
 `;
