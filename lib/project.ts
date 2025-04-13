@@ -40,13 +40,29 @@ export async function listAllProjects() {
 
 export async function listProjectsForUser(userId: string) {
   try {
-    const response = await client.models.Project.list();
-    return response.data.filter((project) => project.userId === userId);
+    const whitelistResponse = await client.models.Whitelist.list({
+      filter: { userIds: { eq: userId } },
+    });
+
+    const allowedProjectIds = whitelistResponse.data.map(entry => entry.projectId);
+
+    if (allowedProjectIds.length === 0) {
+      return [];
+    }
+
+    const projectResponse = await client.models.Project.list({
+      filter: {
+        or: allowedProjectIds.map(projectId => ({ projectId: { eq: projectId } })),
+      },
+    });
+
+    return projectResponse.data;
   } catch (error) {
     console.error("Error fetching user projects:", error);
-    return [];
+    throw error;
   }
 }
+
 
 
 export async function listFilesForProject(projectId: string) {

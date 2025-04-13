@@ -6,11 +6,13 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import styled from "styled-components";
 import { useAuthenticator } from "@aws-amplify/ui-react";
+import { listProjectsForUser } from "@/lib/project";
+import { getUserRole } from "@/lib/whitelist"
 
 const client = generateClient<Schema>();
 
 export default function ProjectPanel() {
-  const { setProjectId } = useGlobalState();
+  const { setRole, setProjectId, userId } = useGlobalState();
   const { user } = useAuthenticator();
   const [projects, setProjects] = useState<Array<{ projectId: string; projectName: string }>>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -18,25 +20,20 @@ export default function ProjectPanel() {
   useEffect(() => {
     if (!user?.signInDetails?.loginId) return;
 
-    const subscription = client.models.Project.observeQuery().subscribe({
-      next: (data) => {
-        if (data.items && Array.isArray(data.items)) {
-          setProjects(
-            data.items.map((proj) => ({
-              projectId: proj.projectId,
-              projectName: proj.projectName,
-            }))
-          );
-        }
+    const fetchProjects = async () => {
+      try {
+        setLoading(true);
+        if (!userId) return;
+        const userProjects = await listProjectsForUser(userId);
+        setProjects(userProjects);
+      } catch (error) {
+        console.error("Error fetching projects:", error);
+      } finally {
         setLoading(false);
-      },
-      error: (error) => {
-        console.error("Error observing projects:", error);
-        setLoading(false);
-      },
-    });
+      }
+    };
 
-    return () => subscription.unsubscribe(); // Unsubscribe on unmount
+    fetchProjects();
   }, [user]);
 
   return (
@@ -45,7 +42,12 @@ export default function ProjectPanel() {
         <LoadingText>Loading projects...</LoadingText>
       ) : projects.length > 0 ? (
         projects.map((project) => (
-          <Project key={project.projectId} onClick={() => setProjectId(project.projectId)}>
+          <Project key={project.projectId} onClick={ async () => {
+            setProjectId(project.projectId);
+            if (!userId) { console.log("no userid found"); return; }
+            const usrrole = await getUserRole(project.projectId, userId);
+            setRole(usrrole);
+            }}>
             📁 {project.projectName}
           </Project>
         ))

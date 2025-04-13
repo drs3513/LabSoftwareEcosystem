@@ -14,6 +14,7 @@ const schema = a
         messages: a.hasMany("Message", "userId"),
         whitelist: a.hasMany("Whitelist","userIds"),
         projects: a.hasMany("Project","userId"),
+        administrator: a.boolean().default(false),
       })
       .identifier(["userId"]),
     Project: a
@@ -106,8 +107,9 @@ const schema = a
     whitelistId: a.id().required(),
     userIds: a.id().required(), // User ID being whitelisted
     createdAt: a.datetime().required(),
+    createdBy: a.id().required(), // ID of the user who created the whitelist entry
     projectId: a.id().required(),
-    role: a.enum(["USER", "ADMIN", "HEAD"]), // Role-specific permission
+    role: a.enum(["NONE", "USER", "ADMIN", "HEAD"]), // Role-specific permission
 
     // Relationships
     user: a.belongsTo("User", "userIds"),

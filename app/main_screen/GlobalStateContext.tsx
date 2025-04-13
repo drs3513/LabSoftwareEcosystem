@@ -3,6 +3,8 @@ import React, {createContext, useContext, useState, useEffect, ReactNode, ReactE
 import { useAuthenticator } from "@aws-amplify/ui-react";
 
 interface GlobalStateContextType {
+  role: string | null;
+  setRole: (role: string | null) => void;
   projectId: string | null;
   setProjectId: (id: string | null) => void;
   fileId: string | undefined;
@@ -18,6 +20,7 @@ const GlobalStateContext = createContext<GlobalStateContextType | undefined>(und
 
 export function GlobalStateProvider({ children }: { children: ReactNode }) {
   const { user } = useAuthenticator(); // Get authenticated user
+  const [role, setRole] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [fileId, setFileId] = useState<string | undefined>(undefined);
   const [userId, setUserId] = useState<string | null>(null);
@@ -30,7 +33,7 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   return (
-    <GlobalStateContext.Provider value={{ projectId, setProjectId, fileId, setFileId, userId, contextMenu, setContextMenu,
+    <GlobalStateContext.Provider value={{ role, setRole, projectId, setProjectId, fileId, setFileId, userId, contextMenu, setContextMenu,
       contextMenuType, setContextMenuType}}>
       {children}
     </GlobalStateContext.Provider>
