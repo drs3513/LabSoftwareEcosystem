@@ -1,19 +1,18 @@
 import styled from "styled-components";
 import React, {useRef, useState} from "react";
-import { useGlobalState } from "./GlobalStateContext";
+import { useGlobalState } from "../GlobalStateContext";
 
 interface props{
     initialPosX: number;
     initialPosY: number;
     parentFileId: string | undefined;
-    parentFilePath: string | undefined;
     isDirectory: string;
-    createFile: (isDirectory: boolean, projectId: string, ownerId: string, parentId: string) => void;
+    createFile: (isDirectory: boolean, projectId: string, ownerId: string, parentId: string, tags: string[]) => void;
     close: ()=>void;
 }
 
 
-export default function CreateFilePanel({initialPosX, initialPosY, parentFileId, parentFilePath, isDirectory, createFile, close}: props){
+export default function CreateFilePanel({initialPosX, initialPosY, parentFileId, isDirectory, createFile, close}: props){
     if(initialPosX + 400 > document.documentElement.offsetWidth){
         initialPosX = document.documentElement.offsetWidth - 400
     }
@@ -29,7 +28,6 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
     const initialYDiff = useRef(0);
     const initialResizeX = useRef(0);
     const initialResizeY = useRef(0);
-    const fileName = useRef("");
     const {projectId, userId} = useGlobalState();
 
     function handleInsertTag(e: React.KeyboardEvent<HTMLInputElement>){
@@ -40,10 +38,6 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
 
         }
     }
-
-
-
-
     function handleStartDrag(e: React.DragEvent<HTMLDivElement>){
         const panel = e.currentTarget as HTMLDivElement
         const panelBoundingBox = panel.getBoundingClientRect()
@@ -107,7 +101,19 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
                 ) : <></>
                 }
             </TagDisplay>
-            <Button onClick= {() => createFile(isDirectory == "Folder", projectId as string, userId as string, parentFileId  as string)}>
+            <Button
+                onClick={() => {
+                    if (projectId && userId) {
+                        createFile(
+                            isDirectory == "Folder",
+                            projectId,
+                            userId,
+                            parentFileId || "", // maybe bad
+                            tags
+                        );
+                    }
+                }}
+            >
                 {isDirectory === "File" ? "Upload File" : "Upload Folder"}
             </Button>
             <Resize draggable={true} onDragStart={(e) => {initialResizeX.current = e.pageX; initialResizeY.current = e.pageY}} onDragEnd = {(e) => {handleResize(e)}}>

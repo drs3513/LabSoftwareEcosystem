@@ -6,11 +6,13 @@ import { Authenticator } from "@aws-amplify/ui-react";
 import "@aws-amplify/ui-react/styles.css";
 import outputs from "@/amplify_outputs.json";
 import styled from "styled-components"
-import { GlobalStateProvider } from "./main_screen/GlobalStateContext";
+import { GlobalStateProvider } from "./GlobalStateContext";
+import {NotificationStateProvider} from "./NotificationStateContext"
 Amplify.configure(outputs);
 
 const Body = styled.body`
     margin: 0;
+    padding: 0;
 `
 
 
@@ -20,11 +22,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <Body>
+    <html lang="en" style={{margin: 0}}>
+      <Body style={{margin: 0}}>
         <Authenticator>
           <GlobalStateProvider>
-            {children}
+            <NotificationStateProvider>
+              {children}
+            </NotificationStateProvider>
           </GlobalStateProvider>
         </Authenticator>
       </Body>

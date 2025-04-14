@@ -2,7 +2,7 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 
 const client = generateClient<Schema>();
-
+console.log(client)
 
 export async function createProject(userId: string, projectName: string) {
   try {
@@ -75,6 +75,17 @@ export async function listFilesForProject(projectId: string) {
   }
 }
 
+export async function getProjectName(projectId: string){
+  try {
+    const project = await client.models.Project.get({
+      projectId
+    })
+    if(!project || !project.data || !project.data || !project.data.projectName) return undefined
+    return project.data.projectName
+  } catch (error) {
+    console.error(`Error retrieving name for projectId ${projectId} :`, error)
+  }
+}
 
 export async function updateProject(projectId: string, updates: Partial<Schema["Project"]["type"]>) {
   try {

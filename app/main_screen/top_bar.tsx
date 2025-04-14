@@ -5,8 +5,9 @@ import { useState, useEffect, useRef } from "react";
 import { isUserAdmin, getUserIdFromEmail, getUsers, getCurrentUser } from "@/lib/user";
 import { removeWhitelistedUser, listUsersBelowRole, getUserRole, whitelistUser, Role, isUserWhitelistedForProject, elevateUserToAdmin, revokeUserAdmin } from "@/lib/whitelist";
 import { createProject } from "@/lib/project";
-import { useGlobalState } from "./GlobalStateContext";
-import { Button, useAuthenticator } from "@aws-amplify/ui-react";
+import { useGlobalState } from "../GlobalStateContext";
+import { useAuthenticator } from "@aws-amplify/ui-react";
+import { Button } from "@aws-amplify/ui-react";
 
 const Top_Bar = styled.div`
   background-color: tan;

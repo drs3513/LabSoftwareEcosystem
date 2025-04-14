@@ -1,5 +1,6 @@
-import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
+import {type ClientSchema, a, defineData, defineFunction} from "@aws-amplify/backend";
 import { ApiKey } from "aws-cdk-lib/aws-apigateway";
+
 
 const schema = a
   .schema({
@@ -48,20 +49,73 @@ const schema = a
         createdAt: a.datetime().required(),
         updatedAt: a.datetime().required(),
         messages: a.hasMany("Message", ["fileId","projectId"]),
-        tag: a.hasMany("Tag", ["fileId","projectId"]),
+        tags: a.string().array(), // <-CHANGE
         isDeleted: a.boolean().required(),
         deletedAt: a.datetime(),
-    
         parent: a.belongsTo("File", ["parentId","projectId"]),
         children: a.hasMany("File", ["parentId","projectId"]),
-    
         ownerDetails: a.belongsTo("User", "ownerId"),
         project: a.belongsTo("Project", "projectId"),
       })
-      .identifier(["fileId","projectId"]) // Use only `fileId` as primary key
+      .identifier(["fileId","projectId"]) // Use only `fileId` as primary key, projectId as sort key
       .secondaryIndexes((index) => [
         index("fileId").sortKeys(["versionId"]), //Secondary index
+          index("projectId") //Secondary index
       ]),
+
+
+      //openSearchExampleSearchFiles: a
+      //    .query()
+      //    .returns(a.ref("File").array())
+      //    //.authorization((allow) => [allow.publicApiKey()])
+      //    .handler(
+      //        a.handler.custom({
+      //            entry: "./openSearchExampleSearchFileResolver.js",
+      //            dataSource: "osDataSource",
+      //        })
+      //    ),
+
+      searchFiles: a
+          .query()
+          .arguments({
+              projectId: a.string(),
+              fileNames: a.string().array(),
+              tagNames: a.string().array()
+          })
+          .returns(a.ref("File").array())
+          .handler(
+              a.handler.custom({
+                  dataSource: a.ref("File"),
+                  entry: "./searchFiles.js"
+
+              })
+          ),
+
+      //Opensearch searchFiles query
+      //openSearchSearchFiles: a
+      //    .query()
+      //    .arguments({
+      //        fileNames: a.string().array(),
+      //        tagNames: a.string().array()
+      //    })
+      //    .returns(a.ref("File").array())
+      //    .handler(
+      //        a.handler.custom({
+      //            entry: "./openSearchSearchFiles.js",
+      //            dataSource: "osDataSource"
+      //        })
+      //    ),
+      //BatchUpdateFile: a
+      //    .mutation()
+      //    .arguments({
+//
+      //})
+      //    .returns(
+      //        a.ref('Post').array()
+      //    )
+      //    .handler(
+      //    a.handler.function().async()
+      //),
     
 
 
@@ -77,14 +131,14 @@ const schema = a
         updatedAt: a.datetime(),
         isUpdated: a.boolean().default(false),
         isDeleted: a.boolean().default(false),
-        path: a.string(),
-        tag: a.hasMany("Tag","messageId"),
+        tags: a.string().array(), // <- CHANGE
         file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
         
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
       })
       .identifier(["messageId"]),
 
+    /*
     // Tag model
     Tag: a
       .model({
@@ -102,6 +156,8 @@ const schema = a
     .identifier(["tagId"]),
       
     // Whitelist model
+    */
+  // Whitelist model
   Whitelist: a
   .model({
     whitelistId: a.id().required(),
@@ -116,8 +172,9 @@ const schema = a
     project: a.belongsTo("Project", "projectId"),
   })
   .identifier(["whitelistId"]),
+
 }).authorization((allow) => [
-  allow.authenticated().to(["create", "update", "delete", "read"]),
+  allow.authenticated(),
 ]);
 export type Schema = ClientSchema<typeof schema>;
 

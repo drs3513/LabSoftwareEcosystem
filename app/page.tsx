@@ -9,12 +9,16 @@ import { createUserFromCognito, getCurrentUser } from "@/lib/user";
 
 import "@aws-amplify/ui-react/styles.css";
 import { fetchUserAttributes } from "aws-amplify/auth";
+import Link from "next/link";
+import {useRouter} from "next/navigation";
 
 const client = generateClient<Schema>();
 
 export default function App() {
+
   const { user } = useAuthenticator();
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     if (!user?.signInDetails?.loginId) {
@@ -35,19 +39,18 @@ export default function App() {
         }
 
         setLoading(false);
+        router.push('/main_screen')
       } catch (error) {
         console.error("Error checking/creating user:", error);
       }
     }
 
     checkAndCreateUser();
-  }, [user]);
+  }, [user, router]);
 
   if (loading) return <p>Loading user data...</p>;
 
-  return (
-    <main>
-      <MainScreen />
-    </main>
-  );
+
+
+
 }
