@@ -1,4 +1,3 @@
-"use client";
 import styled from "styled-components";
 import Panel from "./panel";
 import ProjectPanel from "./[pid]/[id]/project_panel";
@@ -122,7 +121,7 @@ export default function PanelManager() {
 
       {/* Right Panel - Chat Panel */}
       <Panel type={3} backgroundcolor="white" width={`calc(${right_panel_width} - ${border_width / 2}${border_width_type})`}>
-    
+
       </Panel>
     </Holder>
   );
