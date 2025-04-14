@@ -30,6 +30,10 @@ export default function ProjectPanel() {
         setLoading(true);
         if (!userId) return;
         const userProjects = await listProjectsForUser(userId);
+        if (!Array.isArray(userProjects)) {
+          setProjects([]);
+          return;
+        }
         setProjects(userProjects);
       } catch (error) {
         console.error("Error fetching projects:", error);
@@ -39,7 +43,7 @@ export default function ProjectPanel() {
     };
 
     fetchProjects();
-  }, [user]);
+  }, [user, userId]);
 
   useEffect(() => {
     const proj_id = routerSearchParams.get("pid")
@@ -49,6 +53,7 @@ export default function ProjectPanel() {
     if(!proj_id) return
 
     setLocalProjectId(proj_id)
+    setProjectId(proj_id);
 
     if(!root_id){
       router.push(`/main_screen/?pid=${proj_id}&id=ROOT-${proj_id}`, undefined)
@@ -58,11 +63,12 @@ export default function ProjectPanel() {
   }, [routerSearchParams])
 
 
-  function setProject(projectId: string){
-    setProjectId(projectId)
-
-    router.push(`/main_screen/?pid=${projectId}&id=ROOT-${projectId}`, undefined)
+  function setProject(projectId: string) {
+    setProjectId(projectId);
+    setLocalProjectId(projectId);
+    router.push(`/main_screen/?pid=${projectId}&id=ROOT-${projectId}`, undefined);
   }
+
   return (
     <PanelContainer>
       {loading ? (
@@ -73,11 +79,8 @@ export default function ProjectPanel() {
             key={project.projectId}
             $selected={project.projectId === localProjectId}
             onClick={async () => {
-              setProjectId(project.projectId);
-              if (!userId) {
-                console.log("no userid found");
-                return;
-              }
+              setProject(project.projectId);
+              if (!userId) return;
               const usrrole = await getUserRole(project.projectId, userId);
               setRole(usrrole);
             }}

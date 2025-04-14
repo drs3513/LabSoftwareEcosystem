@@ -370,7 +370,6 @@ export async function createFile({
   storageId,
   size,
   versionId,
-    storageId,
   ownerId,
   isDeleted = false,
   createdAt,

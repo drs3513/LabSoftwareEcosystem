@@ -33,6 +33,7 @@ export async function whitelistUser(projectId: string, userId: string, role: Rol
       createdBy: currentUser.email,
       role: role,
     });
+    console.log(response);
     return response;
   } catch (error) {
     console.log("Error whitelisting user:", error);
@@ -155,10 +156,5 @@ export async function isUserWhitelistedForProject(userId: string, projectId: str
     console.error("Error checking if user is whitelisted:", error);
     return false;
   }
-}
-
-export function CreateWhitelistPanel(projectId: string, userId: string) {
-  console.log(`CreateWhitelistPanel called with projectId: ${projectId}, userId: ${userId}`);
-  // Add logic for displaying the whitelist creation panel here
 }
 

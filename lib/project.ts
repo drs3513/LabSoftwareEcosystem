@@ -2,7 +2,7 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 
 const client = generateClient<Schema>();
-console.log(client)
+//console.log(client)
 
 export async function createProject(userId: string, projectName: string) {
   try {
@@ -45,7 +45,6 @@ export async function listProjectsForUser(userId: string) {
     });
 
     const allowedProjectIds = whitelistResponse.data.map(entry => entry.projectId);
-
     if (allowedProjectIds.length === 0) {
       return [];
     }

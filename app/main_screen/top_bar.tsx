@@ -8,6 +8,7 @@ import { createProject } from "@/lib/project";
 import { useGlobalState } from "../GlobalStateContext";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import { Button } from "@aws-amplify/ui-react";
+import { useRouter } from "next/navigation";
 
 const Top_Bar = styled.div`
   background-color: tan;
@@ -146,7 +147,10 @@ const Resize = styled.div`
 `;
 
 export default function TopBar() {
-  const { role, userId, projectId } = useGlobalState();
+  const router = useRouter();
+  const { userId } = useGlobalState();
+  const [role, setRole] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
   const [showWhitelist, setShowWhitelist] = useState(false);
   const [users, setUsers] = useState<Array<{ userId: string; username: string; email: string }>>([]);
@@ -155,6 +159,31 @@ export default function TopBar() {
   const { user, signOut } = useAuthenticator();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [whitelistPanelPos, setWhitelistPanelPos] = useState({ posX: 100, posY: 100 }); // Track position of whitelist panel
+
+  // Extract projectId (pid) from the URL and update state
+  useEffect(() => {
+    const urlParams = new URLSearchParams(new URL(window.location.href).search);
+    const pid = urlParams.get("pid");
+    if (pid) {
+      setProjectId(pid);
+    }
+  }, []);
+
+  // Fetch and update role when projectId changes
+  useEffect(() => {
+    if (projectId && userId) {
+      const fetchRole = async () => {
+        try {
+          const userRole = await getUserRole(projectId, userId);
+          setRole(userRole || "No role assigned");
+        } catch (error) {
+          console.error("Error fetching role:", error);
+          setRole("Error fetching role");
+        }
+      };
+      fetchRole();
+    }
+  }, [projectId, userId]);
 
   // Fetch users when Whitelist dropdown is toggled
   useEffect(() => {
@@ -220,9 +249,9 @@ export default function TopBar() {
 
   async function handleCreateProject() {
     const projectName = prompt("Enter Project Name:");
-    if (!projectName) return;
+    if (!projectName || !userId) return;
     const project = await createProject(userId as string, projectName);
-    if (!project || !userId) {
+    if (!project) {
       alert("Error creating project. Please try again later.");
       return;
     };
@@ -252,7 +281,7 @@ export default function TopBar() {
         alert(userEmail + " is already whitelisted for this project!");
         return;
       }
-      window.confirm("Are you sure you want to whitelist " + userEmail + " for this project?");
+      let confirm = window.confirm("Are you sure you want to whitelist " + userEmail + " for this project?");
       if (!confirm) return;
       const success = await whitelistUser(projectId, userId, Role.USER);
       if (success) {
