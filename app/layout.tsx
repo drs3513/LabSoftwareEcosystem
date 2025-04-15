@@ -23,7 +23,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" style={{margin: 0}}>
-      <Body style={{margin: 0}}>
+      <Body style={{margin: 0}} id={"root"}>
         <Authenticator>
           <GlobalStateProvider>
             <NotificationStateProvider>

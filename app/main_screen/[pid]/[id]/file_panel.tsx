@@ -1,4 +1,3 @@
-"use client";
 import '@aws-amplify/ui-react/styles.css';
 import React, {ChangeEvent, Component, ElementType, useEffect, useRef, useState} from "react";
 import { useGlobalState } from "@/app/GlobalStateContext";
@@ -8,30 +7,40 @@ import {
   listFilesForProjectAndParentIds,
   searchFiles,
   updateFileLocation,
-    createTag,
-    deleteTag,
-    getTags,
-    getFilePath,
-    getFileIdPath
+  createTag,
+  deleteTag,
+  getTags,
+  getFilePath,
+  getFileIdPath,
+  processAndUploadFiles, deleteFile, Restorefile, hardDeleteFile,
+  getFileChildren, batchUpdateFilePath, pokeFile
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
 import { generateClient } from "aws-amplify/api";
+import { startDownloadTask, downloadFolderAsZip } from "@/lib/storage";
 import type { Schema } from "@/amplify/data/resource";
 import CreateFilePanel from "../../popout_create_file_panel"
 import {useRouter, useSearchParams} from "next/navigation"
 import {getProjectName} from "@/lib/project";
 import Link from "next/link";
 import {JSX} from "react/jsx-runtime";
+import ConflictModal from '../../conflictModal';
+
+
 import IntrinsicElements = JSX.IntrinsicElements;
+import {isCancelError} from "aws-amplify/storage";
+import RecycleBinPanel from "@/app/main_screen/popout_recycling_bin";
 
 const client = generateClient<Schema>();
 
-// TODO Correct weird loading errors, make sure that the project loads until at least after filepath loads
+// TODO add routing support for currently viewed message window
 // TODO remove 'list' requests wherever possible. I think with relational querying, I can make file display use a 'Get' request instead of a 'List' request
 // TODO Make sure file drag-and-drop works as expected
-// TODO Make sure updates works as expected (dependent on TODO above)
+// TODO This means that I need the following features : group-select drag&drop, drag&drop to file path elements at the top of window
 
+// TODO Make sure updates works as expected (dependent on TODO above)
+//I don't quite remember what this one means ^^
 function compare_two_numbers(num_1: number, num_2: number) {
   if(num_1 < num_2){
     return -1
@@ -83,12 +92,6 @@ interface fileInfo{
   isDirectory: boolean | null
 }
 
-interface tagInfo{
-  tagId: string,
-  fileId: string | null,
-  tagName: string
-}
-
 interface activeParent{
   id: string,
   depth: number
@@ -100,20 +103,39 @@ export default function FilePanel() {
   const routerSearchParams = useSearchParams()
   const router = useRouter()
 
-  const {userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId, heldKeys, setHeldKeys} = useGlobalState();
-  const {processAndUploadFiles } = useNotificationState();
+  const {userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId, heldKeys, setHeldKeys, draggingFloatingWindow} = useGlobalState();
 
+  const {uploadQueue, uploadTask, uploadProgress, setUploadProgress,
+    downloadProgressMap, setDownloadProgressMap, completedUploads, setCompletedUploads,
+  showProgressPanel, setShowProgressPanel} = useNotificationState();
+
+
+  const folderDownloadTask = useRef<{ isCanceled: boolean; cancel: () => void } | null>(null);
+
+  //const uploadQueue = useRef<Array<{
+  //  folderDict: Record<string, any>,
+  //  ownerId: string,
+  //  projectId: string,
+  //  parentId: string
+        //}>>([]);
+//
+  //const uploadTask = useRef<{  isCanceled: boolean;
+  //  uploadedFiles: { storageKey?: string, fileId?: string }[];  cancel: () => void; }>({ isCanceled: false, uploadedFiles: [], cancel: () => {} });
   const [projectId, setProjectId] = useState<string | undefined>(undefined)
-  const [projectName, setProjectName] = useState<string | undefined>(undefined)
-  const [filePathElement, setFilePathElement] = useState<ElementType>([])
+
+  const projectName = useRef<string | undefined>(undefined)
+
+  const [filePathElement, setFilePathElement] = useState<{fileName: string | undefined, href: string}[]>([])
 
   const [activeParentIds, setActiveParentIds] = useState<activeParent[]>([])
-  const [activeFilePath, setActiveFilePath] = useState<string | undefined>(undefined)
 
+  const [rootParentId, setRootParentId] = useState<string | null>(null)
 
   const [contextMenuPosition, setContextMenuPosition] = useState([0,0])
 
   const [mouseCoords, setMouseCoords] = useState([0,0])
+
+  const observeMouseCoords = useRef<boolean>(true);
 
   const [contextMenuFileId, setContextMenuFileId] = useState<string | undefined>(undefined);
 
@@ -122,6 +144,8 @@ export default function FilePanel() {
   const [contextMenuTagPopout, setContextMenuTagPopout] = useState(false);
 
   const [contextMenuTags, setContextMenuTags] = useState< Nullable<string>[] | null | undefined>(undefined)
+
+  const [contextMenuUser, setContextMenuUser] = useState<string | undefined>(undefined);
 
   const [files, setFiles] = useState<Array<fileInfo>>([]);
   const filesRef = useRef(files)
@@ -133,14 +157,9 @@ export default function FilePanel() {
 
   const [authorSearchTerm, setAuthorSearchTerm] = useState<Array<string>>([])
 
-  const [visibleTags, setVisibleTags] = useState<Array<string>>([])
   const filesByParentId = useRef<{[key: string]: [number]}>({})
 
   const filesByFileId = useRef<{[key: string]: number}>({})
-
-  const filesByTagId = useRef<{[key: string]: number}>({})
-
-  const [tags, setTags] = useState<Array<tagInfo>>([]);
 
   const [sort, setSort] = useState("alphanumeric")
 
@@ -158,11 +177,26 @@ export default function FilePanel() {
   const isLongPress = useRef(false);
 
   const [createFilePanelUp, setCreateFilePanelUp] = useState(false);
+
+  const [displayConflictModal, setDisplayConflictModel] = useState(false);
+
+  const conflictModalData = useRef<{fileName: string, onResolve: (choice: "overwrite" | "version" | "cancel" | null, all: boolean) => void} | undefined>(undefined)
+
   const createFilePanelInitX = useRef(0);
   const createFilePanelInitY = useRef(0);
   const createFileOrFolder = useRef("File");
 
   const shiftKey = useRef(false)
+
+  //const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  //const [downloadProgressMap, setDownloadProgressMap] = useState<Record<string, number>>({});
+  //const [completedUploads, setCompletedUploads] = useState<number[]>([]);
+  //const [showProgressPanel, setShowProgressPanel] = useState(true);
+
+
+  const [showRecycleBin, setShowRecycleBin] = useState(false);
+
+  const [dragOverFileId, setDragOverFileId] = useState<string | undefined>(undefined);
 
 
   //sorts files to be displayed by the user
@@ -287,6 +321,7 @@ export default function FilePanel() {
     if(projectId){
       fetchFiles();
       const unsubscribe = observeFiles();
+
       return () => unsubscribe();
     }
   }, [activeParentIds, search]);
@@ -296,40 +331,30 @@ export default function FilePanel() {
     const proj_id = routerSearchParams.get("pid")
     const root_id = routerSearchParams.get("id")
     if(!proj_id) {
-      setActiveFilePath(undefined)
       setLoading(false)
       return
     }
     setProjectId(proj_id)
 
     if(!root_id) {
-      setActiveFilePath(undefined)
       setLoading(false)
       return
     }
-
+    setRootParentId(root_id)
     setActiveParentIds([{id: root_id, depth: 0}])
     fetchRootInfo(root_id, proj_id)
-
-
-
 
     //setActiveParentIds([routerSearchParams.id])
   }, [routerSearchParams])
   async function fetchRootInfo(root_id: string, proj_id: string){
     const activeFilePath = await getFilePath(root_id, proj_id)
 
-    const activeProjectName = await getProjectName(proj_id)
+    projectName.current = await getProjectName(proj_id)
     if(activeFilePath) {
-      await createFileIdMapping(root_id, proj_id, activeFilePath, activeProjectName)
+      await createFileIdMapping(root_id, proj_id, activeFilePath, projectName.current)
 
     } else {
-      setFilePathElement([<Link
-                              key={0}
-                              href={`/main_screen?pid=${proj_id}&id=ROOT-${proj_id}`}
-                              style={{color: "inherit", textDecoration: "None"}}>
-                            {activeProjectName}
-                          </Link>])
+      setFilePathElement([{fileName: `${projectName.current}/`, href: `/main_screen?pid=${proj_id}&id=ROOT-${proj_id}`}])
       setLoading(false)
     }
   }
@@ -343,12 +368,7 @@ export default function FilePanel() {
       return
     }
     fileIdPath.push(root_id)
-    setFilePathElement([projectName, ...activeFilePath.split("/").splice(1)].map((fileName, i) => (<Link
-                                                                                                                                      href={`/main_screen?pid=${proj_id}&id=${fileIdPath[i]}`}
-                                                                                                                                      style={{color: "inherit", textDecoration: "None"}}
-                                                                                                                                      key={i}>
-                                                                                                                                    {fileName}/
-                                                                                                                                    </Link>)))
+    setFilePathElement([projectName, ...activeFilePath.split("/").splice(1)].map((fileName, i) => ({fileName: `${fileName}/`, href: `/main_screen?pid=${proj_id}&id=${fileIdPath[i]}`})))
     setLoading(false)
     return
 
@@ -358,14 +378,24 @@ export default function FilePanel() {
 
     const subscription = client.models.File.observeQuery({
       filter: {
+            and: [
+              {
+                or: activeParentIds.map(parent => ({
+                  parentId: {eq: parent.id}
+                })),
+              },
+              {
+                isDeleted: {eq: 0}
+              }
+            ]
             //projectId: {eq: projectId}
-            or: activeParentIds.map(parent => ({
-              parentId: { eq: parent.id }
-          }))
+
       },
+      selectionSet: ["fileId", "filename", "filepath", "parentId", "size", "versionId", "ownerId", "projectId", "createdAt",
+      "updatedAt", "isDirectory"]
     }).subscribe({
       next: async ({ items }) => {
-
+        console.log("Hello")
         if(items.length == 0){
           return []
         }
@@ -385,6 +415,7 @@ export default function FilePanel() {
           open: activeParentIds.some(parent => parent.id === file.fileId),
           isDirectory: file.isDirectory
         }));
+        console.log(activeParentIds)
         //console.log(temp_files)
         setFiles(sort_files_with_path(temp_files));
         return temp_files;
@@ -398,7 +429,6 @@ export default function FilePanel() {
       subscription.unsubscribe();
     };
   };
-
 
 
   async function fetchFilesWithSearch(){
@@ -537,81 +567,335 @@ export default function FilePanel() {
     };
   };
 
+  const activeDownloads = new Map<string, ReturnType<typeof startDownloadTask>>();
 
-
-  const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId: string, parentId: string) => {
-    setCreateFilePanelUp(false)
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-
-    if (isDirectory) {
-        input.webkitdirectory = true; // Enable directory selection
-    }
-
-    input.addEventListener("change", async (event) => {
-        const files = (event.target as HTMLInputElement).files;
-        if (!files) {
-            console.error("[ERROR] No files selected.");
-            return;
-        }
-
-        let folderDict: Record<string, any> = {}; // Dictionary to store folder structure
-
-        function addToNestedDict(
-            dict: Record<string, any>,
-            pathParts: string[],
-            fileName: string,
-            fileObj: File
-        ) {
-            let currentLevel = dict;
-
-            for (let i = 0; i < pathParts.length; i++) {
-                let part = pathParts[i];
-
-                // If this folder does not exist in the dictionary, create it
-                if (!currentLevel[part]) {
-                    currentLevel[part] = { files: {} };
-                }
-
-                // Move deeper into the nested dictionary
-                currentLevel = currentLevel[part];
-            }
-
-            // Ensure files is an object where filenames are keys
-            currentLevel.files[fileName] = fileObj; // Store the actual file object
-        }
-
-        // Populate the folder structure
-        if (isDirectory) {
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                const relativePath = file.webkitRelativePath || file.name; // Get relative path
-                const pathParts = relativePath.split("/"); // Split into directory structure
-                const fileName = pathParts.pop() || ""; // Extract actual file name
-
-                addToNestedDict(folderDict, pathParts, fileName, file);
-            }
-        } else {
-            // If it's a single file, place it inside a `files` object
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                folderDict = { files: { [file.name]: file } };
-            }
-        }
-
-        console.log("[DEBUG] Final Folder Dictionary:", folderDict);
-
-        // Process dictionary and upload files
-
-
-        await processAndUploadFiles(folderDict, projectId, ownerId, parentId);
+  const handleDownload = async (filePath: string, fileId: string, fileuser: string) => {
+    filePath = `uploads/${fileuser}/${projectId}${filePath}`;
+    const task = startDownloadTask(filePath, (percent) => {
+      setDownloadProgressMap(prev => ({ ...prev, [fileId]: percent }));
     });
 
-    input.click();
-};
-  
+    activeDownloads.set(fileId, task);
 
+    try {
+      const { body } = await task.result;
+      const blob = await body.blob();
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filePath.split('/').pop() || "download";
+      a.click();
+      URL.revokeObjectURL(url);
+
+    } catch (error) {
+      if (isCancelError(error)) {
+        console.warn(`[CANCELLED] Download cancelled: ${filePath}`);
+      } else {
+        console.error(`[ERROR] Download failed: ${filePath}`, error);
+      }
+    } finally {
+      activeDownloads.delete(fileId);
+    }
+  };
+
+  const cancelDownload = (fileId: string) => {
+    const task = activeDownloads.get(fileId);
+    if (task) {
+      task.cancel();
+      activeDownloads.delete(fileId);
+      console.log(`[INFO] Download cancelled for fileId: ${fileId}`);
+    }
+  };
+
+  /** Handles drag-and-drop file selection */
+  const handleFileDrag = async (
+      event: React.DragEvent<HTMLDivElement> | React.DragEvent<HTMLButtonElement>,
+      projectId: string,
+      ownerId: string,
+      parentId: string,
+      rootFilePath: string
+      ) => {
+    if(event.target != event.currentTarget) return
+    if(draggingFloatingWindow.current) return
+    event.preventDefault();
+    setDragOverFileId(undefined);
+    const supportsWebkitGetAsEntry = "webkitGetAsEntry" in DataTransferItem.prototype;
+
+    if (!supportsWebkitGetAsEntry) {
+      console.error("[ERROR] webkitGetAsEntry not supported in this browser.");
+      return;
+    }
+
+    const items: {
+      index: number;
+      item: DataTransferItem;
+      entry: any;
+      file: File | null;
+    }[] = [];
+    if(!event.dataTransfer) return;
+
+    Array.from(event.dataTransfer.items).forEach((item, index) => {
+      if (item.kind !== "file") return;
+
+      const entry = (item as any).webkitGetAsEntry?.();
+      const file = item.getAsFile?.() ?? null;
+
+      items.push({ index, item, entry, file });
+
+      const entryType = entry
+          ? entry.isDirectory
+              ? "directory"
+              : entry.isFile
+                  ? "file"
+                  : "unknown"
+          : "null";
+
+      const name = file?.name || "(no fallback file)";
+    });
+
+    const files: File[] = [];
+    const directories: string[] = [];
+
+    const readEntry = async (entry: any, path = ""): Promise<void> => {
+
+      if (entry.isFile) {
+        await new Promise<void>((resolve, reject) => {
+          entry.file((file: File) => {
+            const fullPath = path ? `${path}/${file.name}` : file.name;
+            const fileWithPath = new window.File([file], fullPath, { type: file.type });
+
+            Object.defineProperty(fileWithPath, "webkitRelativePath", {
+              value: fullPath,
+            });
+
+            files.push(fileWithPath);
+            resolve();
+          }, reject);
+        });
+      } else if (entry.isDirectory) {
+        directories.push(path || entry.name);
+        const reader = entry.createReader();
+
+        const readAll = async () => {
+          let batch: any[] = [];
+          do {
+            batch = await new Promise<any[]>((resolve, reject) =>
+                reader.readEntries(resolve, reject)
+            );
+            for (const subEntry of batch) {
+              await readEntry(subEntry, path ? `${path}/${entry.name}` : entry.name);
+            }
+          } while (batch.length > 0);
+        };
+
+        await readAll();
+      }
+    };
+
+    for (const { index, entry, file } of items) {
+
+
+      if (!entry && file) {
+        Object.defineProperty(file, "webkitRelativePath", { value: file.name });
+        files.push(file);
+        continue;
+      }
+
+      if (!entry) {
+        console.warn(`[WARNING] Item ${index} appears to be empty or unsupported — skipped.`);
+        continue;
+      }
+
+      const entryType = entry.isDirectory ? "directory" : entry.isFile ? "file" : "unknown";
+
+      try {
+        await readEntry(entry);
+      } catch (err) {
+        console.error(`[ERROR] Failed to process entry ${index}: ${entry.name}`, err);
+      }
+    }
+
+
+
+
+
+
+    if (files.length === 0 && directories.length === 0) {
+      console.error("[ERROR] No valid files or directories found.");
+      return;
+    }
+
+    handleCreateFile(directories.length > 0, projectId, ownerId, parentId, files, rootFilePath);
+  };
+
+
+
+  /** Processes files and uploads them */
+  const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId: string, parentId: string, files: File[], rootFilePath: string) => {
+    let globalDecision: 'overwrite' | 'version' | 'cancel' | null = null;
+    let applyToAll = false;
+
+    const showConflictModal = (filename: string) => {
+      return new Promise<'overwrite' | 'version' | 'cancel'>(resolve => {
+
+        const cleanup = () => {
+          setDisplayConflictModel(false)
+          conflictModalData.current = undefined
+        };
+
+        const handleResolve = (choice: typeof globalDecision, all: boolean) => {
+          if (all) {
+            globalDecision = choice;
+            applyToAll = true;
+          }
+          cleanup();
+          if(!choice){
+            resolve("cancel")
+            return
+          }
+          resolve(choice);
+        };
+
+        conflictModalData.current = {
+          fileName: filename,
+          onResolve: handleResolve
+        }
+
+        setDisplayConflictModel(true)
+      });
+    };
+
+    if (!files || files.length === 0) {
+      console.error("[ERROR] No files received.");
+      return;
+    }
+
+    uploadTask.current = {
+      isCanceled: false,
+      uploadedFiles: [],
+      cancel: () => {
+        uploadTask.current!.isCanceled = true;
+      }
+    };
+
+    const folderDict: Record<string, any> = {};
+    setShowProgressPanel(true)
+    for (const file of files) {
+      if (uploadTask.current.isCanceled) break;
+
+      const fullPath = file.webkitRelativePath || file.name;
+      const pathParts = fullPath.split("/");
+      const fileName = pathParts.pop()!;
+      const filePath = "/" + fullPath;
+
+      const conflict = filesRef.current.find(
+          f => f.filepath === filePath && f.projectId === projectId
+      );
+
+      let decision: 'overwrite' | 'version' | 'cancel' = 'overwrite';
+
+      if (conflict && !applyToAll) {
+        decision = await showConflictModal(file.name);
+        if (decision === 'cancel') continue;
+      }
+
+      if (conflict && applyToAll && globalDecision) {
+        decision = globalDecision;
+        if (decision === 'cancel') continue;
+      }
+
+      let actualName = fileName;
+      if (decision === 'version') {
+        const versionTag = `__v${Date.now()}`;
+        const base = fileName.includes(".") ? fileName.substring(0, fileName.lastIndexOf(".")) : fileName;
+        const ext = fileName.includes(".") ? fileName.substring(fileName.lastIndexOf(".")) : "";
+        actualName = `${base}${ext}`;
+      }
+
+      // Place the file into the shared folderDict
+      let current = folderDict;
+      for (const part of pathParts) {
+        if (!current[part]) current[part] = { files: {} };
+        current = current[part];
+      }
+
+      if (!current.files) current.files = {};
+      current.files[actualName] = file;
+    }
+    uploadQueue.current.push({
+      folderDict,
+      ownerId,
+      projectId,
+      parentId,
+    });
+    await processAndUploadFiles(folderDict, projectId, ownerId, parentId, rootFilePath, uploadTask,
+        (percent: number) => setUploadProgress(percent));
+
+    // After upload finishes, remove from queue and reset progress
+    uploadQueue.current.shift();
+    setCompletedUploads((prev) => [...prev, 0]);
+
+    // Delay removal of visual trace
+    setTimeout(() => {
+      setCompletedUploads((prev) => prev.slice(1));
+    }, 3000); // Keeps the completed upload visible for 3 seconds
+
+    setUploadProgress(null);
+    setShowProgressPanel(false)
+  };
+
+
+
+  const cancelUpload = () => {
+    if (uploadTask.current) {
+      uploadTask.current.cancel();
+      console.warn("[CANCEL] Upload cancel requested.");
+    }
+  };
+  async function recursiveDeleteFolder(fileId: string) {
+    if (!fileId || !projectId) return;
+
+    const fileIndex = filesByFileId.current[fileId];
+    const file = files[fileIndex];
+
+    if (file.isDirectory && filesByParentId.current[fileId]) {
+      for (const childIndex of filesByParentId.current[fileId]) {
+        const child = files[childIndex];
+        await recursiveDeleteFolder(child.fileId); // Recursive delete
+      }
+    }
+
+    // delete the folder/file itself
+    await deleteFile(file.fileId, file.versionId, projectId);
+  }
+
+  async function handleDelete(fileId: string) {
+    const file = files.find(f => f.fileId === fileId);
+    if (!file || !projectId) return;
+
+    const confirmDelete = window.confirm(
+        `Are you sure you want to delete ${file.isDirectory ? 'folder' : 'file'}: "${file.filename}"?`
+    );
+
+    if (!confirmDelete) {
+      console.log("Deletion canceled by user.");
+      return;
+    }
+
+    if (file.isDirectory) {
+      await recursiveDeleteFolder(fileId);
+    } else {
+      await deleteFile(fileId, file.versionId, projectId);
+    }
+  }
+
+
+
+
+
+
+  //TODO Make this do something!
   async function onFilePlace(e: React.MouseEvent<HTMLButtonElement> | React.MouseEvent<HTMLDivElement>, overFileId: Nullable<string>, overFilePath: Nullable<string>) {
     if(search){
       return
@@ -619,66 +903,71 @@ export default function FilePanel() {
     if(e.target != e.currentTarget){
       return
     }
-
+    if(!projectId) return
+    if(!overFileId) return
+    observeMouseCoords.current = false
 
 
     isLongPress.current = false;
     clearTimeout(timer.current);
+    //console.log(pickedUpFileGroup)
     if(pickedUpFileGroup != undefined){
-      console.log(pickedUpFileGroup)
 
       for(let fileIndex of pickedUpFileGroup) {
-
+        if(!projectId) return
+        console.log("Here!")
+        const children = await getFileChildren(projectId, files[fileIndex].filepath)
+        console.log(children)
       }
       setPickedUpFileGroup(undefined)
 
-    }
-    setPickedUpFileId(undefined)
+    } else if(pickedUpFileId){
 
 
-    /*
-    if(pickedUpFileGroup != undefined) {
-      const pickedUpFileGroupCopy = pickedUpFileGroup.sort(compare_two_numbers)
-      for(let currIndex = pickedUpFileGroupCopy[0]; currIndex <= pickedUpFileGroupCopy[1]; currIndex++){
+      const children = await getFileChildren(projectId, files[filesByFileId.current[pickedUpFileId]].filepath)
+      if(!children) return
 
-        if(files[currIndex].visible){
-          files[currIndex].parentId = overFileId
-          recursiveGeneratePaths(files[currIndex].fileId, overFilePath != null ? overFilePath + "/" : "/")
+      observeMouseCoords.current = false
 
-          if(overFileId){
-            if(overFileId in filesByParentId.current && filesByParentId.current[overFileId].length > 0 && !files[filesByParentId.current[overFileId][0]].visible){
-              files[currIndex].visible = false
-              recursiveCloseFolder(files[currIndex].fileId)
-            }
-          }
+
+      files[filesByFileId.current[pickedUpFileId]].parentId = overFileId
+
+      //console.log(children)
+      //console.log(files[filesByFileId.current[pickedUpFileId]].filepath)
+      //console.log(overFileId)
+      //console.log(files[filesByFileId.current[overFileId]].filepath)
+      let new_file_path = `/${files[filesByFileId.current[pickedUpFileId]].filename}`
+      if(overFileId in filesByFileId.current){
+        new_file_path = `${files[filesByFileId.current[overFileId]].filepath}/${files[filesByFileId.current[pickedUpFileId]].filename}`
+      } else {
+        if(overFileId == `ROOT-${projectId}`){
+          new_file_path = `/${files[filesByFileId.current[pickedUpFileId]].filename}`
+        } else {
+          const base_file_path = await getFilePath(overFileId, projectId)
+          new_file_path = `${base_file_path}/${files[filesByFileId.current[pickedUpFileId]].filename}`
         }
-        files[currIndex].parentId = overFileId;
-        files[currIndex].filepath = overFilePath + "/" + files[currIndex].fileId;
-        if(overFileId && overFileId in filesByParentId.current && filesByParentId.current[overFileId].length > 0 && !files[filesByParentId.current[overFileId][0]].visible) {
-          files[currIndex].visible = false
-        }
+
       }
-      setPickedUpFileGroup(undefined)
-      setFiles(sort_files_with_path(files))
-    } else {
-      if(pickedUpFileId !== undefined){
-        files[filesByFileId.current[pickedUpFileId]].parentId = overFileId
-        const pickedUpFileIdCopy = pickedUpFileId
-        setPickedUpFileId(undefined)
 
-        recursiveGeneratePaths(pickedUpFileIdCopy, overFilePath !== null ? overFilePath + "/" : "/")
 
-        if(overFileId){
-          if(overFileId in filesByParentId.current && filesByParentId.current[overFileId].length > 0 && !files[filesByParentId.current[overFileId][0]].visible){
-            files[filesByFileId.current[pickedUpFileId]].visible = false
-            recursiveCloseFolder(pickedUpFileId)
-          }
-        }
-        setFiles(sort_files_with_path(files))
-      }
+
+      const fileIds = children.map((child) => child.fileId)
+      const filepaths = children.map((child) => new_file_path + child.filepath.slice(files[filesByFileId.current[pickedUpFileId]].filepath.length))
+      const parentIds = children.map((child) => child.fileId == pickedUpFileId ? (overFileId ? overFileId : `ROOT-${projectId}`) : child.parentId)
+      console.log(filepaths)
+      //`if(overFileId){
+      //`  console.log(files[filesByFileId.current[overFileId]].filepath)
+      //`} else {
+//`
+      //`}
+      const returnedValue = await batchUpdateFilePath(fileIds, projectId, parentIds, filepaths)
+      fetchFiles()
+      const poke = await pokeFile(fileIds[0], projectId, filepaths[0])
+      setPickedUpFileId(undefined)
+
+      console.log(returnedValue)
     }
-
-     */
+    observeMouseCoords.current = true
   }
 
   //If the user holds down left-click on a file / folder, all subdirectories are closed, and
@@ -695,9 +984,8 @@ export default function FilePanel() {
         }
         else {
           //recursiveCloseFolder(currFileId);
-          setPickedUpFileId(currFileId);
+          setPickedUpFileId(currFileId)
         }
-
       }}, 500)
   }
 
@@ -735,7 +1023,6 @@ export default function FilePanel() {
     }))
   }
 
-  //TODO this needs to open a new page centered on clicked fileId
   function reorientView(index: number){
     if(files[index].isDirectory){
       router.push(`/main_screen/?pid=${projectId}&id=${files[index].fileId}`, undefined)
@@ -747,13 +1034,29 @@ export default function FilePanel() {
     }
   }
 
+  function recursiveSelectFile(index: number){
+    let to_append = [index]
+    if(files[index].fileId in filesByParentId.current){
+      for(let file of filesByParentId.current[files[index].fileId]){
+        to_append = [...to_append, ...recursiveSelectFile(file)]
+      }
+    }
+    return to_append
+  }
+
   function selectFile(e: React.MouseEvent<HTMLButtonElement>, index: number){
-    console.log(files[index])
     if(e.detail == 2){
       reorientView(index)
     } else {
-      setSelectedFileGroup([index])
-      //console.log(files[index])
+      let to_append = recursiveSelectFile(index)
+      if(to_append.length == 1){
+        setSelectedFileGroup(to_append)
+      } else {
+        setSelectedFileGroup([to_append[0], to_append[to_append.length-1]])
+      }
+
+
+      console.log(files[index])
     }
   }
   function selectFileGroup(index: number){
@@ -808,9 +1111,7 @@ export default function FilePanel() {
 
   }
 
-  function closeCreateFilePanel(){
-    setCreateFilePanelUp(false)
-  }
+
 
   async function handleTagInput(e: React.KeyboardEvent<HTMLInputElement>){
     if(e.key == "Enter"){
@@ -826,6 +1127,7 @@ export default function FilePanel() {
   // generates list of parentId's to remove from ActiveParentIds
   function recursiveCloseFolder(openFileId: string){
     let to_remove: string[] = []
+    if(!(openFileId in filesByParentId.current)) return []
     for (let folder of filesByParentId.current[openFileId]){
       if(files[folder].isDirectory && activeParentIds.some(parent => parent.id === files[folder].fileId)){
         setActiveParentIds([...activeParentIds.filter(parent => parent.id != files[folder].fileId)])
@@ -859,7 +1161,7 @@ export default function FilePanel() {
 
 
 
-  function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, location: string){
+  function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, location: string, userId: string | undefined){
     if(e.target != e.currentTarget){
       return
     }
@@ -873,6 +1175,7 @@ export default function FilePanel() {
     setContextMenuFileId(fileId);
     setContextMenuFilePath(filepath);
     setContextMenuTagPopout(false);
+    setContextMenuUser(userId);
 
   }
 
@@ -883,142 +1186,222 @@ export default function FilePanel() {
     return found_parent_id? found_parent_id.depth : -1
   }
 
-  function mapActiveFilePath(activeFilePath: string){
-    //console.log([ projectName,...activeFilePath.split("/").splice(1)].join("/"))
-    return [ projectName,...activeFilePath.split("/").splice(1)].join("/")
+  function handleDragOver(e: React.DragEvent<HTMLDivElement> | React.DragEvent<HTMLButtonElement>, fileId: string | undefined){
+    e.preventDefault();
+    if(draggingFloatingWindow.current) return
+    if(e.target != e.currentTarget) return
+
+    setDragOverFileId(fileId)
   }
 
   return (
-      <PanelContainer
-          onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel')}
-          onMouseUp={(e) => onFilePlace(e, "ROOT-"+projectId, null)}
-          onMouseMove = {(e) => {pickedUpFileGroup || pickedUpFileId ? setMouseCoords([e.clientX, e.clientY]) : undefined}}
-          onClick = {(e) => e.target == e.currentTarget ? setSelectedFileGroup(undefined) : undefined}>
-        {
-          filePathElement.length > 0 ?
-          ( <>
-                <FilePathContainer>{filePathElement}</FilePathContainer>
-              <TopBarContainer>
-                <Input onKeyDown={(e) => handleSearch(e)} onChange = {(e) => e.target.value.length == 0 ? setSearch(false) : undefined}>
+      <>
+        <PanelContainer
+            onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel', undefined)}
+            onMouseUp={(e) => onFilePlace(e, rootParentId, null)}
+            onMouseMove = {(e) => {observeMouseCoords.current && (pickedUpFileGroup || pickedUpFileId) ? setMouseCoords([e.clientX, e.clientY]) : undefined}}
+            onClick = {(e) => e.target == e.currentTarget ? setSelectedFileGroup(undefined) : undefined}
+            onDrop = {(e) => {projectId && userId ? handleFileDrag(e, projectId, userId, "ROOT-"+projectId, "") : undefined}}
+            onDragOver = {(e) => {handleDragOver(e, "ROOT-"+projectId)}}
+            onDragLeave = {(e) => {handleDragOver(e, undefined)}}
+            $dragging={dragOverFileId == "ROOT-"+projectId}
+        >
+          {
+            filePathElement.length > 0 ?
+            ( <>
+                  <FilePathContainer>
+                    {filePathElement.map((pathElement, i) => (
+                      <Link href={pathElement.href} style={{textDecoration: "none", color: "black"}} key={i}>
+                        {pathElement.fileName}
+                      </Link>
+                    ))}
+                  </FilePathContainer>
+                <TopBarContainer>
+                  <FloatingRecycleButton onClick={() => setShowRecycleBin(!showRecycleBin)} title="Recycle Bin">
+                    {showRecycleBin ? "📁" : "🗑️"}
+                  </FloatingRecycleButton>
+                  <Input onKeyDown={(e) => handleSearch(e)} onChange = {(e) => e.target.value.length == 0 ? setSearch(false) : undefined}>
 
-                </Input>
-                <SortContainer>
-                  <SortSelector
-                      $selected = {sort ==='alphanumeric'}
-                      onClick={() => handleSwitchSort("alphanumeric")}>
-                    A
-                  </SortSelector>
-                  <SortSelector
-                      $selected = {sort ==='alphanumeric-reverse'}
-                      onClick = {() => handleSwitchSort("alphanumeric-reverse")}>
-                    B
-                  </SortSelector>
+                  </Input>
+                  <SortContainer>
+                    <SortSelector
+                        $selected = {sort ==='alphanumeric'}
+                        onClick={() => handleSwitchSort("alphanumeric")}>
+                      A
+                    </SortSelector>
+                    <SortSelector
+                        $selected = {sort ==='alphanumeric-reverse'}
+                        onClick = {() => handleSwitchSort("alphanumeric-reverse")}>
+                      B
+                    </SortSelector>
 
-                </SortContainer>
-              </TopBarContainer>
-              </>
-          ) : <></>
+                  </SortContainer>
+                </TopBarContainer>
+                </>
+            ) : <></>
 
-        }
+          }
 
-        {files.length > 0 && !loading ? (
-            !search ? (
-                files.map((file, index) => (
-                    <File key={file.fileId}
-                          $depth={getDepth(file)}
-                          $pickedUp={pickedUpFileId == file.fileId || (pickedUpFileGroup != undefined &&  (pickedUpFileGroup.length == 2 && (pickedUpFileGroup[0] <= pickedUpFileGroup[1] && pickedUpFileGroup[0] <= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] >= filesByFileId.current[file.fileId]) || (pickedUpFileGroup[0] > pickedUpFileGroup[1] && pickedUpFileGroup[0] >= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] <= filesByFileId.current[file.fileId])))}
-                          $mouseX={mouseCoords[0]}
-                          $mouseY={mouseCoords[1]}
-                          $selected = {selectedFileGroup != undefined && ((selectedFileGroup.length == 1 && selectedFileGroup[0] == filesByFileId.current[file.fileId]) || (selectedFileGroup.length == 2 && (selectedFileGroup[0] <= selectedFileGroup[1] && selectedFileGroup[0] <= filesByFileId.current[file.fileId] && selectedFileGroup[1] >= filesByFileId.current[file.fileId]) || (selectedFileGroup[0] > selectedFileGroup[1] && selectedFileGroup[0] >= filesByFileId.current[file.fileId] && selectedFileGroup[1] <= filesByFileId.current[file.fileId])))}
-                          $indexDiff = {selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] < selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[0] : selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] > selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[1] : 0}
-                          onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : undefined}
-                          onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
-                          onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(e, filesByFileId.current[file.fileId])}
-                          onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile')}>
-                      {file.isDirectory ? "📁" : "🗎"} {file.filename}
-                      <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
-                                            size={file.size} versionId={file.versionId} ownerId={file.ownerId}
-                                            projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
-                                            updatedAt={file.updatedAt} visible={file.visible}
-                                            open={file.open}
-                                            isDirectory={file.isDirectory}></FileContext>
-                    </File>
+          {files.length > 0 && !loading ? (
+              !search ? (
+                  files.map((file, index) => (
+                      <File key={file.fileId}
+                            $depth={getDepth(file)}
+                            $pickedUp={pickedUpFileId == file.fileId || (pickedUpFileGroup != undefined &&  (pickedUpFileGroup.length == 2 && (pickedUpFileGroup[0] <= pickedUpFileGroup[1] && pickedUpFileGroup[0] <= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] >= filesByFileId.current[file.fileId]) || (pickedUpFileGroup[0] > pickedUpFileGroup[1] && pickedUpFileGroup[0] >= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] <= filesByFileId.current[file.fileId])))}
+                            $mouseX={mouseCoords[0]}
+                            $mouseY={mouseCoords[1]}
+                            $selected = {dragOverFileId == file.fileId || selectedFileGroup != undefined && ((selectedFileGroup.length == 1 && selectedFileGroup[0] == filesByFileId.current[file.fileId]) || (selectedFileGroup.length == 2 && (selectedFileGroup[0] <= selectedFileGroup[1] && selectedFileGroup[0] <= filesByFileId.current[file.fileId] && selectedFileGroup[1] >= filesByFileId.current[file.fileId]) || (selectedFileGroup[0] > selectedFileGroup[1] && selectedFileGroup[0] >= filesByFileId.current[file.fileId] && selectedFileGroup[1] <= filesByFileId.current[file.fileId])))}
+                            $indexDiff = {selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] < selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[0] : selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] > selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[1] : 0}
+                            onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : undefined}
+                            onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
+                            onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(e, filesByFileId.current[file.fileId])}
+                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId)}
+                            onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
+                            onDragLeave = {(e) => {handleDragOver(e, undefined)}}
+                            onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ? handleFileDrag(e, projectId, userId, file.fileId, file.filepath) : undefined}}>
+
+                        {file.isDirectory ? "📁" : "🗎"} {file.filename}
+                        <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                                              size={file.size} versionId={file.versionId} ownerId={file.ownerId}
+                                              projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
+                                              updatedAt={file.updatedAt} visible={file.visible}
+                                              open={file.open}
+                                              isDirectory={file.isDirectory}></FileContext>
+                      </File>
 
 
-            ))) : (
-                files.sort(sort_style_map[sort]).map((file, index) => (
-                    <File key={file.fileId}
-                          $depth={0}
-                          $pickedUp={pickedUpFileId == file.fileId || (pickedUpFileGroup != undefined && (pickedUpFileGroup.length == 2 && (pickedUpFileGroup[0] <= pickedUpFileGroup[1] && pickedUpFileGroup[0] <= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] >= filesByFileId.current[file.fileId]) || (pickedUpFileGroup[0] > pickedUpFileGroup[1] && pickedUpFileGroup[0] >= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] <= filesByFileId.current[file.fileId])))}
-                          $mouseX={mouseCoords[0]}
-                          $mouseY={mouseCoords[1]}
-                          $selected = {selectedFileGroup != undefined && ((selectedFileGroup.length == 1 && selectedFileGroup[0] == filesByFileId.current[file.fileId]) || (selectedFileGroup.length == 2 && selectedFileGroup[0] <= filesByFileId.current[file.fileId] && selectedFileGroup[1] >= filesByFileId.current[file.fileId]))}
-                          $indexDiff = {selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] < selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[0] : selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] > selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[1] : 0}
-                          onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : undefined}
-                          onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
-                          onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(e, filesByFileId.current[file.fileId])}
-                          onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile')}>
-                      {file.isDirectory ? "📁" : "🗎"} {file.filename}
-                      <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
-                                            size={file.size} versionId={file.versionId} ownerId={file.ownerId}
-                                            projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
-                                            updatedAt={file.updatedAt} visible={file.visible} open={file.open}
-                                            isDirectory={file.isDirectory}></FileContext>
-                    </File>
-                )
-            )
-        )) : loading ? (
-            <NoFiles>Loading...</NoFiles>
-            ) :
-            (
-            <NoFiles>No files available.</NoFiles>
-        )}
+              ))) : (
+                  files.sort(sort_style_map[sort]).map((file, index) => (
+                      <File key={file.fileId}
+                            $depth={0}
+                            $pickedUp={pickedUpFileId == file.fileId || (pickedUpFileGroup != undefined && (pickedUpFileGroup.length == 2 && (pickedUpFileGroup[0] <= pickedUpFileGroup[1] && pickedUpFileGroup[0] <= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] >= filesByFileId.current[file.fileId]) || (pickedUpFileGroup[0] > pickedUpFileGroup[1] && pickedUpFileGroup[0] >= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] <= filesByFileId.current[file.fileId])))}
+                            $mouseX={mouseCoords[0]}
+                            $mouseY={mouseCoords[1]}
+                            $selected = {dragOverFileId == file.fileId || selectedFileGroup != undefined && ((selectedFileGroup.length == 1 && selectedFileGroup[0] == filesByFileId.current[file.fileId]) || (selectedFileGroup.length == 2 && selectedFileGroup[0] <= filesByFileId.current[file.fileId] && selectedFileGroup[1] >= filesByFileId.current[file.fileId]))}
+                            $indexDiff = {selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] < selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[0] : selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] > selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[1] : 0}
+                            onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : undefined}
+                            onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
+                            onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(e, filesByFileId.current[file.fileId])}
+                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId)}
+                            onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
+                            onDragLeave = {(e) => {handleDragOver(e, undefined)}}>
+                        {file.isDirectory ? "📁" : "🗎"} {file.filename}
+                        <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                                              size={file.size} versionId={file.versionId} ownerId={file.ownerId}
+                                              projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
+                                              updatedAt={file.updatedAt} visible={file.visible} open={file.open}
+                                              isDirectory={file.isDirectory}></FileContext>
+                      </File>
+                  )
+              )
+          )) : loading ? (
+              <NoFiles>Loading...</NoFiles>
+              ) :
+              (
+              <NoFiles>No files available.</NoFiles>
+          )}
 
-        {createFilePanelUp ?
-            <CreateFilePanel initialPosX={createFilePanelInitX.current} initialPosY={createFilePanelInitY.current}
-                             parentFileId={contextMenuFileId}
-                             isDirectory={createFileOrFolder.current} createFile={handleCreateFile} close={closeCreateFilePanel}/>
-            : <></>
-        }
+          {//createFilePanelUp ? (
+           //   <CreateFilePanel
+           // initialPosX={createFilePanelInitX.current}
+           // initialPosY={createFilePanelInitY.current}
+           // parentFileId={contextMenuFileId}
+           // parentFilePath={contextMenuFilePath}
+           // isDirectory={createFileOrFolder.current}
+           // inputFile={handleFileInput}
+           // dragFile={handleFileDrag}
+           // close={closeCreateFilePanel}
+           // />
+           // ) : <></>
+          }
 
-        {
-          contextMenu && contextMenuType=="filePanel" ? (
-              <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
-                <ContextMenu>
-                  <ContextMenuItem onClick={(e) => {setCreateFilePanelUp(true); createFilePanelInitX.current=e.pageX; createFilePanelInitY.current=e.pageY; createFileOrFolder.current="File"}}>
-                    Create File
-                  </ContextMenuItem>
-                  <ContextMenuItem onClick={(e) => {setCreateFilePanelUp(true); createFilePanelInitX.current=e.pageX; createFilePanelInitY.current=e.pageY; createFileOrFolder.current="Folder"}}>
-                    Create Folder
-                  </ContextMenuItem>
-                  <ContextMenuItem>
-                    Open Chat
-                  </ContextMenuItem>
-                </ContextMenu>
-              </ContextMenuWrapper>
-          ) : contextMenuFileId && contextMenu && contextMenuType=="fileFile" ? (
+          {
+            contextMenu && contextMenuType=="filePanel" ? (
+                <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+                  <ContextMenu>
+                    <ContextMenuItem
+                        onClick={(e) => {
+                          setCreateFilePanelUp(true);
+                          createFilePanelInitX.current = e.pageX;
+                          createFilePanelInitY.current = e.pageY;
+                          createFileOrFolder.current = "File";
+                        }}
+                    >
+                      Upload File/Folder
+                    </ContextMenuItem>
+                    <ContextMenuItem>Open Chat</ContextMenuItem>
+                  </ContextMenu>
+                </ContextMenuWrapper>
+            ) : contextMenuFileId && contextMenu && contextMenuType=="fileFile" ? (
 
-              <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
-                <ContextMenu>
-                  <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
-                    Rename
-                  </ContextMenuItem>
-                  <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
-                    Tags
-                  </ContextMenuItem>
-                  <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
-                    Properties
-                  </ContextMenuItem>
-                  <ContextMenuItem onClick={() => setFileId(contextMenuFileId)} onMouseOver={() => setContextMenuTagPopout(false)}>
-                    Open Chat
-                  </ContextMenuItem>
-                </ContextMenu>
-                {contextMenuTagPopout ?
-                    <ContextMenuPopout $index={1}>
-                      {contextMenuTags || contextMenuTags === null ?
-                          <>
-                            <ContextMenuTagInput placeholder="Insert Tag Name" id={"tag_input"} onKeyDown = {(e) => handleTagInput(e)}/>
-                            { contextMenuTags ?
+                <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+                  <ContextMenu>
+                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
+                      Rename
+                    </ContextMenuItem>
+                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
+                      Tags
+                    </ContextMenuItem>
+                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
+                      Properties
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
+                      Delete File
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
+                      Open Chat
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => handleDownload(contextMenuFilePath!, contextMenuFileId!,contextMenuUser!)}>
+                      Download
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => cancelDownload(contextMenuFileId!)}>
+                      Cancel Download
+                    </ContextMenuItem>
+                  </ContextMenu>
+                  {contextMenuTagPopout ?
+                      <ContextMenuPopout $index={1}>
+                        {contextMenuTags || contextMenuTags === null ?
+                            <>
+                              <ContextMenuTagInput placeholder="Insert Tag Name" id={"tag_input"} onKeyDown = {(e) => handleTagInput(e)}/>
+                              { contextMenuTags ?
+                                  contextMenuTags.filter(tag => tag !== null).map(
+                                      (tag, i) => (
+                                          <ContextMenuItem key={i}>
+                                            {tag == "" ? " " : tag}
+                                            <ContextMenuExitButton id = {"tag_button"} onClick = {() => deleteTag(contextMenuFileId as string, projectId, tag, contextMenuTags)}>
+                                              X
+                                            </ContextMenuExitButton>
+                                          </ContextMenuItem>
+                                      )) : <></>}
+                            </>
+                            : <ContextMenuItem>Loading...</ContextMenuItem>
+                        }
+                      </ContextMenuPopout>
+                      : <></>
+                  }
+                </ContextMenuWrapper>
+            ) : contextMenu && contextMenuType=="fileFolder" ? (
+                <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+                  <ContextMenu>
+                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
+                      Tags
+                    </ContextMenuItem>
+                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
+                      Properties
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => setFileId(contextMenuFileId)} onMouseOver={() => setContextMenuTagPopout(false)}>
+                      Open Chat
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
+                      Delete Folder
+                    </ContextMenuItem>
+                  </ContextMenu>
+                  {contextMenuTagPopout ?
+                      <ContextMenuPopout $index={0}>
+                        {contextMenuTags || contextMenuTags === null ?
+                            <>
+                              <ContextMenuTagInput placeholder="Insert Tag Name" id={"tag_input"} onKeyDown = {(e) => handleTagInput(e)}/>
+                              { contextMenuTags ?
                                 contextMenuTags.filter(tag => tag !== null).map(
                                     (tag, i) => (
                                         <ContextMenuItem key={i}>
@@ -1028,60 +1411,62 @@ export default function FilePanel() {
                                           </ContextMenuExitButton>
                                         </ContextMenuItem>
                                     )) : <></>}
-                          </>
-                          : <ContextMenuItem>Loading...</ContextMenuItem>
-                      }
-                    </ContextMenuPopout>
-                    : <></>
-                }
-              </ContextMenuWrapper>
-          ) : contextMenu && contextMenuType=="fileFolder" ? (
-              <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
-                <ContextMenu>
-                  <ContextMenuItem onClick={(e) => {setCreateFilePanelUp(true); createFilePanelInitX.current=e.pageX; createFilePanelInitY.current=e.pageY; createFileOrFolder.current="File"}} onMouseOver={() => setContextMenuTagPopout(false)}>
-                    Create File
-                  </ContextMenuItem>
-                  <ContextMenuItem onClick={(e) => {setCreateFilePanelUp(true); createFilePanelInitX.current=e.pageX; createFilePanelInitY.current=e.pageY; createFileOrFolder.current="Folder"}} onMouseOver={() => setContextMenuTagPopout(false)}>
-                    Create Folder
-                  </ContextMenuItem>
-                  <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
-                    Tags
-                  </ContextMenuItem>
-                  <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
-                    Properties
-                  </ContextMenuItem>
-                  <ContextMenuItem onClick={() => setFileId(contextMenuFileId)} onMouseOver={() => setContextMenuTagPopout(false)}>
-                    Open Chat
-                  </ContextMenuItem>
-                </ContextMenu>
-                {contextMenuTagPopout ?
-                    <ContextMenuPopout $index={2}>
-                      {contextMenuTags || contextMenuTags === null ?
-                          <>
-                            <ContextMenuTagInput placeholder="Insert Tag Name" id={"tag_input"} onKeyDown = {(e) => handleTagInput(e)}/>
-                            { contextMenuTags ?
-                              contextMenuTags.filter(tag => tag !== null).map(
-                                  (tag, i) => (
-                                      <ContextMenuItem key={i}>
-                                        {tag == "" ? " " : tag}
-                                        <ContextMenuExitButton id = {"tag_button"} onClick = {() => deleteTag(contextMenuFileId as string, projectId, tag, contextMenuTags)}>
-                                          X
-                                        </ContextMenuExitButton>
-                                      </ContextMenuItem>
-                                  )) : <></>}
-                          </>
-                          : <ContextMenuItem>Loading...</ContextMenuItem>
-                      }
-                    </ContextMenuPopout>
-                    : <></>
-                }
-              </ContextMenuWrapper>
-          ) : (
-              <>
-              </>
-          )
-        }
-      </PanelContainer>
+                            </>
+                            : <ContextMenuItem>Loading...</ContextMenuItem>
+                        }
+                      </ContextMenuPopout>
+                      : <></>
+                  }
+                </ContextMenuWrapper>
+            ) : (
+                <>
+                </>
+            )
+          }
+
+
+        </PanelContainer>
+    {/* Progress Panel, uploads/downloads UI */}
+    {//showProgressPanel && (
+     //   <ProgressPanel>
+//
+//
+     //     {Object.entries(downloadProgressMap).map(([fileId, percent]) => (
+     //         <div key={`download-${fileId}`} style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center" }}>
+     //           <ProgressBarContainer style={{ flex: 1 }}>
+     //             <ProgressBarFill percent={percent} />
+     //           </ProgressBarContainer>
+     //           <ProgressLabel style={{ marginLeft: "8px" }}>
+     //             {percent >= 100
+     //                 ? `✅ Downloaded ${fileId}`
+     //                 : `Downloading ${fileId} (${percent.toFixed(0)}%)`}
+     //           </ProgressLabel>
+     //           {percent < 100 && (
+     //               <CancelButton onClick={() => cancelDownload(fileId)} title="Cancel Download">
+     //                 ✖
+     //               </CancelButton>
+     //           )}
+     //         </div>
+     //     ))}
+     //   </ProgressPanel>)
+    }
+    {/* Recycle Bin Button */}
+        {showRecycleBin && (
+            <RecycleBinPanel
+            initialPosX={createFilePanelInitX.current}
+            initialPosY={createFilePanelInitY.current}
+            projectId={projectId}
+            projectName={projectName.current}
+            close={() => setShowRecycleBin(false)}
+            />
+          )}
+
+
+
+    {displayConflictModal && conflictModalData.current && (
+        <ConflictModal filename={conflictModalData.current.fileName} onResolve={conflictModalData.current.onResolve} />
+    )}
+  </>
   );
 
 }
@@ -1197,7 +1582,7 @@ const ContextMenu = styled.div`
 `;
 const ContextMenuPopout = styled.div<{$index: number}>`
     margin-top: ${(props) => "calc(" + props.$index + "* calc(21px + 0.4rem) + 1px)"};
-
+    
     background-color: lightgray;
     border-color: dimgray;
     border-style: solid;
@@ -1240,10 +1625,11 @@ export function FileContext(file: fileInfo ) {
   );
 }
 
-const PanelContainer = styled.div`
+const PanelContainer = styled.div<{$dragging: boolean}>`
+  
   width: 100%;
   height: 100%;
-  background-color: white;
+  background-color: ${props => props.$dragging ? "lightblue" : "white"};
   text-align: center;
   overflow-y: scroll;
 `;
@@ -1324,3 +1710,137 @@ const Input = styled.input`
   border: 2px solid #ccc;
   border-radius: 5px;
 `;
+
+/*--------------------------------------------------------------------
+Comps for Progress display
+--------------------------------------------------------------------*/
+const ProgressBarContainer = styled.div`
+  width: 100%;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  height: 10px;
+  margin: 10px 0;
+  position: relative;
+`;
+
+const ProgressBarFill = styled.div<{ percent: number }>`
+  height: 100%;
+  width: ${(props) => props.percent}%;
+  background-color: #007bff;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+`;
+
+const ProgressLabel = styled.span`
+  font-size: 12px;
+  margin-left: 8px;
+  color: #555;
+`;
+
+const CancelButton = styled.button`
+  margin-left: 8px;
+  border: none;
+  background: transparent;
+  color: red;
+  font-size: 16px;
+  cursor: pointer;
+
+  &:hover {
+    color: darkred;
+  }
+`;
+const ProgressPanel = styled.div`
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  width: 300px;
+  max-height: 50vh;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ccc;
+  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  border-radius: 8px;
+  z-index: 999;
+`;
+
+const ProgressHeader = styled.h4`
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  text-align: left;
+  color: #333;
+`;
+
+const DismissButton = styled.button`
+  background: none;
+  border: none;
+  color: #888;
+  float: right;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  margin-left: auto;
+
+  &:hover {
+    color: #333;
+  }
+`;
+
+const FloatingRecycleButton = styled.button`
+
+  width: 2rem;
+  height: 2rem;
+  margin: auto .5rem;
+  border-radius: 1rem;
+  border-style: solid;
+  border-width: 2px;
+  border-color: #ccc;
+  cursor: pointer;
+  filter: drop-shadow(1px 1px 1px #000000);
+  &:hover{
+
+    background-color: lightgray !important;
+  }
+
+  &:hover {
+    background-color: #ddd;
+  }
+`;
+/*
+const RecycleBinPanel = styled.div`
+  position: absolute;
+  top: 3.5rem;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #fff5f5;
+  overflow-y: auto;
+  z-index: 500;
+  padding: 1rem;
+  border-top: 2px solid #ddd;
+`;
+
+const RecycleBinHeader = styled.h3`
+  margin-top: 0;
+  color: #c00;
+`;
+
+const RecycleFileActions = styled.div`
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-start;
+
+  button {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+    border: 1px solid #ccc;
+    background-color: #eee;
+    cursor: pointer;
+
+    &:hover {
+      background-color: #ddd;
+    }
+  }
+`;
+*/

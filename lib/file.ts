@@ -1,7 +1,8 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import {getVersionId, uploadFile} from "./storage";
+import {deleteFileFromStorage, getFileVersions, uploadFile} from "./storage";
 import {Nullable} from "@aws-amplify/data-schema";
+import React from "react";
 const client = generateClient<Schema>();
 
 
@@ -42,142 +43,222 @@ export async function getVersionHistory(fileId: string): Promise<any[]> {
 
 
 export async function processAndUploadFiles(
-  dict: Record<string, any>,
-  projectId: string,
-  ownerId: string,
-  parentId: string, // Parent ID is required
-  currentPath: string = ""
+    dict: Record<string, any>,
+    projectId: string,
+    ownerId: string,
+    parentId: string,
+    currentPath: string = "",
+    uploadTaskRef?: React.RefObject<{
+      isCanceled: boolean;
+      uploadedFiles: { storageKey?: string, fileId?: string }[];
+    }>,
+    setProgress?: (percent: number) => void
 ) {
-
-
-  const projectFiles = await listFilesForProject(projectId);
-  let fileCounter = projectFiles.length + 1;
-
   const now = new Date().toISOString();
-
-  // Define a root parent ID for the project
   const rootParentId = `ROOT-${projectId}`;
+  const uploadedFiles: { storageKey?: string, fileId?: string }[] = [];
+  let fileCount = 0;
+  let processed = 0;
+
+  // First, count all files
+  function countFiles(obj: Record<string, any>): number {
+    let count = 0;
+    for (const [key, value] of Object.entries(obj)) {
+      if (key === "files") {
+        count += Object.keys(value).length;
+      } else {
+        count += countFiles(value);
+      }
+    }
+    return count;
+  }
+
+  fileCount = countFiles(dict);
 
   async function recursivePrint(
-    obj: Record<string, any>,
-    depth: number = 0,
-    currentParentId: string = parentId || rootParentId, // Use rootParentId for top-level
-    currentFilePath: string = currentPath
+      obj: Record<string, any>,
+      depth: number = 0,
+      currentParentId: string = parentId || rootParentId,
+      currentFilePath: string = currentPath
   ) {
+    try {
+      if (uploadTaskRef?.current?.isCanceled) {
+        console.warn("[CANCEL] Upload task was canceled mid-process.");
+        await abortUpload(uploadTaskRef.current.uploadedFiles, projectId);
+        throw new Error("Upload canceled by user.");
+      }
 
-    for (const [key, value] of Object.entries(obj)) {
-      console.log(`${depth}${"  ".repeat(depth)}Key: ${key}`);
+      for (const [key, value] of Object.entries(obj)) {
+        const uuid = crypto.randomUUID();
 
-      if (key !== "files") {
-        console.log(`Creating Directory: ${key}`);
+        if (key !== "files") {
+          // Create directory
+          const newFile = await createFile({
+            projectId,
+            fileId: uuid,
+            filename: key,
+            isDirectory: true,
+            filepath: `${currentFilePath}/${key}`,
+            parentId: currentParentId,
+            size: 0,
+            storageId: undefined,
+            versionId: "1",
+            ownerId,
+            isDeleted: 0,
+            createdAt: now,
+            updatedAt: now,
+          });
 
-        // Create directory entry
-        const newFile = await createFile({
-          projectId,
-          fileId: `${projectId}F${fileCounter++}`,
-          filename: key,
-          isDirectory: true,
-          filepath: currentFilePath + "/" + key,
-          parentId: currentParentId, // Ensure valid parentId
-          size: 0,
-          versionId: "1",
-          ownerId,
-          isDeleted: false,
-          createdAt: now,
-          updatedAt: now,
-        });
-        if(newFile.data !== null){
-          console.log(`Directory Created: ${newFile.data?.fileId}`, newFile);
-          // Recursively process children with updated `parentId`
-          await recursivePrint(value, depth + 1, newFile.data?.fileId, `${currentFilePath}/${key}`);
-        } else {
-          console.log('Directory Failed to upload')
-        }
-
-
-
-      } else {
-        console.log(`Creating files inside: ${currentFilePath}`);
-
-        for (const [fileKey, fileValue] of Object.entries(value)) {
-          if (!(fileValue instanceof File)) {
-            console.error(`Skipping ${fileKey}: Invalid file object`, fileValue);
-            continue;
+          const nextParentId = newFile?.data?.fileId;
+          if (!nextParentId) {
+            await abortUpload(uploadedFiles, projectId);
+            throw new Error("Failed to create directory");
           }
 
-          console.log(`  Creating file: ${fileKey}`);
-          // Ensure correct file path
-          const folderPath = currentFilePath ? `${currentFilePath}/${fileKey}` : `/${fileKey}`;
+          uploadedFiles.push({ fileId: nextParentId });
+          uploadTaskRef?.current?.uploadedFiles.push({ fileId: nextParentId });
 
-          try {
-            const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
-            const versionId = await getVersionId(storageKey);
+          await recursivePrint(value, depth + 1, nextParentId, `${currentFilePath}/${key}`);
+        } else {
+          for (const [fileKey, fileValue] of Object.entries(value)) {
+            const fileUuid = crypto.randomUUID();
+            if (!(fileValue instanceof File)) continue;
 
-            // Create file entry
-            console.log(currentFilePath)
-            const newFile = await createFile({
-              projectId,
-              fileId: `${projectId}F${fileCounter++}`,
-              filename: fileKey,
-              isDirectory: false, // ✅ Ensure explicitly set for files
-              filepath: currentFilePath + "/" + fileKey,
-              parentId: currentParentId, // Ensure valid parentId
-              storageId: storageKey,
-              size: fileValue.size ?? 0,
-              versionId,
-              ownerId,
-              isDeleted: false,
-              createdAt: now,
-              updatedAt: now,
-            });
+            const folderPath = currentFilePath ? `${currentFilePath}/${fileKey}` : `/${fileKey}`;
 
-            console.log(`File Created: ${newFile.data?.fileId}`, newFile);
-          } catch (error) {
-            console.error(`Error processing file ${fileKey}:`, error);
+            try {
+              const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
+              const versionId = await getFileVersions(storageKey) || '1';
+
+              const newFile = await createFile({
+                projectId,
+                fileId: fileUuid,
+                filename: fileKey,
+                isDirectory: false,
+                filepath: `${currentFilePath}/${fileKey}`,
+                parentId: currentParentId,
+                storageId: storageKey,
+                size: fileValue.size ?? 0,
+                versionId,
+                ownerId,
+                isDeleted: 0,
+                createdAt: now,
+                updatedAt: now,
+              });
+
+              if (!newFile?.data?.fileId) {
+                await abortUpload(uploadedFiles, projectId);
+                throw new Error("DB record creation failed");
+              }
+
+              uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
+              uploadTaskRef?.current?.uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
+
+              processed++;
+              if (setProgress && fileCount > 0) {
+                const percent = (processed / fileCount) * 100;
+                setProgress(percent);
+              }
+
+            } catch (error) {
+              await abortUpload(uploadedFiles, projectId);
+              throw error;
+            }
           }
         }
       }
+    } catch (error) {
+      await abortUpload(uploadedFiles, projectId);
+      throw error;
     }
   }
-  console.log("Listing dictionary objects recursively:");
-  await recursivePrint(dict);
-  console.log("Processing complete.");
-  return true
-}
 
-
-interface searchAttributes {
-  names: string[],
-  tags: string[],
-  authors: string[]
-}
-export async function listFilesForProjectIdAndAttributes(projectId: string, attributes: searchAttributes) {
   try {
-    console.log("Oh my God")
-    const response = await client.models.File.list({
-      filter: {
-        and: [
-          {projectId: { eq: projectId }},
-          // Query all files with the same projectId,
-
-          {
-            or: attributes.names.map(name => ({
-              filename: {contains: name}
-            }))
-          }
-        ]
-
-      },
-    }); // Fetch all files
-    const files = response.data; // Extract file array
-    if (!files) return [];
-    console.log(files)
-    return files;
-
-  } catch (error) {
-    console.error("Error fetching files for project:", error);
-    return [];
+    await recursivePrint(dict);
+  } catch (e) {
+    console.warn("[FINAL] Upload process was aborted.");
   }
+}
+
+export async function Restorefile(fileId: string, versionId: string, projectId: string) {
+  await client.models.File.update({
+    fileId,
+    versionId,
+    projectId,
+    isDeleted: 0,
+    deletedAt: null
+  });
+}
+
+
+export async function hardDeleteFile(fileId: string, projectId: string) {
+  try {
+    // Step 1: Get the file by ID
+    const file = await client.models.File.get({ fileId, projectId });
+
+    if (!file || !file.data) {
+      alert("File not found.");
+      return;
+    }
+
+    // Step 2: Delete from S3
+    if (file?.data?.storageId) {
+      await deleteFileFromStorage(file.data.storageId);
+      console.log(`[HARD DELETE] Deleted from storage: ${file.data.storageId}`);
+    }
+
+    // Step 3: Delete from database
+    await client.models.File.delete({
+      fileId: file.data.fileId,
+      projectId: file.data.projectId,
+    });
+
+    console.log(`[HARD DELETE] Deleted DB record: ${file.data.fileId}`);
+    alert("File permanently deleted.");
+  } catch (error) {
+    console.error("[HARD DELETE ERROR]", error);
+    alert("An error occurred while hard deleting the file.");
+  }
+}
+
+
+
+
+
+
+
+export async function abortUpload(
+    uploadedFiles: { storageKey?: string, fileId?: string }[],
+    projectId: string
+) {
+  console.warn("[ABORT] Cleaning up uploaded files...");
+
+  // Reverse the list to delete children before parents
+  for (let i = uploadedFiles.length - 1; i >= 0; i--) {
+    const { storageKey, fileId } = uploadedFiles[i];
+
+    try {
+      if (storageKey) {
+        await deleteFileFromStorage(storageKey);
+        console.log(`[ABORT] Deleted storage: ${storageKey}`);
+      }
+
+      if (fileId) {
+        await deleteFileFromDB(fileId, projectId);
+        console.log(`[ABORT] Deleted DB record: ${fileId}`);
+      }
+    } catch (err) {
+      console.error(`[ABORT] Failed to delete ${storageKey ?? fileId}`, err);
+    }
+  }
+
+  console.warn("[ABORT] Upload aborted. Cleaned up uploaded files in reverse order.");
+}
+
+
+
+export async function deleteFileFromDB(fileId: string, projectId: string): Promise<void> {
+  await client.models.File.delete({fileId, projectId});
 }
 
 //PD : I updated this function to use 'filter' attribute
@@ -207,6 +288,7 @@ export async function listFilesForProjectAndParentIds(projectId: string, parentI
       filter: {
         and: [
           { projectId: { eq: projectId } },
+          {isDeleted: {eq: 0}},
           {
             or: parentIds.map(parentId => ({
               parentId: { eq: parentId }
@@ -298,7 +380,7 @@ export async function getFileIdPath(fileId: string, projectId: string): Promise<
       projectId
     },
     {
-      selectionSet: ["fileId", "parentId", "filename"]
+      selectionSet: ["fileId", "parentId", "filename", "filepath"]
     })
 
     if(!file || !file.data || !file.data.parentId) return [`ROOT-${projectId}`]
@@ -331,6 +413,66 @@ export async function getFilePath(fileId: string, projectId: string){
 
   } catch (error) {
     console.error(`Error getting filepath for fileId ${fileId} and projectId ${projectId} :`, error)
+  }
+
+}
+
+export async function getFileChildren(projectId: string, filepath: string){
+  try {
+    const files = await client.models.File.listFileByProjectIdAndFilepath({
+      projectId,
+      filepath: {beginsWith: filepath}
+    })
+    return files.data
+  } catch (error) {
+    console.error(`Error retrieving files with filepath prefix : ${filepath} :`, error)
+  }
+
+}
+export async function pokeFile(fileId: string, projectId: string, filepath: string){
+  try {
+
+    const pokeUpdate = await client.models.File.update({
+      fileId: fileId,
+      projectId: projectId,
+      filepath: filepath
+    })
+
+    return pokeUpdate
+
+  } catch (error) {
+    console.error("Failed to poke", error)
+  }
+
+}
+export async function batchUpdateFilePath(fileIds: string[], projectId: string, parentIds: string[], filepaths: string[]) {
+  try {
+    const filesBack = await client.mutations.batchUpdateFile({fileIds: fileIds, parentIds: parentIds, projectId: projectId, filepaths: filepaths})
+
+    //dummy update which 'pokes' the File table, so that AWS knows to refresh subscriptions
+
+
+    return filesBack.data
+
+  } catch (error) {
+    console.error(`Error performing batch update : `, error)
+  }
+}
+
+export async function getFilesByProjectIdAndIsDeleted(projectId: string){
+  try {
+    const files = await client.models.File.listFileByProjectIdAndIsDeleted({
+      projectId,
+      isDeleted: {eq: 1}
+    },
+        {
+          selectionSet: ["fileId", "filename", "filepath", "size", "ownerId", "projectId", "createdAt", "updatedAt", "isDirectory", "versionId"]
+        })
+
+    return files.data
+
+  } catch (error) {
+    console.error(`Error getting deleted files for projectId ${projectId} :`, error)
   }
 
 }
@@ -370,7 +512,7 @@ export async function createFile({
   versionId,
     storageId,
   ownerId,
-  isDeleted = false,
+  isDeleted = 0,
   createdAt,
   updatedAt,
 }: {
@@ -382,8 +524,9 @@ export async function createFile({
   parentId: string;
   size: number;
   versionId: string;
+  storageId?: string;
   ownerId: string;
-  isDeleted?: boolean;
+  isDeleted?: number;
   createdAt: string;
   updatedAt: string;
 }) {
@@ -397,6 +540,7 @@ export async function createFile({
     size,
     versionId,
     ownerId,
+    storageId,
     isDeleted,
     createdAt,
     updatedAt,
@@ -467,7 +611,7 @@ export async function deleteFile(id: string, version: string, projectId: string)
       fileId: id,
       versionId: version,
       projectId,
-      isDeleted: true,
+      isDeleted: 1,
       deletedAt: now,
     });
 

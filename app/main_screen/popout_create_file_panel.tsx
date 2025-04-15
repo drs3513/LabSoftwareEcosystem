@@ -1,24 +1,28 @@
 import styled from "styled-components";
-import React, {useRef, useState} from "react";
+import React, { useRef, useState, DragEvent } from "react";
 import { useGlobalState } from "../GlobalStateContext";
 
-interface props{
+interface props {
     initialPosX: number;
     initialPosY: number;
     parentFileId: string | undefined;
+    parentFilePath: string | undefined;
     isDirectory: string;
-    createFile: (isDirectory: boolean, projectId: string, ownerId: string, parentId: string, tags: string[]) => void;
-    close: ()=>void;
+    inputFile: (isDirectory: boolean, projectId: string, ownerId: string, parentId: string) => void;
+    dragFile: (event: DragEvent, projectId: string, ownerId: string, parentId: string) => void;
+    close: () => void;
 }
 
+export default function CreateFilePanel({ initialPosX, initialPosY, parentFileId, parentFilePath, isDirectory, inputFile, dragFile, close }: props) {
+    if (initialPosX + 400 > document.documentElement.offsetWidth) {
+        initialPosX = document.documentElement.offsetWidth - 400;
+    }
+    if (initialPosY + 400 > document.documentElement.offsetHeight) {
+        initialPosY = document.documentElement.offsetHeight - 400;
+    }
 
-export default function CreateFilePanel({initialPosX, initialPosY, parentFileId, isDirectory, createFile, close}: props){
-    if(initialPosX + 400 > document.documentElement.offsetWidth){
-        initialPosX = document.documentElement.offsetWidth - 400
-    }
-    if(initialPosY + 400 > document.documentElement.offsetHeight){
-        initialPosY = document.documentElement.offsetHeight - 400
-    }
+
+
     const [tags, setTags] = useState<Array<string>>([])
     const [posX, setPosX] = useState(initialPosX)
     const [posY, setPosY] = useState(initialPosY)
@@ -28,7 +32,27 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
     const initialYDiff = useRef(0);
     const initialResizeX = useRef(0);
     const initialResizeY = useRef(0);
+    const fileName = useRef("");
     const {projectId, userId} = useGlobalState();
+    const [dragging, setDragging] = useState(false);
+
+    function handleDragOver(e: DragEvent<HTMLDivElement>) {
+        e.preventDefault();
+        setDragging(true);
+    }
+
+    function handleDragLeave() {
+        setDragging(false);
+    }
+
+    async function handleDrop(e: DragEvent<HTMLDivElement>) {
+        dragFile(
+            e,
+            projectId as string,
+            userId as string,
+            parentFileId as string
+        );
+    }
 
     function handleInsertTag(e: React.KeyboardEvent<HTMLInputElement>){
         const inputBox = e.target as HTMLInputElement
@@ -38,7 +62,12 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
 
         }
     }
+
+
+
+
     function handleStartDrag(e: React.DragEvent<HTMLDivElement>){
+        console.log("Happening?")
         const panel = e.currentTarget as HTMLDivElement
         const panelBoundingBox = panel.getBoundingClientRect()
         initialXDiff.current = e.pageX - panelBoundingBox.x
@@ -46,6 +75,7 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
     }
 
     function handleEndDrag(e: React.DragEvent<HTMLDivElement>){
+
         setPosX(e.pageX - initialXDiff.current)
         setPosY(e.pageY - initialYDiff.current)
     }
@@ -62,7 +92,7 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
         }
     }
 
-    return(
+    return (
         <PanelContainer
             $posX = {posX}
             $posY = {posY}
@@ -101,18 +131,22 @@ export default function CreateFilePanel({initialPosX, initialPosY, parentFileId,
                 ) : <></>
                 }
             </TagDisplay>
-            <Button onClick= {() => {if(projectId && userId){createFile(isDirectory == "Folder", projectId, userId, parentFileId, tags)}}}>
-                {isDirectory === "File" ? "Upload File" : "Upload Folder"}
-            </Button>
+            <DropZone onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} $dragging={dragging}>
+                <DropText>{dragging ? "Drop files/folders here..." : "Drag and drop files or folders"}</DropText>
+                <UploadButton onClick={() => inputFile(false, projectId as string, userId as string, parentFileId as string)}>Browse Files</UploadButton>
+                <UploadButton onClick={() => inputFile(true, projectId as string, userId as string, parentFileId as string)}>Browse Folders</UploadButton>
+            </DropZone>
+
             <Resize draggable={true} onDragStart={(e) => {initialResizeX.current = e.pageX; initialResizeY.current = e.pageY}} onDragEnd = {(e) => {handleResize(e)}}>
-                <svg viewBox={"0 0 24px 24px"}>
+                <svg viewBox={"0 0 24 24"}>
                     <path d={"M21 15L15 21M21 8L8 21"} stroke="black" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
             </Resize>
-
         </PanelContainer>
-    )
+    );
 }
+
+// Styled Components
 const Resize = styled.div`
     width: 24px;
     height: 24px;
@@ -183,20 +217,59 @@ const TagDisplayIndex = styled.div`
     text-align: left;
     border-bottom: 2px solid #ccc;
 `
-
-
-const Button = styled.button`
-    height: 3rem;
-    width: auto;
-    margin-top: 1rem;
-    padding: 0.5rem;
+const Header = styled.div`
+    width: 100%;
+    padding: 10px;
     background-color: lightgray;
-    border: 2px solid #ccc;
+    text-align: center;
+    font-weight: bold;
+`;
+
+const CloseButton = styled.button`
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    background: none;
+    border: none;
+    font-size: 16px;
     cursor: pointer;
-    &:hover{
-        background-color: darkgray;
+`;
+
+const DropZone = styled.div.attrs<{$dragging: boolean}>(props => ({
+    style: {
+        backgroundColor: props.$dragging ? "#e0f7fa" : "white",
+        border: props.$dragging ? "2px dashed #007bff" : "2px dashed #ccc"
     }
-`
+}))`
+    width: 90%;
+    height: 150px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    transition: background-color 0.3s;
+`;
+
+const DropText = styled.p`
+    font-size: 16px;
+    color: #555;
+`;
+
+const UploadButton = styled.button`
+    margin-top: 10px;
+    padding: 8px 16px;
+    border: none;
+    background-color: #007bff;
+    color: white;
+    font-size: 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    &:hover {
+        background-color: #0056b3;
+    }
+`;
 const InputSmall = styled.input`
     width: 60%;
     margin: 1rem 1rem 1rem 10%;
@@ -214,23 +287,3 @@ const Input = styled.input`
   border: 2px solid #ccc;
   border-radius: 5px;
 `;
-const Header = styled.div`
-    
-    padding: 0.5rem;
-    height: 3rem;
-    background-color: lightgray;
-    text-align: left;
-    -webkit-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-`
-const CloseButton = styled.button`
-    margin-left: auto;
-    width: 30px;
-    height: 30px;
-    float: right;
-    border-radius: 15px;
-    border-style: solid;
-    border-color: gray;
-    cursor: pointer;
-`

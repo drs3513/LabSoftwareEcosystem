@@ -26,7 +26,7 @@ export default function Panel(props: Props ) {
             );
         case 2:
             return (
-                <Body $background={props.backgroundcolor} $width={props.width}>
+                <Body $background={props.backgroundcolor} $width={props.width} id = "fileRoot">
                     <FilePanel/>
                 </Body>
             )

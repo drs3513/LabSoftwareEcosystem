@@ -48,7 +48,7 @@ const schema = a
         updatedAt: a.datetime().required(),
         messages: a.hasMany("Message", ["fileId","projectId"]),
         tags: a.string().array(), // <-CHANGE
-        isDeleted: a.boolean().required(),
+        isDeleted: a.integer().required(), //0 : not deleted, 1 : deleted
         deletedAt: a.datetime(),
         parent: a.belongsTo("File", ["parentId","projectId"]),
         children: a.hasMany("File", ["parentId","projectId"]),
@@ -58,20 +58,39 @@ const schema = a
       .identifier(["fileId","projectId"]) // Use only `fileId` as primary key, projectId as sort key
       .secondaryIndexes((index) => [
         index("fileId").sortKeys(["versionId"]), //Secondary index
-          index("projectId") //Secondary index
+          index("projectId"),
+          index("projectId").sortKeys(["isDeleted"]),
+          index("projectId").sortKeys(["filepath"])
       ]),
+      getFilesByRootId: a
+          .query()
+          .arguments({
+              rootIds: a.string().array(),
+              projectId: a.string()
+          })
+          .returns(a.json())
+          .handler(
+              a.handler.custom({
+                  dataSource: a.ref("File"),
+                  entry: "./getFilesByRootId.js"
+              })
+          ),
 
-
-      //openSearchExampleSearchFiles: a
-      //    .query()
-      //    .returns(a.ref("File").array())
-      //    //.authorization((allow) => [allow.publicApiKey()])
-      //    .handler(
-      //        a.handler.custom({
-      //            entry: "./openSearchExampleSearchFileResolver.js",
-      //            dataSource: "osDataSource",
-      //        })
-      //    ),
+      batchUpdateFile: a
+          .mutation()
+          .arguments({
+              fileIds: a.string().array(),
+              projectId: a.string(),
+              parentIds: a.string().array(),
+              filepaths: a.string().array()
+          })
+          .returns(a.json())
+          .handler(
+              a.handler.custom({
+                  dataSource: a.ref("File"),
+                  entry: "./batchUpdateFile.js"
+              })
+          ),
 
       searchFiles: a
           .query()
@@ -103,17 +122,16 @@ const schema = a
       //            dataSource: "osDataSource"
       //        })
       //    ),
-      //BatchUpdateFile: a
-      //    .mutation()
-      //    .arguments({
-//
-      //})
-      //    .returns(
-      //        a.ref('Post').array()
-      //    )
+      //openSearchExampleSearchFiles: a
+      //    .query()
+      //    .returns(a.ref("File").array())
+      //    //.authorization((allow) => [allow.publicApiKey()])
       //    .handler(
-      //    a.handler.function().async()
-      //),
+      //        a.handler.custom({
+      //            entry: "./openSearchExampleSearchFileResolver.js",
+      //            dataSource: "osDataSource",
+      //        })
+      //    ),
     
 
 
@@ -128,6 +146,7 @@ const schema = a
         createdAt: a.datetime().required(),
         updatedAt: a.datetime(),
         isUpdated: a.boolean().default(false),
+          isDeleted: a.boolean().default(false),
         tags: a.string().array(), // <- CHANGE
         file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
         
@@ -135,23 +154,21 @@ const schema = a
       })
       .identifier(["messageId"]),
 
-    /*
-    // Tag model
-    Tag: a
-      .model({
-        tagId: a.id().required(),
-        tagType: a.enum(["file", "message"]), // Enum for Tag type
-        fileId: a.id(), // Foreign key linking to File or Message
-        projectId: a.id(),
-        messageId: a.id(),
-        tagName: a.string().required(),
-        createdAt: a.datetime().required(),
+    searchMessages: a
+        .query()
+        .arguments({
+            fileId: a.string(),
+            messageContents: a.string().array(),
+            tagNames: a.string().array()
+        })
+        .returns(a.ref("Message").array())
+        .handler(
+            a.handler.custom({
+                dataSource: a.ref("Message"),
+                entry: "./searchMessages.js"
+            })
+        ),
 
-        // Relationships
-        file: a.belongsTo("File", ["fileId","projectId"]),
-        message: a.belongsTo("Message", "messageId"),})
-    .identifier(["tagId"]),
-    */
   // Whitelist model
   Whitelist: a
   .model({

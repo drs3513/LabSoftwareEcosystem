@@ -98,10 +98,12 @@ const PanelContainer = styled.div`
   
 `;
 
-const Project = styled.div<{$selected: boolean}>`
-
+const Project = styled.div.attrs<{$selected: boolean}>(props => ({
+  style: {
+    filter: props.$selected ? "drop-shadow(0px 0px 5px cornflowerblue)" : "none"
+  }
+}))`
   background-color: white;
-  filter: ${(props) => props.$selected ? "drop-shadow(0px 0px 5px cornflowerblue)" : "none"};
   padding: 1rem;
   border-bottom: 1px solid #ddd;
   cursor: pointer;

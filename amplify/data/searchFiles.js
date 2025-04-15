@@ -39,7 +39,7 @@ export function response(ctx) {
         .filter((file) =>
             ((ctx.arguments.fileNames.length === 0 ||
                 ctx.arguments.fileNames.some((fileName) =>
-                    file.filename.toLowerCase().includes(fileName.toLowerCase())))))
+                    file.filename.toLowerCase().includes(fileName.toLowerCase()))))).filter((file) => file.isDeleted === 0)
 }
 
 /*
