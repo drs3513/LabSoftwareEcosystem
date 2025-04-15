@@ -1,5 +1,5 @@
 import styled from "styled-components";
-import React, {useRef, useState, DragEvent, useEffect} from "react";
+import React, {useRef, useState, useEffect} from "react";
 import { useGlobalState } from "../GlobalStateContext";
 import {getFilesByProjectIdAndIsDeleted, hardDeleteFile, Restorefile} from "@/lib/file";
 
@@ -210,7 +210,7 @@ const CloseButton = styled.button`
     cursor: pointer;
 `;
 
-const FileLite = styled.button`
+const FileLite = styled.div`
     color: inherit;
     border: none;
     font: inherit;
@@ -232,10 +232,6 @@ const FileLite = styled.button`
 
         padding-top: calc(1rem - 2px);
         padding-bottom: calc(1rem - 2px);
-    }
-    &:active {
-        background-color: lightblue !important;
-
     }
 `
 const FileContainer = styled.div`
