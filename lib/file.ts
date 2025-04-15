@@ -1,6 +1,6 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import {deleteFileFromStorage, getFileVersions, uploadFile} from "./storage";
+import {deleteFileFromStorage, getFileVersions, uploadFile, uploadFileTrigger} from "./storage";
 import {Nullable} from "@aws-amplify/data-schema";
 import { Timeout } from "aws-cdk-lib/aws-stepfunctions";
 const client = generateClient<Schema>();
@@ -40,6 +40,92 @@ export async function getVersionHistory(fileId: string): Promise<any[]> {
     throw error;
   }
 }
+
+/*--------------------------------------------------------
+            TRIGGER FUNCTIONS
+--------------------------------------------------------*/
+
+export async function createFileUploadTrigger(
+  file: File,
+  projectId: string,
+  ownerId: string,
+  parentId: string,
+  filepath: string
+) {
+  const logicalId = crypto.randomUUID(); // New file = new logical group
+  const fileId = crypto.randomUUID(); // Will be used by trigger
+  const now = new Date().toISOString();
+
+  await uploadFileTrigger(file, ownerId, projectId, filepath, {
+    filename: file.name,
+    filepath,
+    logicalid: logicalId,
+    fileid: fileId,
+    parentid: parentId || `ROOT-${projectId}`,
+    ownerid: ownerId,
+    projectid: projectId,
+    createdat: now,
+    updatedat: now,
+    mode: "create",
+  });
+}
+
+export async function createNewVersionTrigger(
+  file: File,
+  existingLogicalId: string,
+  projectId: string,
+  ownerId: string,
+  parentId: string,
+  filepath: string
+) {
+  const fileId = crypto.randomUUID(); // New version = new File ID
+  const now = new Date().toISOString();
+
+  await uploadFileTrigger(file, ownerId, projectId, filepath, {
+    filename: file.name,
+    filepath,
+    logicalid: existingLogicalId,
+    fileid: fileId,
+    parentid: parentId || `ROOT-${projectId}`,
+    ownerid: ownerId,
+    projectid: projectId,
+    createdat: now,
+    updatedat: now,
+    mode: "version",
+  });
+}
+
+export async function overwriteFileTrigger(
+  file: File,
+  fileId: string,
+  logicalId: string,
+  projectId: string,
+  ownerId: string,
+  parentId: string,
+  filepath: string
+) {
+  const now = new Date().toISOString();
+
+  await uploadFileTrigger(file, ownerId, projectId, filepath, {
+    filename: file.name,
+    filepath,
+    fileid: fileId,
+    logicalid: logicalId,
+    parentid: parentId || `ROOT-${projectId}`,
+    ownerid: ownerId,
+    projectid: projectId,
+    updatedat: now,
+    mode: "overwrite",
+  });
+}
+
+
+
+
+/*--------------------------------------------------------
+--------------------------------------------------------*/
+
+
 
 export async function createNewVersion(
   file: File,

@@ -72,7 +72,30 @@ export async function getFileVersions(key: string): Promise<string | null> {
   return null;
 }
 
+/*--------------------------------------
+        Trigger Func
+--------------------------------------*/
+export async function uploadFileTrigger(
+  file: File,
+  ownerId: string,
+  projectId: string,
+  filepath: string,
+  metadata: Record<string, string>
+) {
+  const key = `uploads/${ownerId}/${projectId}${filepath}`;
 
+  const result = await uploadData({
+    key,
+    data: file,
+    options: {
+      metadata,
+    },
+  }).result;
+
+  return { key };
+}
+/*-------------------------------------
+------------------------------------*/
 
 
 // Upload file and return S3 key

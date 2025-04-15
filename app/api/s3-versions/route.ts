@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { S3Client, ListObjectVersionsCommand } from "@aws-sdk/client-s3";
+import output from '@/amplify_outputs.json'
 
-const BUCKET_NAME = process.env.NEXT_PUBLIC_S3_BUCKET_NAME!;
-const REGION = "us-east-1";
+const BUCKET_NAME = output.storage.bucket_name;
+
+const REGION = output.auth.aws_region;
 
 export async function POST(req: NextRequest) {
   try {
