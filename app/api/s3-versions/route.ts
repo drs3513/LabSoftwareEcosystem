@@ -10,8 +10,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { credentials, key } = body;
-    console.log("[DEBUG] Using bucket:", process.env.NEXT_PUBLIC_S3_BUCKET_NAME);
-    if (!credentials) {
+     if (!credentials) {
       console.error("No credentials provided.");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

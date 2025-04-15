@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
       Bucket: BUCKET_NAME,
       Key: key,
       VersionId: versionId,
-      ResponseContentDisposition: `attachment; filename="${filename}"`, // 🔥 This tells S3 to force download
+      ResponseContentDisposition: `attachment; filename="${filename}"`, // This tells S3 to force download
     });
 
     const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
