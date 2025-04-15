@@ -809,6 +809,34 @@ const cancelUpload = () => {
     await deleteFile(file.fileId, file.versionId, projectId);
   }
 
+  const handleDownloadVersion = async (
+    versionId: string,
+    logicalId: string,
+    filename: string,
+    ownerId: string,
+    projectId: string
+  ) => {
+    const path = `uploads/${ownerId}/${projectId}/${filename}`;
+  
+    if (!path || !versionId || !filename) {
+      console.error("❌ Missing path, versionId, or filename");
+      return;
+    }
+  
+    // Generate the URL to your redirecting API route
+    const downloadUrl = `/api/files?key=${encodeURIComponent(path)}&versionId=${encodeURIComponent(versionId)}`;
+  
+    // Open in a new tab or force download via anchor
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = filename;
+    a.click();
+  };
+  
+  
+  
+
+
   async function handleDelete(fileId: string) {
     const file = files.find(f => f.fileId === fileId);
     if (!file || !projectId) return;
@@ -1016,24 +1044,49 @@ const cancelUpload = () => {
                       Versions:
                     </ContextMenuItem>
                     {sortedVersions.map((version, idx) => {
-                      const versionNumber = `v${idx + 1}`;
-                      const isCurrent = version.versionId === contextFile.versionId;
-                      const dateStr = new Date(version.updatedAt!).toLocaleString();
+                    const versionNumber = `v${idx + 1}`;
+                    const isCurrent = version.versionId === contextFile.versionId;
+                    const dateStr = new Date(version.updatedAt!).toLocaleString();
 
-                      return (
-                        <ContextMenuItem
-                          key={`${version.versionId}-${idx}`}
+                    return (
+                      <ContextMenuItem
+                        key={`${version.versionId}-${idx}`}
+                        style={{
+                          fontSize: "12px",
+                          paddingLeft: "1.5rem",
+                          color: isCurrent ? "#000" : "#555",
+                          fontWeight: isCurrent ? "bold" : "normal",
+                          display: "flex",
+                          justifyContent: "space-between"
+                        }}
+                      >
+                        <span>{versionNumber} - {dateStr}</span>
+                        <button
                           style={{
-                            fontSize: "12px",
-                            paddingLeft: "1.5rem",
-                            color: isCurrent ? "#000" : "#555",
-                            fontWeight: isCurrent ? "bold" : "normal"
+                            fontSize: "10px",
+                            padding: "0 0.25rem",
+                            background: "none",
+                            border: "1px solid #888",
+                            cursor: "pointer",
+                            marginLeft: "0.5rem"
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadVersion(
+                              version.versionId!,
+                              contextFile.logicalId,
+                              contextFile.filename,
+                              contextFile.ownerId,
+                              contextFile.projectId
+                            );
                           }}
                         >
-                          {versionNumber} - {dateStr}
-                        </ContextMenuItem>
-                      );
-                    })}
+                          ⬇
+                        </button>
+                      </ContextMenuItem>
+                    );
+                  })}
+
                   </>
                 );
               })()}
