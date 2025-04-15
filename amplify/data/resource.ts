@@ -62,6 +62,7 @@ const schema = a
       .secondaryIndexes((index) => [
         index("fileId").sortKeys(["versionId"])
         .name("Version"), //Secondary index
+        index("projectId").name("byProject"),
       ]),
     
 

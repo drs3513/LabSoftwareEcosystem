@@ -15,6 +15,7 @@
     "@aws-amplify/ui-react-storage": "^3.9.0",
     "@aws-sdk/client-dynamodb": "^3.788.0",
     "@aws-sdk/lib-dynamodb": "^3.789.0",
+    "@aws-sdk/s3-request-presigner": "^3.787.0",
     "aws-amplify": "^6.13.5",
     "jszip": "^3.10.1",
     "next": "^14.2.23",
