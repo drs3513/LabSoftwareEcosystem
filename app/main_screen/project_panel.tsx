@@ -7,6 +7,10 @@ import type { Schema } from "@/amplify/data/resource";
 import styled from "styled-components";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 
+//SVG imports
+import Image from "next/image";
+import icon_folder from "/assets/icons/folder-1-outlined-rounded.svg";
+
 const client = generateClient<Schema>();
 
 export default function ProjectPanel() {
@@ -46,7 +50,7 @@ export default function ProjectPanel() {
       ) : projects.length > 0 ? (
         projects.map((project) => (
           <Project key={project.projectId} onClick={() => setProjectId(project.projectId)}>
-            📁 {project.projectName}
+            <div style={{display: "flex", justifyContent: "center", overflow: "hidden"}}><Image src={icon_folder} alt="" objectFit='contain' vertical-align='baseline'/>{project.projectName}</div>
           </Project>
         ))
       ) : (
