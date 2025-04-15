@@ -155,11 +155,6 @@ export async function downloadFolderAsZip(
     try {
       const { body } = await downloadData({
         path: file.path,
-        options: {
-          onProgress: (progress) => {
-            console.log(`[PROGRESS] ${file.filename}: ${(progress.transferredBytes / progress.totalBytes) * 100}%`);
-          },
-        },
       }).result;
 
       const blob = await body.blob();
@@ -203,14 +198,20 @@ export function startDownloadTask(fileKey: string, onProgress: (percent: number)
     path: fileKey,
     options: {
       onProgress: (progress) => {
-        const percent = (progress.transferredBytes / progress.totalBytes) * 100;
-        onProgress(percent);
+        if (progress.totalBytes && progress.totalBytes > 0) {
+          const percent = (progress.transferredBytes / progress.totalBytes) * 100;
+          onProgress(percent);
+        } else {
+          // If totalBytes is undefined or 0, fallback to indeterminate progress (optional)
+          onProgress(0);
+        }
       }
     }
   });
 
   return downloadTask;
 }
+
 
 
 

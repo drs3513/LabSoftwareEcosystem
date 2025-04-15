@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+  "dev": "npm run setup-env && next dev",
+  "build": "npm run setup-env && next build",
+  "start": "next start",
+  "lint": "next lint",
+  "setup-env": "node scripts/setup-env.mjs"
   },
   "dependencies": {
     "@aws-amplify/storage": "^6.7.9",

@@ -2,13 +2,13 @@
 import '@aws-amplify/ui-react/styles.css';
 import React, {ChangeEvent, useEffect, useRef, useState, DragEvent} from "react";
 import { useGlobalState } from "./GlobalStateContext";
-import {Restorefile, deleteFile, hardDeleteFile, listFilesForProject, processAndUploadFiles, updateFileLocation} from "@/lib/file";
+import {Restorefile, createNewVersion, deleteFile, hardDeleteFile, listFilesForProject, processAndUploadFiles, updateFileLocation, updatefile} from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
 import { generateClient } from "aws-amplify/api";
 import type { Schema } from "@/amplify/data/resource";
 import CreateFilePanel from "./popout_create_file_panel"
-import { startDownloadTask, downloadFolderAsZip } from "@/lib/storage";
+import { startDownloadTask, downloadFolderAsZip, uploadFile } from "@/lib/storage";
 import { isCancelError } from "aws-amplify/storage";
 import ConflictModal from './conflictModal';
 import ReactDOM from 'react-dom';
@@ -43,6 +43,7 @@ interface fileInfo{
   fileId: string,
   filename: string,
   filepath: string,
+  logicalId: string,
   size: number,
   versionId: string,
   ownerId: string,
@@ -52,7 +53,8 @@ interface fileInfo{
   updatedAt: string,
   visible: boolean,
   open: boolean,
-  isDirectory: boolean | null
+  isDirectory: Nullable<boolean>|undefined,
+  versions?: Schema["File"]["type"][]; // ← add this
 }
 
 
@@ -140,7 +142,8 @@ export default function FilePanel() {
 
   const [showRecycleBin, setShowRecycleBin] = useState(false);
 
-  
+  const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set());
+
   const activeDownloads = new Map<string, ReturnType<typeof startDownloadTask>>();
 
   const handleDownload = async (filePath: string, fileId: string,fileuser: string) => {
@@ -172,6 +175,19 @@ export default function FilePanel() {
       activeDownloads.delete(fileId);
     }
   };
+
+  function toggleVersionList(fileId: string) {
+    setExpandedVersions(prev => {
+      const next = new Set(prev);
+      if (next.has(fileId)) {
+        next.delete(fileId);
+      } else {
+        next.add(fileId);
+      }
+      return next;
+    });
+  }
+  
   
   const cancelDownload = (fileId: string) => {
     const task = activeDownloads.get(fileId);
@@ -281,76 +297,111 @@ export default function FilePanel() {
     //TODO for the love of god fix this hell
 
     async function fetchFiles() {
-
       if (!projectId) return;
+    
       const projectFiles = await listFilesForProject(projectId);
-      //builds array of files with extra information for display
-      //Extra information :
-      //'visible' : designates if a file is current visible,
-      // 'open' : designates if a file is currently open (it's unclear that this is required)
-      if(projectFiles){
-        let temp_files: Array<fileInfo> = []
-        for(let file of projectFiles) {
-          temp_files = [...temp_files,
-            {
-              fileId: file.fileId,
-              filename: file.filename,
-              filepath: file.filepath,
-              parentId: file.parentId,
-              size: file.size,
-              versionId: file.versionId,
-              ownerId: file.ownerId,
-              projectId: file.projectId,
-              createdAt: file.createdAt,
-              updatedAt: file.updatedAt,
-              visible: file.parentId == "ROOT-"+projectId,
-              open: false,
-              isDirectory: file.isDirectory
-            }]
+      if (!projectFiles) return [];
+    
+      const grouped: Record<string, typeof projectFiles> = {};
+      for (const file of projectFiles) {
+        if (!file || (file.isDeleted && !showRecycleBin)) continue;
+    
+        if (!grouped[file.logicalId]) {
+          grouped[file.logicalId] = [];
         }
-        setFiles(sort_files_with_path(temp_files))
-        return temp_files
-
+        grouped[file.logicalId].push(file);
       }
+    
+      const groupedFiles: fileInfo[] = [];
+    
+      for (const logicalId in grouped) {
+        const versions = grouped[logicalId].sort((a, b) =>
+          new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
+        );
+        const latest = versions[0];
+    
+        groupedFiles.push({
+          fileId: latest.fileId,
+          logicalId: latest.logicalId,
+          filename: latest.filename,
+          filepath: latest.filepath,
+          parentId: latest.parentId,
+          size: latest.size,
+          versionId: latest.versionId,
+          ownerId: latest.ownerId,
+          projectId: latest.projectId,
+          createdAt: latest.createdAt,
+          updatedAt: latest.updatedAt,
+          visible: latest.parentId?.includes("ROOT") ?? false,
+          open: false,
+          isDirectory: latest.isDirectory,
+          versions
+        });
+      }
+    
+      setFiles(sort_files_with_path(groupedFiles));
+      return groupedFiles;
     }
+    
 
-  const observeFiles = () => {
-    const subscription = client.models.File.observeQuery({
-      filter: { projectId: { eq: projectId? projectId : undefined }, },
-      
-    }).subscribe({
-      next: async ({ items }) => {
-
-        let temp_files = items
-        .filter(file => showRecycleBin ? file.isDeleted : !file.isDeleted)
-        .map(file => ({
-          fileId: file.fileId,
-          filename: file.filename,
-          filepath: file.filepath,
-          parentId: file.parentId,
-          size: file.size,
-          versionId: file.versionId,
-          ownerId: file.ownerId,
-          projectId: file.projectId,
-          createdAt: file.createdAt,
-          updatedAt: file.updatedAt,
-          visible: file.fileId in filesByFileId.current ? file.parentId in filesByFileId.current ? filesRef.current[filesByFileId.current[file.fileId]].visible && filesRef.current[filesByFileId.current[file.parentId]].open : file.parentId.includes("ROOT") : file.parentId.includes("ROOT"),
-          open: file.fileId in filesByFileId.current ? filesRef.current[filesByFileId.current[file.fileId]].open && (file.parentId in filesByFileId.current ? filesRef.current[filesByFileId.current[file.parentId]].open : true) : false,
-          isDirectory: file.isDirectory
-        }));
-        
-        setFiles(sort_files_with_path(temp_files));
-        return temp_files;
-      },
-      error: (error) => {
-        console.error("[ERROR] Error observing files:", error);
-      },
-    });
-
-    return () => {
-      subscription.unsubscribe();
+    const observeFiles = () => {
+      const subscription = client.models.File.observeQuery({
+        filter: { projectId: { eq: projectId ? projectId : undefined } },
+      }).subscribe({
+        next: async ({ items }) => {
+          // Group by logicalId, not fileId
+          const grouped: Record<string, Schema["File"]["type"][]> = {};
+          for (const file of items) {
+            if (!file) continue;
+          
+            if (showRecycleBin && !file.isDeleted) continue;
+            if (!showRecycleBin && file.isDeleted) continue;
+          
+            if (!grouped[file.logicalId]) {
+              grouped[file.logicalId] = [];
+            }
+            grouped[file.logicalId].push(file);
+          }
+          
+    
+          // Reduce to latest version and collect all versions
+          const groupedFiles: fileInfo[] = [];
+          for (const logicalId in grouped) {
+            const versions = grouped[logicalId].sort((a, b) =>
+              new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
+            );
+            const latest = versions[0];
+    
+            groupedFiles.push({
+              fileId: latest.fileId,
+              logicalId: latest.logicalId,
+              filename: latest.filename,
+              filepath: latest.filepath,
+              parentId: latest.parentId,
+              size: latest.size,
+              versionId: latest.versionId,
+              ownerId: latest.ownerId,
+              projectId: latest.projectId,
+              createdAt: latest.createdAt,
+              updatedAt: latest.updatedAt,
+              visible: latest.parentId?.includes("ROOT") ?? false,
+              open: false,
+              isDirectory: latest.isDirectory,
+              versions,
+            });
+          }
+    
+          setFiles(sort_files_with_path(groupedFiles));
+          return groupedFiles;
+        },
+        error: (error) => {
+          console.error("[ERROR] Error observing files:", error);
+        },
+      });
+    
+      return () => subscription.unsubscribe();
     };
-  };
+    
 
   useEffect(() => {
     if(projectId){
@@ -549,7 +600,9 @@ const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId
           applyToAll = true;
         }
         cleanup();
-        resolve(choice);
+        if(choice){
+         resolve(choice);
+        }
       };
 
       ReactDOM.render(<ConflictModal filename={filename} onResolve={handleResolve} />, modalRoot);
@@ -590,18 +643,27 @@ const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId
       if (decision === 'cancel') continue;
     }
 
-    if (conflict && applyToAll && globalDecision) {
-      decision = globalDecision;
-      if (decision === 'cancel') continue;
+    if (decision === 'overwrite' && conflict) {
+      console.log("[DECISION] Overwriting file:", file.name);
+      await uploadFile(file,ownerId, projectId, filePath);
+      await updatefile(conflict.fileId, projectId);
+      // Let it fall through and overwrite S3 contents but prevent a new DB record
+      continue;
     }
+    
 
-    let actualName = fileName;
-    if (decision === 'version') {
-      const versionTag = `__v${Date.now()}`;
-      const base = fileName.includes(".") ? fileName.substring(0, fileName.lastIndexOf(".")) : fileName;
-      const ext = fileName.includes(".") ? fileName.substring(fileName.lastIndexOf(".")) : "";
-      actualName = `${base}${ext}`;
+    if (decision === 'version' && conflict) {
+      console.log("[DECISION] Creating new version for:", file.name);
+      try {
+        await createNewVersion(file, conflict.fileId, projectId, ownerId, parentId, filePath);
+        console.log("[VERSION] New version created.");
+      } catch (error) {
+        console.error("[VERSION ERROR] Failed to create version for:", file.name, error);
+      }
+      continue;
     }
+    await fetchFiles();
+    
 
     // Place the file into the shared folderDict
     let current = folderDict;
@@ -611,7 +673,7 @@ const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId
     }
 
     if (!current.files) current.files = {};
-    current.files[actualName] = file;
+    current.files[fileName] = file;
   }
   uploadQueue.current.push({
     folderDict,
@@ -878,11 +940,12 @@ const cancelUpload = () => {
                       onClick={() => openCloseFolder(file.fileId)}
                       onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId)}>
                   {file.isDirectory ? "📁" : "🗎"} {file.filename}
-                  <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                  <br></br><FileContext fileId={file.fileId} filename={file.filename} logicalId={file.logicalId} filepath={file.filepath}
                                         size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                         projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
                                         updatedAt={file.updatedAt} visible={file.visible} open={file.open}
-                                        isDirectory={file.isDirectory}></FileContext>
+                                        isDirectory={file.isDirectory}>
+                                        </FileContext>
                 </File>
             ))
         ) : (
@@ -939,6 +1002,42 @@ const cancelUpload = () => {
                 <ContextMenuItem onClick={() => cancelDownload(contextMenuFileId!)}>
                   Cancel Download
                 </ContextMenuItem>
+                {(() => {
+                const contextFile = files.find(f => f.fileId === contextMenuFileId);
+                if (!contextFile || !contextFile.versions) return null;
+
+                const sortedVersions = [...contextFile.versions].sort((a, b) =>
+                  new Date(a.updatedAt!).getTime() - new Date(b.updatedAt!).getTime()
+                );
+
+                return (
+                  <>
+                    <ContextMenuItem style={{ fontWeight: "bold", cursor: "default", paddingTop: "0.4rem" }}>
+                      Versions:
+                    </ContextMenuItem>
+                    {sortedVersions.map((version, idx) => {
+                      const versionNumber = `v${idx + 1}`;
+                      const isCurrent = version.versionId === contextFile.versionId;
+                      const dateStr = new Date(version.updatedAt!).toLocaleString();
+
+                      return (
+                        <ContextMenuItem
+                          key={`${version.versionId}-${idx}`}
+                          style={{
+                            fontSize: "12px",
+                            paddingLeft: "1.5rem",
+                            color: isCurrent ? "#000" : "#555",
+                            fontWeight: isCurrent ? "bold" : "normal"
+                          }}
+                        >
+                          {versionNumber} - {dateStr}
+                        </ContextMenuItem>
+                      );
+                    })}
+                  </>
+                );
+              })()}
+
 
               </ContextMenu>
           ) : contextMenu && contextMenuType=="fileFolder" ? (

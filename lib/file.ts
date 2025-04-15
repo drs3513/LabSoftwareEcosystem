@@ -41,6 +41,46 @@ export async function getVersionHistory(fileId: string): Promise<any[]> {
   }
 }
 
+export async function createNewVersion(
+  file: File,
+  fileId: string,
+  projectId: string,
+  ownerId: string,
+  parentId: string,
+  filepath: string
+) {
+  const now = new Date().toISOString();
+
+  // Upload the file to S3
+  const { key: storageKey } = await uploadFile(file, ownerId, projectId, filepath);
+
+  // Retrieve the version ID from S3 (or fallback to '1')
+  const versionId = await getFileVersions(storageKey) || '1';
+  const newfileid = crypto.randomUUID();
+  console.log("Creating the versioned file");
+  if(!parentId){
+    parentId = `ROOT-${projectId}`;
+  }
+  // Create a new file version record in the database
+  await createFile({
+    projectId,
+    fileId:newfileid,
+    logicalId: fileId,
+    filename: file.name,
+    isDirectory: false,
+    filepath,
+    parentId,
+    storageId: storageKey,
+    size: file.size,
+    versionId,
+    ownerId,
+    isDeleted: false,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+
 
 export async function processAndUploadFiles(
   dict: Record<string, any>,
@@ -96,6 +136,7 @@ export async function processAndUploadFiles(
           const newFile = await createFile({
             projectId,
             fileId: uuid,
+            logicalId: uuid,
             filename: key,
             isDirectory: true,
             filepath: `${currentFilePath}/${key}`,
@@ -133,6 +174,7 @@ export async function processAndUploadFiles(
               const newFile = await createFile({
                 projectId,
                 fileId: fileUuid,
+                logicalId: fileUuid,
                 filename: fileKey,
                 isDirectory: false,
                 filepath: `${currentFilePath}/${fileKey}`,
@@ -208,10 +250,12 @@ export async function hardDeleteFile(fileId: string, projectId: string) {
     }
 
     // Step 3: Delete from database
-    await client.models.File.delete({
-      fileId: file?.data?.fileId,
-      projectId: file?.data?.projectId,
-    });
+    if(file.data?.fileId && file.data.projectId){
+        await client.models.File.delete({
+          fileId: file?.data?.fileId,
+          projectId: file?.data?.projectId,
+        });
+    }
 
     console.log(`[HARD DELETE] Deleted DB record: ${file?.data?.fileId}`);
     alert("File permanently deleted.");
@@ -281,6 +325,7 @@ export async function listFilesForProject(projectId: string) {
 export async function createFile({
   projectId,
   fileId,
+  logicalId,
   filename,
   isDirectory,
   filepath,
@@ -295,6 +340,7 @@ export async function createFile({
 }: {
   projectId: string;
   fileId: string;
+  logicalId: string;
   filename: string;
   isDirectory: boolean;
   filepath: string;
@@ -311,6 +357,7 @@ export async function createFile({
   return client.models.File.create({
     fileId,
     projectId,
+    logicalId,
     filename,
     isDirectory,
     filepath,

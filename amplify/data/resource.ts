@@ -34,6 +34,7 @@ const schema = a
       File: a
       .model({
         fileId: a.id().required(), // Primary key
+        logicalId: a.id().required(),
         filename: a.string().required(),
         isDirectory: a.boolean().default(false),
         filepath: a.string().required(),
