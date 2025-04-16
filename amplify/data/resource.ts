@@ -1,5 +1,6 @@
-import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
+import {type ClientSchema, a, defineData, defineFunction} from "@aws-amplify/backend";
 import { ApiKey } from "aws-cdk-lib/aws-apigateway";
+
 
 const schema = a
   .schema({
@@ -46,20 +47,91 @@ const schema = a
         createdAt: a.datetime().required(),
         updatedAt: a.datetime().required(),
         messages: a.hasMany("Message", ["fileId","projectId"]),
-        tag: a.hasMany("Tag", ["fileId","projectId"]),
-        isDeleted: a.boolean().required(),
+        tags: a.string().array(), // <-CHANGE
+        isDeleted: a.integer().required(), //0 : not deleted, 1 : deleted
         deletedAt: a.datetime(),
-    
         parent: a.belongsTo("File", ["parentId","projectId"]),
         children: a.hasMany("File", ["parentId","projectId"]),
-    
         ownerDetails: a.belongsTo("User", "ownerId"),
         project: a.belongsTo("Project", "projectId"),
       })
-      .identifier(["fileId","projectId"]) // Use only `fileId` as primary key
+      .identifier(["fileId","projectId"]) // Use only `fileId` as primary key, projectId as sort key
       .secondaryIndexes((index) => [
         index("fileId").sortKeys(["versionId"]), //Secondary index
+          index("projectId"),
+          index("projectId").sortKeys(["isDeleted"]),
+          index("projectId").sortKeys(["filepath"])
       ]),
+      getFilesByRootId: a
+          .query()
+          .arguments({
+              rootIds: a.string().array(),
+              projectId: a.string()
+          })
+          .returns(a.json())
+          .handler(
+              a.handler.custom({
+                  dataSource: a.ref("File"),
+                  entry: "./getFilesByRootId.js"
+              })
+          ),
+
+      batchUpdateFile: a
+          .mutation()
+          .arguments({
+              fileIds: a.string().array(),
+              projectId: a.string(),
+              parentIds: a.string().array(),
+              filepaths: a.string().array()
+          })
+          .returns(a.json())
+          .handler(
+              a.handler.custom({
+                  dataSource: a.ref("File"),
+                  entry: "./batchUpdateFile.js"
+              })
+          ),
+
+      searchFiles: a
+          .query()
+          .arguments({
+              projectId: a.string(),
+              fileNames: a.string().array(),
+              tagNames: a.string().array()
+          })
+          .returns(a.ref("File").array())
+          .handler(
+              a.handler.custom({
+                  dataSource: a.ref("File"),
+                  entry: "./searchFiles.js"
+
+              })
+          ),
+
+      //Opensearch searchFiles query
+      //openSearchSearchFiles: a
+      //    .query()
+      //    .arguments({
+      //        fileNames: a.string().array(),
+      //        tagNames: a.string().array()
+      //    })
+      //    .returns(a.ref("File").array())
+      //    .handler(
+      //        a.handler.custom({
+      //            entry: "./openSearchSearchFiles.js",
+      //            dataSource: "osDataSource"
+      //        })
+      //    ),
+      //openSearchExampleSearchFiles: a
+      //    .query()
+      //    .returns(a.ref("File").array())
+      //    //.authorization((allow) => [allow.publicApiKey()])
+      //    .handler(
+      //        a.handler.custom({
+      //            entry: "./openSearchExampleSearchFileResolver.js",
+      //            dataSource: "osDataSource",
+      //        })
+      //    ),
     
 
 
@@ -74,30 +146,30 @@ const schema = a
         createdAt: a.datetime().required(),
         updatedAt: a.datetime(),
         isUpdated: a.boolean().default(false),
-        tag: a.hasMany("Tag","messageId"),
+          isDeleted: a.boolean().default(false),
+        tags: a.string().array(), // <- CHANGE
         file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
         
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
       })
       .identifier(["messageId"]),
 
-    // Tag model
-    Tag: a
-      .model({
-        tagId: a.id().required(),
-        tagType: a.enum(["file", "message"]), // Enum for Tag type
-        fileId: a.id(), // Foreign key linking to File or Message
-        projectId: a.id(),
-        messageId: a.id(),
-        tagName: a.string().required(),
-        createdAt: a.datetime().required(),
+    searchMessages: a
+        .query()
+        .arguments({
+            fileId: a.string(),
+            messageContents: a.string().array(),
+            tagNames: a.string().array()
+        })
+        .returns(a.ref("Message").array())
+        .handler(
+            a.handler.custom({
+                dataSource: a.ref("Message"),
+                entry: "./searchMessages.js"
+            })
+        ),
 
-        // Relationships
-        file: a.belongsTo("File", ["fileId","projectId"]),
-        message: a.belongsTo("Message", "messageId"),})
-    .identifier(["tagId"]),
-
-    // Whitelist model
+  // Whitelist model
   Whitelist: a
   .model({
     whitelistId: a.id().required(),
@@ -112,8 +184,9 @@ const schema = a
     project: a.belongsTo("Project", "projectId"),
   })
   .identifier(["whitelistId"]),
+
 }).authorization((allow) => [
-  allow.authenticated().to(["create", "update", "delete", "read"]),
+  allow.authenticated(),
 ]);
 export type Schema = ClientSchema<typeof schema>;
 

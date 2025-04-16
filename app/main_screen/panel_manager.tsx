@@ -1,15 +1,17 @@
-"use client";
 import styled from "styled-components";
 import Panel from "./panel";
-import ProjectPanel from "./project_panel";
-import FilePanel from "./file_panel";
+import ProjectPanel from "./[pid]/[id]/project_panel";
+import FilePanel from "@/app/main_screen/[pid]/[id]/file_panel";
 import ChatPanel from "./chat_panel";
 import { useState, useEffect } from "react";
+
+
 
 const Holder = styled.div`
   display: flex;
   flex-direction: row;
   height: calc(100vh - 1.5rem - 2px);
+  
 `;
 
 const Border = styled.div<{ $width: string; $width_type: string }>`
@@ -119,7 +121,7 @@ export default function PanelManager() {
 
       {/* Right Panel - Chat Panel */}
       <Panel type={3} backgroundcolor="white" width={`calc(${right_panel_width} - ${border_width / 2}${border_width_type})`}>
-    
+
       </Panel>
     </Holder>
   );

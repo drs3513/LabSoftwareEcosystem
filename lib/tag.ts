@@ -37,18 +37,6 @@ export async function createTag(tagType: "file" | "message", fileId: string, pro
   }
 }
 
-export async function listTags(){
-    try {
-        const response = await client.models.Tag.list();
-        const tags = response.data;
-        console.log(tags)
-        return tags
-    } catch (error) {
-        console.error("Error fetching tags:", error);
-        return [];
-    }
-}
-
 export async function getTagsForRef(refId: string) {
     try {
       // Fetch tags and extract `data` array
@@ -77,7 +65,7 @@ export async function getTagsForRef(refId: string) {
     }
 
   }
-export async function deleteTag(tagId: string) {
+export async function deleteTag(tag:string) {
   try {
     await client.models.Tag.delete({ tagId });
     console.log(`Deleted tag: ${tagId}`);

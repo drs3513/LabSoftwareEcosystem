@@ -1,12 +1,86 @@
-import { uploadData, getUrl, remove, downloadData, getProperties } from "aws-amplify/storage";
+import { uploadData, getUrl, remove, downloadData, getProperties, isCancelError } from "aws-amplify/storage";
+import { S3Client} from "@aws-sdk/client-s3";
+import { fetchAuthSession } from "aws-amplify/auth";
+import JSZip from "jszip";
+const s3Client = new S3Client({ region: "us-east-1" });
+
+export async function getFileVersions(key: string): Promise<string | null> {
+  const maxRetries = 5;
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    try {
+      console.log(`[INFO] Fetching file versions (Attempt ${attempt + 1}/${maxRetries})`);
+
+      let session;
+      try {
+        session = await fetchAuthSession();
+      } catch (authError) {
+        throw new Error(`[AUTH ERROR] ${authError}`);
+      }
+
+      if (!session || !session.credentials) {
+        throw new Error("No valid credentials found");
+      }
+
+      const response = await fetch("/api/s3-versions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          credentials: session.credentials,
+          key,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const versions = data.versions.filter((v: any) => v.key === key);
+
+      if (versions.length === 0) {
+        console.warn(`[WARN] No versions found for key: ${key}`);
+        return null;
+      }
+
+      versions.sort(
+          (a: any, b: any) =>
+              new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
+      );
+
+      console.log(`[SUCCESS] Retrieved latest version for key: ${key}`);
+      return versions[0].versionId;
+
+    } catch (error: any) {
+      console.error(`[ERROR] Attempt ${attempt + 1} failed:`, error.message || error);
+      attempt++;
+
+      if (attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 100;
+        console.log(`[INFO] Retrying in ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        console.error("[FATAL] Max retries reached. Unable to fetch file versions.");
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
+
 
 
 // Upload file and return S3 key
 export async function uploadFile(
-  file: File,
-  userId: string,
-  projectId: string,
-  filePath: string
+    file: File,
+    userId: string,
+    projectId: string,
+    filePath: string
 ): Promise<{ key: string }> {
   try {
     const key = `uploads/${userId}/${projectId}${filePath}`;
@@ -24,8 +98,6 @@ export async function uploadFile(
               bucket: "filestorage142024", // Specify target bucket
             },
           });
-
-          console.log(`Upload complete: ${key}`);
           resolve({ key });
         } catch (error) {
           console.error("Error uploading file:", error);
@@ -46,60 +118,108 @@ export async function uploadFile(
   }
 }
 
-// Function to get version ID separately
-export async function getVersionId(filePath: string): Promise< string> {
-  
-  let retries = 5;
-  let delay = 1500; // Start with 1.5s delay
-  let versionId = "1"; // Default versionId if not found
-
-  while (retries > 0) {
-    try {
-      const properties = await getProperties({ path: filePath });
-      if (properties?.versionId) {
-        console.log(`Successfully retrieved versionId: ${properties.versionId}`);
-        return properties.versionId;
-      }
-    } catch (error) {
-      console.warn(`Retrying getProperties... Attempts left: ${retries}`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      delay *= 2; // Exponential backoff (1.5s → 3s → 6s)
-    }
-    retries--;
-  }
-
-  console.warn("Failed to retrieve file properties after retries. Using default versionId.");
-  return versionId;
-}
-
-
-
-
-
-export async function downloadFile(fileKey: string): Promise<Blob | string | object> {
+export async function getFileProperties(filePath: string, userId:string, projectId: string) {
+  const key = `uploads/${userId}/${projectId}${filePath}`;
   try {
-    const downloadResult = await downloadData({ path: fileKey }).result;
-    
-    
-    const text = await downloadResult.body.text(); 
-    console.log("File downloaded as text:", text);
-
-    // Alternative formats:
-    // const blob = await downloadResult.body.blob(); 
-    // const json = await downloadResult.body.json(); 
-    
-    return text; 
+    const result = await getProperties({
+      path: key,
+      // Alternatively, path: ({ identityId }) => `album/${identityId}/1.jpg`
+      options: {
+        // Specify a target bucket using name assigned in Amplify Backend
+        bucket: 'filestorage142024'
+      }
+    });
   } catch (error) {
-    console.error("Error downloading file:", error);
-    throw error;
+    console.error('Error ', error);
   }
 }
+
+export type ZipTask = {
+  cancel: () => void;
+  isCanceled: boolean;
+};
+
+export async function downloadFolderAsZip(
+    folderName: string,
+    fileList: { path: string; filename: string }[],
+    task: ZipTask
+) {
+  const zip = new JSZip();
+
+  for (const file of fileList) {
+    if (task.isCanceled) {
+      console.warn(`[CANCEL] Folder download canceled.`);
+      return;
+    }
+
+    try {
+      const { body } = await downloadData({
+        path: file.path,
+        options: {
+          onProgress: (progress) => {
+            if (!progress.totalBytes) return
+            console.log(`[PROGRESS] ${file.filename}: ${(progress.transferredBytes / progress.totalBytes) * 100}%`);
+          },
+        },
+      }).result;
+
+      const blob = await body.blob();
+      zip.file(file.filename, blob);
+    } catch (error) {
+      if (isCancelError(error)) {
+        console.warn(`[CANCELLED] ${file.filename}`);
+        return;
+      } else {
+        console.error(`[ERROR] Failed to download ${file.path}`, error);
+      }
+    }
+  }
+
+  if (task.isCanceled) return;
+
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(zipBlob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${folderName}.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+
+const getDownloadLink = async (filePath: string): Promise<string | null> => {
+  try {
+    const linkToStorageFile = await getUrl({ path: filePath });
+    console.log('Signed URL:', linkToStorageFile.url);
+    console.log('Expires at:', linkToStorageFile.expiresAt);
+    return linkToStorageFile.url.toString();
+  } catch (error) {
+    console.error('[ERROR] Failed to generate signed URL:', error);
+    return null;
+  }
+};
+
+export function startDownloadTask(fileKey: string, onProgress: (percent: number) => void) {
+  const downloadTask = downloadData({
+    path: fileKey,
+    options: {
+      onProgress: (progress) => {
+        if (!progress.totalBytes) return
+        const percent = (progress.transferredBytes / progress.totalBytes) * 100;
+        onProgress(percent);
+      }
+    }
+  });
+
+  return downloadTask;
+}
+
 
 
 export async function downloadFileToMemory(fileKey: string): Promise<Blob> {
   try {
     const { body } = await (await downloadData({ path: fileKey })).result;
-    return await body.blob(); 
+    return await body.blob();
   } catch (error) {
     console.error("Error downloading file to memory:", error);
     throw error;
@@ -108,7 +228,7 @@ export async function downloadFileToMemory(fileKey: string): Promise<Blob> {
 
 export async function deleteFileFromStorage(fileKey: string): Promise<void> {
   try {
-    await remove({ path: fileKey }); 
+    await remove({ path: fileKey });
     console.log(`File deleted: ${fileKey}`);
   } catch (error) {
     console.error("Error deleting file:", error);

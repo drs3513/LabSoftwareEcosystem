@@ -4,7 +4,7 @@ import styled from "styled-components";
 import { useState, useEffect, useRef } from "react";
 import { getUsers } from "@/lib/user";
 import { createProject } from "@/lib/project";
-import { useGlobalState } from "./GlobalStateContext";
+import { useGlobalState } from "../GlobalStateContext";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 
 const Top_Bar = styled.div`
