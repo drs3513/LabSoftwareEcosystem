@@ -3,7 +3,7 @@ import { auth } from './auth/resource';
 import { data } from './data/resource';
 import { storage } from './storage/resource';
 import { version } from "./backend/function/version/resource";
-import { Effect, PolicyStatement, ManagedPolicy } from 'aws-cdk-lib/aws-iam';
+import { ManagedPolicy } from 'aws-cdk-lib/aws-iam';
 
 const backend = defineBackend({
   auth,
@@ -11,8 +11,6 @@ const backend = defineBackend({
   data,
   version,
 });
-
-export const bucket = backend.storage.resources.bucket;
 
 // Attach managed policy to authenticated users
 backend.auth.resources.authenticatedUserIamRole.addManagedPolicy(

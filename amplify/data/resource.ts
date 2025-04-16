@@ -48,8 +48,8 @@ const schema = a
         createdAt: a.datetime().required(),
         updatedAt: a.datetime().required(),
         messages: a.hasMany("Message", ["fileId","projectId"]),
-        tag: a.hasMany("Tag", ["fileId","projectId"]),
-        isDeleted: a.boolean().required(),
+        tags: a.string().array(),
+        isDeleted: a.integer().required(),
         deletedAt: a.datetime(),
     
         parent: a.belongsTo("File", ["parentId","projectId"]),
@@ -60,11 +60,44 @@ const schema = a
       })
       .identifier(["fileId","projectId"]) // Use only `fileId` as primary key
       .secondaryIndexes((index) => [
-        index("fileId").sortKeys(["versionId"])
+        index("logicalId").sortKeys(["versionId"])
         .name("Version"), //Secondary index
         index("projectId").name("byProject"),
+        index("projectId").sortKeys(["isDeleted"]),
+        index("projectId").sortKeys(["filepath"])
       ]),
-    
+
+      batchUpdateFile: a
+      .mutation()
+      .arguments({
+          fileIds: a.string().array(),
+          projectId: a.string(),
+          parentIds: a.string().array(),
+          filepaths: a.string().array()
+      })
+      .returns(a.json())
+      .handler(
+          a.handler.custom({
+              dataSource: a.ref("File"),
+              entry: "./batchUpdateFile.js"
+          })
+      ),
+
+  searchFiles: a
+      .query()
+      .arguments({
+          projectId: a.string(),
+          fileNames: a.string().array(),
+          tagNames: a.string().array()
+      })
+      .returns(a.ref("File").array())
+      .handler(
+          a.handler.custom({
+              dataSource: a.ref("File"),
+              entry: "./searchFiles.js"
+
+          })
+        ),
 
 
     // Message model
@@ -80,28 +113,27 @@ const schema = a
         isUpdated: a.boolean().default(false),
         isDeleted: a.boolean().default(false),
         path: a.string(),
-        tag: a.hasMany("Tag","messageId"),
+        tags: a.string().array(),
         file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
         
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
       })
       .identifier(["messageId"]),
 
-    // Tag model
-    Tag: a
-      .model({
-        tagId: a.id().required(),
-        tagType: a.enum(["file", "message"]), // Enum for Tag type
-        fileId: a.id(), // Foreign key linking to File or Message
-        projectId: a.id(),
-        messageId: a.id(),
-        tagName: a.string().required(),
-        createdAt: a.datetime().required(),
-
-        // Relationships
-        file: a.belongsTo("File", ["fileId","projectId"]),
-        message: a.belongsTo("Message", "messageId"),})
-    .identifier(["tagId"]),
+      searchMessages: a
+      .query()
+      .arguments({
+          fileId: a.string(),
+          messageContents: a.string().array(),
+          tagNames: a.string().array()
+      })
+      .returns(a.ref("Message").array())
+      .handler(
+          a.handler.custom({
+              dataSource: a.ref("Message"),
+              entry: "./searchMessages.js"
+          })
+      ),
       
     // Whitelist model
   Whitelist: a
@@ -118,7 +150,7 @@ const schema = a
   })
   .identifier(["whitelistId"]),
 }).authorization((allow) => [
-  allow.authenticated().to(["create", "update", "delete", "read"]),
+  allow.authenticated(),
 ]);
 export type Schema = ClientSchema<typeof schema>;
 
