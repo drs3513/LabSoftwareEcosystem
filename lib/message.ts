@@ -1,5 +1,7 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
+import {Nullable} from "@aws-amplify/data-schema";
+
 
 const client = generateClient<Schema>();
 
@@ -39,6 +41,22 @@ export async function getMessagesForFile(fileId: string) {
   }
 }
 
+//searchMessages
+export async function searchMessages(fileId: string, messageContents: string[], tagNames: string[], usernames: string[]) {
+  try{
+    console.log("Searching messages with fileId:", fileId, "messageContents:", messageContents, "tagsName:", tagNames);
+    const foundMessages = await client.queries.searchMessages({
+      fileId: fileId,
+      messageContents: messageContents,
+      tagNames: tagNames,
+    });
+    console.log("Found messages:", foundMessages);
+    return foundMessages.data;
+  }catch (error) {
+    console.error("Error searching messages:", error);
+  }
+}
+
 
 
 export async function updateMessage(messageId: string, content: string, userId: string) {
@@ -57,6 +75,34 @@ export async function updateMessage(messageId: string, content: string, userId: 
   }
 }
 
+export async function updateMessageTags(messageId: string, tags: Nullable<string>[]){
+  try {
+    const updatedMessage = await client.models.Message.update({
+      messageId,
+      tags: tags
+    })
+
+    return updatedMessage
+  } catch (error) {
+    console.error("Error updating message:", error)
+  }
+
+}
+
+export async function getTagsForMessage (messageId: string) {
+  try {
+    const response = await client.models.Message.get({
+      messageId
+    }, {
+      selectionSet: ["tags"]
+    })
+    if(!response.data || !response.data.tags) return []
+    return response.data.tags;
+  } catch (error) {
+    console.error("Error fetching tags:", error);
+    return [];
+  }
+}
 
 
 export async function deleteMessage(messageId: string, userId: string) {

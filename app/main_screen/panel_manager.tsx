@@ -1,9 +1,6 @@
 "use client";
 import styled from "styled-components";
 import Panel from "./panel";
-import ProjectPanel from "./project_panel";
-import FilePanel from "./file_panel";
-import ChatPanel from "./chat_panel";
 import { useState, useEffect } from "react";
 
 const Holder = styled.div`

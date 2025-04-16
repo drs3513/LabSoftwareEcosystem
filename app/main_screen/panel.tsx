@@ -1,7 +1,8 @@
 import styled from 'styled-components'
 import ChatPanel from './chat_panel'
-import FilePanel from './file_panel'
-import ProjectPanel from './project_panel'
+import FilePanel from '@/app/main_screen/[pid]/[id]/file_panel';
+import ProjectPanel from '@/app/main_screen/[pid]/[id]/project_panel';
+
 const Body = styled.div<{$background?:string; $width:string}>`
         width: ${props => props.$width};
         height: 100%;

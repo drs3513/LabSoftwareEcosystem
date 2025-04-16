@@ -2,7 +2,7 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import {deleteFileFromStorage, getFileVersions, uploadFile, uploadFileTrigger} from "./storage";
 import {Nullable} from "@aws-amplify/data-schema";
-import { Timeout } from "aws-cdk-lib/aws-stepfunctions";
+import React from "react";
 const client = generateClient<Schema>();
 
 
@@ -18,27 +18,6 @@ export async function listFiles(setFiles: (files: Array<Schema["File"]["type"]>)
       subscription.unsubscribe();
     }
   };
-}
-
-// Retrieve all versions of a file using manual sorting
-export async function getVersionHistory(fileId: string): Promise<any[]> {
-  try {
-    const response = await client.models.File.list({
-      filter: {
-        fileId: { eq: fileId }, // Query all versions with the same fileId
-      },
-    });
-
-    if (!response.data || response.data.length === 0) {
-      return [];
-    }
-
-    // Manually sort by versionId in descending order
-    return response.data.sort((a, b) => parseInt(b.versionId) - parseInt(a.versionId));
-  } catch (error) {
-    console.error("Error listing file versions:", error);
-    throw error;
-  }
 }
 
 /*--------------------------------------------------------
@@ -160,7 +139,7 @@ export async function createNewVersion(
     size: file.size,
     versionId,
     ownerId,
-    isDeleted: false,
+    isDeleted: 0,
     createdAt: now,
     updatedAt: now,
   });
@@ -231,7 +210,7 @@ export async function processAndUploadFiles(
             storageId: null,
             versionId: "1",
             ownerId,
-            isDeleted: false,
+            isDeleted: 0,
             createdAt: now,
             updatedAt: now,
           });
@@ -269,7 +248,7 @@ export async function processAndUploadFiles(
                 size: fileValue.size ?? 0,
                 versionId,
                 ownerId,
-                isDeleted: false,
+                isDeleted: 0,
                 createdAt: now,
                 updatedAt: now,
               });
@@ -313,7 +292,7 @@ export async function Restorefile(fileId: string, versionId: string, projectId: 
     fileId,
     versionId,
     projectId,
-    isDeleted: false,
+    isDeleted: 0,
     deletedAt: null
   });
 }
@@ -394,16 +373,231 @@ export async function deleteFileFromDB(fileId: string, projectId: string): Promi
 
 export async function listFilesForProject(projectId: string) {
   try {
-    const response = await client.models.File.list(); // Fetch all files
+    const response = await client.models.File.listFileByProjectId(
+      {projectId}
+    ); // Fetch all files
     const files = response.data; // Extract file array
-
-    if (!files) return [];
-
     return files.filter((file) => file ? file.projectId === projectId: null); // Filter files by projectId
 
   } catch (error) {
     console.error("Error fetching files for project:", error);
     return [];
+  }
+}
+
+export async function listFilesForProjectAndParentIds(projectId: string, parentIds: string[]){
+
+  try {
+    const response = await client.models.File.list({
+      filter: {
+        and: [
+          { projectId: { eq: projectId } },
+          {isDeleted: {eq: 0}},
+          {
+            or: parentIds.map(parentId => ({
+              parentId: { eq: parentId }
+            }))
+          }
+        ]
+      },
+
+    });
+    const files = response.data
+    if(!files) return [];
+
+    return files;
+
+  } catch (error) {
+    console.error("Error fetching files for project:", error);
+    return [];
+  }
+}
+
+export async function deleteTag(id: string, projectId: string | undefined, name: string, currTags: Nullable<string>[] | null | undefined) {
+  try {
+    console.log("Here!")
+    if (!projectId) return
+
+    if(!currTags) return
+
+    await client.models.File.update({
+      fileId: id,
+      projectId,
+      tags: [...currTags.filter(tag => tag != name)]
+    })
+    console.log(name)
+    console.log([...currTags.filter(tag => tag != name)])
+  } catch (error) {
+    console.error("Error removing tag for file:", error)
+  }
+}
+
+export async function createTag(id: string, projectId: string | undefined, currTags: Nullable<string>[] | null | undefined, name: string){
+  try {
+
+    if(!projectId) return
+
+
+    if(!currTags) {
+      await client.models.File.update({
+        fileId: id,
+        projectId,
+        tags: [name]
+      })
+    } else {
+      await client.models.File.update({
+        fileId: id,
+        projectId,
+        tags: [...currTags, name]
+      })
+    }
+
+    console.log("Successfully updated file with id " + id + " to have tag " + name)
+
+  } catch (error) {
+    console.error("Error updating tag for file:", error)
+
+  }
+
+}
+
+
+
+export async function searchFiles(projectId: string, fileNames: string[], tagNames: string[], authorNames: string[]){
+  try {
+    console.log(fileNames)
+    console.log(tagNames)
+    const foundFiles = await client.queries.searchFiles({projectId: projectId, fileNames: fileNames, tagNames: tagNames})
+    console.log(foundFiles)
+    return foundFiles.data
+  } catch (error){
+    console.error("Error searching for files:", error)
+  }
+}
+
+export async function getFileIdPath(fileId: string, projectId: string): Promise<Nullable<string>[] | undefined>{
+  try{
+    const file = await client.models.File.get({
+      fileId,
+      projectId
+    },
+    {
+      selectionSet: ["fileId", "parentId", "filename", "filepath"]
+    })
+
+    if(!file || !file.data || !file.data.parentId) return [`ROOT-${projectId}`]
+    console.log(file.data.filename)
+    if(file.data.parentId == `ROOT-${projectId}`){
+      return [file.data.parentId]
+    } else {
+      let path_remaining = await getFileIdPath(file.data.parentId, projectId)
+      if(!path_remaining) path_remaining = [`ROOT-${projectId}`]
+      return[...path_remaining, file.data.parentId]
+    }
+  } catch (error){
+    console.error(`Error getting parentId for fileId ${fileId} and projectId ${projectId} :`, error)
+  }
+}
+
+export async function getFilePath(fileId: string, projectId: string){
+  try {
+    const filePath = await client.models.File.get({
+      fileId,
+      projectId
+    },
+    {
+      selectionSet: ["filepath"]
+    })
+
+    if(!filePath || !filePath.data || !filePath.data.filepath) return undefined
+
+    return filePath.data.filepath
+
+  } catch (error) {
+    console.error(`Error getting filepath for fileId ${fileId} and projectId ${projectId} :`, error)
+  }
+
+}
+
+export async function getFileChildren(projectId: string, filepath: string){
+  try {
+    const files = await client.models.File.listFileByProjectIdAndFilepath({
+      projectId,
+      filepath: {beginsWith: filepath}
+    })
+    return files.data
+  } catch (error) {
+    console.error(`Error retrieving files with filepath prefix : ${filepath} :`, error)
+  }
+
+}
+export async function pokeFile(fileId: string, projectId: string, filepath: string){
+  try {
+
+    const pokeUpdate = await client.models.File.update({
+      fileId: fileId,
+      projectId: projectId,
+      filepath: filepath
+    })
+
+    return pokeUpdate
+
+  } catch (error) {
+    console.error("Failed to poke", error)
+  }
+
+}
+export async function batchUpdateFilePath(fileIds: string[], projectId: string, parentIds: string[], filepaths: string[]) {
+  try {
+    const filesBack = await client.mutations.batchUpdateFile({fileIds: fileIds, parentIds: parentIds, projectId: projectId, filepaths: filepaths})
+
+    //dummy update which 'pokes' the File table, so that AWS knows to refresh subscriptions
+
+
+    return filesBack.data
+
+  } catch (error) {
+    console.error(`Error performing batch update : `, error)
+  }
+}
+
+export async function getFilesByProjectIdAndIsDeleted(projectId: string){
+  try {
+    const files = await client.models.File.listFileByProjectIdAndIsDeleted({
+      projectId,
+      isDeleted: {eq: 1}
+    },
+        {
+          selectionSet: ["fileId", "filename", "filepath", "size", "ownerId", "projectId", "createdAt", "updatedAt", "isDirectory", "versionId"]
+        })
+
+    return files.data
+
+  } catch (error) {
+    console.error(`Error getting deleted files for projectId ${projectId} :`, error)
+  }
+
+}
+
+export async function getTags(id: string, projectId: string){
+  try {
+
+    if(projectId) {
+      const tags = await client.models.File.get({
+        fileId: id,
+        projectId
+      },
+      {
+        selectionSet: ["tags"]
+      }
+      )
+
+      if(!tags.data) return tags.data
+      //console.log(tags.data)
+      return tags.data.tags
+    }
+  } catch (error) {
+    console.error("Error retrieving tags for file:", error)
   }
 }
 
@@ -420,7 +614,7 @@ export async function createFile({
   size,
   versionId,
   ownerId,
-  isDeleted = false,
+  isDeleted = 0,
   createdAt,
   updatedAt,
 }: {
@@ -435,7 +629,7 @@ export async function createFile({
   size: number;
   versionId: string;
   ownerId: string;
-  isDeleted?: boolean;
+  isDeleted?: number;
   createdAt: string;
   updatedAt: string;
 }) {
@@ -461,10 +655,8 @@ export async function createFile({
 // Retrieve the latest version of a file using the composite primary key
 export async function getLatestFileVersion(fileId: string) {
   try {
-    const response = await client.models.File.list({
-      filter: {
-        fileId: { eq: fileId }, // Query all versions with the same fileId
-      },
+    const response = await client.models.File.listFileByLogicalIdAndVersionId(
+        {logicalId: fileId // Query all versions with the same fileId
     });
 
     if (response.data.length === 0) {
@@ -485,12 +677,11 @@ export async function getLatestFileVersion(fileId: string) {
 
 
 
-export async function updatefile(id: string, projectId: string) {
+export async function updatefile(id: string, projectId: string, versionId: string) {
   try{  
     
     const now = new Date().toISOString();
-    const latestver = (await getVersionHistory(id)).length + 1;
-    const versionId = latestver.toString();
+    
     await client.models.File.update({
         fileId: id,
         projectId,
@@ -507,6 +698,14 @@ export async function updatefile(id: string, projectId: string) {
 
 export async function deleteFile(id: string, version: string, projectId: string) {
   try {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete the version: ${version}  of file with ID: ${id}?`
+    );
+
+    if (!confirmDelete) {
+      alert("File deletion canceled.");
+      return;
+    }
 
     const now = new Date().toISOString();
 
@@ -514,7 +713,7 @@ export async function deleteFile(id: string, version: string, projectId: string)
       fileId: id,
       versionId: version,
       projectId,
-      isDeleted: true,
+      isDeleted: 1,
       deletedAt: now,
     });
 
