@@ -27,6 +27,15 @@ import Link from "next/link";
 import {JSX} from "react/jsx-runtime";
 import ConflictModal from '../../conflictModal';
 
+//SVG imports
+import Image from "next/image";
+import icon_alphanumericsort from "/assets/icons/sort-alphabetical-outlined-rounded.svg";
+import icon_alphanumericreversesort from "/assets/icons/sort-alphabetical-reverse-outlined-rounded.svg";
+import icon_binsolid from "/assets/icons/trash-3-outlined-rounded.svg";
+import icon_binline from "/assets/icons/trash-3-solid-rounded.svg";
+import icon_folder from "/assets/icons/folder-1-outlined-rounded.svg";
+import icon_filegeneric from "/assets/icons/file-outlined-rounded.svg";
+
 
 import IntrinsicElements = JSX.IntrinsicElements;
 import {isCancelError} from "aws-amplify/storage";
@@ -1218,7 +1227,7 @@ export default function FilePanel() {
                   </FilePathContainer>
                 <TopBarContainer>
                   <FloatingRecycleButton onClick={() => setShowRecycleBin(!showRecycleBin)} title="Recycle Bin">
-                    {showRecycleBin ? "📁" : "🗑️"}
+                    <div style={{justifyContent:"center"}}>{showRecycleBin ? <Image src={icon_binline} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/> : <Image src={icon_binsolid} alt="" layout="fill" objectFit='contain' objectFit='scale-down' objectPosition='center'/>}</div>
                   </FloatingRecycleButton>
                   <Input onKeyDown={(e) => handleSearch(e)} onChange = {(e) => e.target.value.length == 0 ? setSearch(false) : undefined}>
 
@@ -1227,12 +1236,12 @@ export default function FilePanel() {
                     <SortSelector
                         $selected = {sort ==='alphanumeric'}
                         onClick={() => handleSwitchSort("alphanumeric")}>
-                      A
+                      <Image src={icon_alphanumericsort} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/>
                     </SortSelector>
                     <SortSelector
                         $selected = {sort ==='alphanumeric-reverse'}
                         onClick = {() => handleSwitchSort("alphanumeric-reverse")}>
-                      B
+                      <Image src={icon_alphanumericreversesort} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/>
                     </SortSelector>
 
                   </SortContainer>
@@ -1260,13 +1269,12 @@ export default function FilePanel() {
                             onDragLeave = {(e) => {handleDragOver(e, undefined)}}
                             onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ? handleFileDrag(e, projectId, userId, file.fileId, file.filepath) : undefined}}>
 
-                        {file.isDirectory ? "📁" : "🗎"} {file.filename}
-                        <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                        <div style={{display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? <Image src={icon_folder} alt="" objectFit='contain'/> : <Image src={icon_filegeneric} alt="" objectFit='contain'/>} <div style={{marginLeft: '1em'}}>{file.filename} <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
                                               size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                               projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
                                               updatedAt={file.updatedAt} visible={file.visible}
                                               open={file.open}
-                                              isDirectory={file.isDirectory}></FileContext>
+                                              isDirectory={file.isDirectory}></FileContext></div></div>
                       </File>
 
 
@@ -1700,7 +1708,7 @@ const FilePathContainer = styled.div`
     border-bottom-width: 3px;
     border-bottom-color: black;
     padding: 15px;
-      overflow-x: scroll;
+      overflow-x: auto;
     white-space: nowrap;
 `;
 const Input = styled.input`

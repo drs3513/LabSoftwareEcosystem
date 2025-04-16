@@ -9,10 +9,6 @@ import { useAuthenticator } from "@aws-amplify/ui-react";
 import {boolean} from "zod";
 import {useRouter, useSearchParams} from 'next/navigation'
 
-//SVG imports
-import Image from "next/image";
-import icon_folder from "/assets/icons/folder-1-outlined-rounded.svg";
-
 const client = generateClient<Schema>();
 
 export default function ProjectPanel() {
@@ -81,7 +77,7 @@ export default function ProjectPanel() {
       ) : projects.length > 0 ? (
         projects.map((project) => (
           <Project key={project.projectId} onClick={() => setProject(project.projectId)} $selected={localProjectId == project.projectId}>
-            <div style={{display: "flex", justifyContent: "center", overflow: "hidden"}}><Image src={icon_folder} alt="" objectFit='contain' vertical-align='baseline'/>{project.projectName}</div>
+            {project.projectName}
           </Project>
         ))
       ) : (
