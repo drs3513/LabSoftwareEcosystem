@@ -110,6 +110,7 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
 
         try {
             await hardDeleteFile(fileId, projectId);
+            fetchFiles();
         } catch (err) {
             console.error("Hard delete failed:", err);
         }

@@ -15,7 +15,8 @@ import {
   processAndUploadFiles, deleteFile, Restorefile, hardDeleteFile,
   getFileChildren, batchUpdateFilePath, pokeFile,
   updatefile,
-  createNewVersion
+  createNewVersion,
+  waitForVersionId
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
@@ -33,6 +34,7 @@ import ConflictModal from '../../conflictModal';
 import IntrinsicElements = JSX.IntrinsicElements;
 import {isCancelError} from "aws-amplify/storage";
 import RecycleBinPanel from "@/app/main_screen/popout_recycling_bin";
+import { waitForDebugger } from 'inspector';
 
 const client = generateClient<Schema>();
 
@@ -78,6 +80,12 @@ function compare_file_name_reverse(file_1: any, file_2: any){
 
 const sort_style_map: {[key: string]: any} = {"alphanumeric" : compare_file_name, "alphanumeric-reverse" : compare_file_name_reverse, "chronological" : compare_file_date, "chronological-reverse" : compare_file_date_reverse}
 
+type FileVersion = Pick<
+  Schema["File"]["type"],
+  "fileId" | "logicalId" | "filename" | "filepath" | "parentId" |
+  "size" | "versionId" | "ownerId" | "projectId" | "createdAt" | "updatedAt"
+>;
+
 interface fileInfo{
   fileId: string,
   filename: string,
@@ -93,7 +101,7 @@ interface fileInfo{
   visible: boolean,
   open: boolean,
   isDirectory: boolean | null
-  versions?: Schema["File"]["type"][];
+  versions?: FileVersion[];
 }
 
 interface activeParent{
@@ -150,6 +158,8 @@ export default function FilePanel() {
   const [contextMenuTags, setContextMenuTags] = useState< Nullable<string>[] | null | undefined>(undefined)
 
   const [contextMenuUser, setContextMenuUser] = useState<string | undefined>(undefined);
+
+  const [contextMenuVersionPopout, setContextMenuVersionPopout] = useState(false);
 
   const [files, setFiles] = useState<Array<fileInfo>>([]);
   const filesRef = useRef(files)
@@ -392,61 +402,74 @@ export default function FilePanel() {
   }
 
   const observeFiles = () => {
-
     const subscription = client.models.File.observeQuery({
       filter: {
-            and: [
-              {
-                or: activeParentIds.map(parent => ({
-                  parentId: {eq: parent.id}
-                })),
-              },
-              {
-                isDeleted: {eq: 0}
-              }
-            ]
-            //projectId: {eq: projectId}
-
+        or: activeParentIds.map(parent => ({
+          parentId: { eq: parent.id },
+        })),
       },
-      selectionSet: ["fileId", "filename", "filepath", "parentId", "size", "versionId", "ownerId", "projectId", "createdAt",
-      "updatedAt", "isDirectory","versions { versionId updatedAt }" ]
+      selectionSet: [
+        "fileId", "filename", "filepath", "logicalId", "parentId", "size",
+        "versionId", "ownerId", "projectId", "createdAt", "updatedAt", "isDirectory", "isDeleted"
+      ],
     }).subscribe({
       next: async ({ items }) => {
-        console.log("Hello")
-        if(items.length == 0){
-          return []
+        if (items.length === 0) {
+          setFiles([]);
+          return;
         }
-
-        let temp_files = items.map(file => ({
-          fileId: file.fileId,
-          filename: file.filename,
-          filepath: file.filepath,
-          parentId: file.parentId,
-          size: file.size,
-          versionId: file.versionId,
-          ownerId: file.ownerId,
-          projectId: file.projectId,
-          createdAt: file.createdAt,
-          updatedAt: file.updatedAt,
-          visible: true,
-          open: activeParentIds.some(parent => parent.id === file.fileId),
-          isDirectory: file.isDirectory,
-          versions: file.versions ?? [],
-        }));
-        console.log(activeParentIds)
-        //console.log(temp_files)
+  
+        // Apply client-side filter
+        const visibleItems = items.filter(file =>
+          showRecycleBin ? file.isDeleted === 1 : file.isDeleted === 0
+        );
+  
+        // Group by logicalId and pick latest version
+        const grouped: Record<string, typeof visibleItems> = {};
+        for (const file of visibleItems) {
+          if (!grouped[file.logicalId]) {
+            grouped[file.logicalId] = [];
+          }
+          grouped[file.logicalId].push(file);
+        }
+  
+        const temp_files = Object.values(grouped).map(versions => {
+          const sorted = versions.sort(
+            (a, b) =>
+              new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
+          );
+          const latest = sorted[0];
+  
+          return {
+            fileId: latest.fileId,
+            filename: latest.filename,
+            filepath: latest.filepath,
+            logicalId: latest.logicalId,
+            parentId: latest.parentId,
+            size: latest.size,
+            versionId: latest.versionId,
+            ownerId: latest.ownerId,
+            projectId: latest.projectId,
+            createdAt: latest.createdAt,
+            updatedAt: latest.updatedAt,
+            visible: true,
+            open: activeParentIds.some(parent => parent.id === latest.fileId),
+            isDirectory: latest.isDirectory,
+            versions: sorted,
+          };
+        });
+  
         setFiles(sort_files_with_path(temp_files));
-        return temp_files;
       },
       error: (error) => {
         console.error("[ERROR] Error observing files:", error);
       },
     });
-
-    return () => {
-      subscription.unsubscribe();
-    };
+  
+    return () => subscription.unsubscribe();
   };
+  
+  
 
 
   async function fetchFilesWithSearch(){
@@ -466,6 +489,7 @@ export default function FilePanel() {
             {
               fileId: file.fileId,
               filename: file.filename,
+              logicalId: file.logicalId,
               filepath: file.filepath,
               parentId: file.parentId,
               size: file.size,
@@ -820,14 +844,14 @@ export default function FilePanel() {
 
       if (decision ==='overwrite' && conflict) {
         const { key: storageKey } = await uploadFile(file, ownerId, projectId, filePath);
-        const versionId = await getFileVersions(storageKey);
+        const versionId = await waitForVersionId(storageKey);
         await updatefile(conflict.fileId, projectId, versionId as string);
       }
 
       let actualName = fileName;
       if (decision === 'version') {
         try {
-                await createNewVersion(file, conflict.fileId, projectId, ownerId, parentId, filePath);
+                await createNewVersion(file, conflict?.logicalId as string, projectId, ownerId, parentId, filePath);
               } catch (error) {
                 console.error("[VERSION ERROR] Failed to create version for:", file.name, error);
               }
@@ -1408,16 +1432,24 @@ export default function FilePanel() {
                     <ContextMenuItem onClick={() => cancelDownload(contextMenuFileId!)}>
                       Cancel Download
                     </ContextMenuItem>
+                    <ContextMenuItem
+                      style={{ fontWeight: "bold", cursor: "default" }}
+                      onMouseOver={() => {
+                        setContextMenuVersionPopout(true);
+                        setContextMenuTagPopout(false); // optionally close tags
+                      }}
+                    >
+                      Versions
+                    </ContextMenuItem>
+
                     {/* Versions block inserted directly here */}
-                    {contextFile?.versions ? (
-                        <>
-                          <ContextMenuItem style={{ fontWeight: "bold", cursor: "default" }}>
-                            Versions
-                          </ContextMenuItem>
+                    {contextMenuVersionPopout && contextFile?.versions && (
+                        <ContextMenuPopout $index={contextMenuTagPopout ? 2 : 1}>
                           {[...contextFile.versions]
-                            .sort((a, b) => new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime())
-                            .map((version, idx) => {
-                              const versionNumber = `v${idx + 1}`;
+                            .sort((a, b) => new Date(a.updatedAt!).getTime() - new Date(b.updatedAt!).getTime())
+                            .reverse()
+                            .map((version, idx, arr) => {
+                              const versionNumber = `v${arr.length - idx}`;
                               const isCurrent = version.versionId === contextFile.versionId;
                               const dateStr = new Date(version.updatedAt!).toLocaleString();
 
@@ -1445,13 +1477,8 @@ export default function FilePanel() {
                                 </ContextMenuItem>
                               );
                             })}
-                        </>
-                      ) : (
-                        <ContextMenuItem style={{ fontStyle: "italic", color: "#888" }}>
-                          Loading versions...
-                        </ContextMenuItem>
+                        </ContextMenuPopout>
                       )}
-
                   </ContextMenu>
                   {contextMenuTagPopout ?
                       <ContextMenuPopout $index={1}>
@@ -1675,6 +1702,8 @@ const ContextMenu = styled.div`
     display: flex;
     flex-direction: column;
     height: max-content;
+    max-height: 300px; /* Add this */
+    overflow-y: auto;   /* Add this */
 `;
 const ContextMenuPopout = styled.div<{$index: number}>`
     margin-top: ${(props) => "calc(" + props.$index + "* calc(21px + 0.4rem) + 1px)"};

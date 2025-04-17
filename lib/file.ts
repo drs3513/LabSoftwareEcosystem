@@ -103,12 +103,42 @@ export async function overwriteFileTrigger(
 
 /*--------------------------------------------------------
 --------------------------------------------------------*/
+export async function waitForVersionId(key: string): Promise<string | null> {
+  const maxRetries = 5;
+  const baseDelay = 300; // ms
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    if (attempt > 0) {
+      const delay = baseDelay * Math.pow(2, attempt); // exponential backoff
+      console.log(`[INFO] Retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    } else {
+      // Add small delay before first try
+      await new Promise((resolve) => setTimeout(resolve, baseDelay));
+    }
+
+    try {
+      console.log(`[INFO] Fetching file versions (Attempt ${attempt + 1}/${maxRetries})`);
+      const versionId = await getFileVersions(key);
+      if (versionId) return versionId;
+
+    } catch (err) {
+      console.warn(`[WARN] Failed to get version (Attempt ${attempt + 1}):`, err);
+    }
+
+    attempt++;
+  }
+
+  console.error(`[FATAL] Unable to fetch versionId for key: ${key}`);
+  return null;
+}
 
 
 
 export async function createNewVersion(
   file: File,
-  fileId: string,
+  logicalId: string,
   projectId: string,
   ownerId: string,
   parentId: string,
@@ -119,8 +149,8 @@ export async function createNewVersion(
   // Upload the file to S3
   const { key: storageKey } = await uploadFile(file, ownerId, projectId, filepath);
 
-  // Retrieve the version ID from S3 (or fallback to '1')
-  const versionId = await getFileVersions(storageKey) || '1';
+  
+  const versionId = waitForVersionId(storageKey);
   const newfileid = crypto.randomUUID();
   console.log("Creating the versioned file");
   if(!parentId){
@@ -130,7 +160,7 @@ export async function createNewVersion(
   await createFile({
     projectId,
     fileId:newfileid,
-    logicalId: fileId,
+    logicalId: logicalId,
     filename: file.name,
     isDirectory: false,
     filepath,
@@ -234,7 +264,7 @@ export async function processAndUploadFiles(
 
             try {
               const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
-              const versionId = await getFileVersions(storageKey) || '1';
+              const versionId = await getFileVersions(storageKey);
 
               const newFile = await createFile({
                 projectId,
