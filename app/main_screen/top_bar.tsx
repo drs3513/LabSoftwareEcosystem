@@ -8,8 +8,8 @@ import { useGlobalState } from "../GlobalStateContext";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 
 const Top_Bar = styled.div`
-  background-color: tan;
-  border-bottom: 2px solid black;
+  background-color: #AFC1D0;
+  border-bottom: 2px solid #D7DADD;
   display: flex;
   flex-direction: row;
   justify-content: space-between;
@@ -27,13 +27,14 @@ const Top_Bar_Item = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 1.5rem;
+  height: 2rem;
   padding: 0.5rem 1rem;
   border-radius: 5px;
   position: relative;
   &:hover {
     cursor: pointer;
-    background-color: saddlebrown;
+    background-color: #365679;
+    color: white;
     transition: 0.2s;
   }
 `;
@@ -68,7 +69,7 @@ const SignOutButton = styled.div`
   color: white;
   &:hover {
     cursor: pointer;
-    background-color: red;
+    background-color: darkred;
     transition: 0.2s;
   }
 `;

@@ -1501,7 +1501,8 @@ const SortSelector = styled.button.attrs<{$selected: boolean}>(props => ({
   filter: drop-shadow(1px 1px 1px #000000);
   &:hover{
     
-    background-color: lightgray !important;
+    background-color: #D7DADD !important;
+    transition: 0.2s;
   }
 `
 const ContextMenuExitButton = styled.button`
@@ -1673,7 +1674,7 @@ const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: n
   border-radius: 0;
   &:hover {
 
-    border: solid lightblue;
+    filter: drop-shadow(0px 0px 5px #5C9ECC);
 
     padding-top: calc(1rem - 2px);
     padding-bottom: calc(1rem - 2px);
@@ -1705,8 +1706,8 @@ const FilePathContainer = styled.div`
     top: 0;
     width: 100%;
     border-bottom-style: solid;
-    border-bottom-width: 3px;
-    border-bottom-color: black;
+    border-bottom-width: 2px;
+    border-bottom-color: #D7DADD;
     padding: 15px;
       overflow-x: auto;
     white-space: nowrap;
@@ -1803,15 +1804,17 @@ const FloatingRecycleButton = styled.button`
   border-style: solid;
   border-width: 2px;
   border-color: #ccc;
+  background: white;
   cursor: pointer;
   filter: drop-shadow(1px 1px 1px #000000);
   &:hover{
 
-    background-color: lightgray !important;
+    background-color: #D7DADD !important;
+    transition: 0.2s;
   }
 
   &:hover {
-    background-color: #ddd;
+    background-color: #D7DADD;
   }
 `;
 /*
