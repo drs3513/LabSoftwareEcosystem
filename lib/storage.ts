@@ -9,15 +9,10 @@ export async function getFileVersions(key: string): Promise<string | null> {
   let attempt = 0;
 
   while (attempt < maxRetries) {
-    try {
-      console.log(`[INFO] Fetching file versions (Attempt ${attempt + 1}/${maxRetries})`);
+    console.log(`[INFO] Fetching file versions (Attempt ${attempt + 1}/${maxRetries})`);
 
-      let session;
-      try {
-        session = await fetchAuthSession();
-      } catch (authError) {
-        throw new Error(`[AUTH ERROR] ${authError}`);
-      }
+    try {
+      const session = await fetchAuthSession();
 
       if (!session || !session.credentials) {
         throw new Error("No valid credentials found");
@@ -25,13 +20,8 @@ export async function getFileVersions(key: string): Promise<string | null> {
 
       const response = await fetch("/api/s3-versions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          credentials: session.credentials,
-          key,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credentials: session.credentials, key }),
       });
 
       if (!response.ok) {
@@ -39,16 +29,16 @@ export async function getFileVersions(key: string): Promise<string | null> {
       }
 
       const data = await response.json();
-      const versions = data.versions.filter((v: any) => v.key === key);
+      console.log("[DEBUG] Raw versions data:", data.versions);
+      const versions = (data.versions || []).filter((v: any) => v.key === key);
 
       if (versions.length === 0) {
         console.warn(`[WARN] No versions found for key: ${key}`);
-        return null;
+        throw new Error("No versions found");
       }
 
-      versions.sort(
-        (a: any, b: any) =>
-          new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
+      versions.sort((a: any, b: any) =>
+        new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
       );
 
       console.log(`[SUCCESS] Retrieved latest version for key: ${key}`);
@@ -71,6 +61,8 @@ export async function getFileVersions(key: string): Promise<string | null> {
 
   return null;
 }
+
+
 
 /*--------------------------------------
         Trigger Func
@@ -164,30 +156,32 @@ export type ZipTask = {
 
 export async function downloadFolderAsZip(
   folderName: string,
-  fileList: { path: string; filename: string }[],
+  fileList: { filepath: string; storageId: string }[],
   task: ZipTask
 ) {
   const zip = new JSZip();
 
   for (const file of fileList) {
     if (task.isCanceled) {
-      console.warn(`[CANCEL] Folder download canceled.`);
+      console.warn("[CANCEL] Folder download canceled.");
       return;
     }
 
     try {
       const { body } = await downloadData({
-        path: file.path,
+        key: file.storageId,
       }).result;
 
       const blob = await body.blob();
-      zip.file(file.filename, blob);
+
+      // Add to zip under the desired directory structure
+      zip.file(file.filepath.replace(/^\//, ""), blob);
     } catch (error) {
       if (isCancelError(error)) {
-        console.warn(`[CANCELLED] ${file.filename}`);
+        console.warn(`[CANCELLED] ${file.filepath}`);
         return;
       } else {
-        console.error(`[ERROR] Failed to download ${file.path}`, error);
+        console.error(`[ERROR] Failed to download storageId: ${file.storageId}`, error);
       }
     }
   }
@@ -196,10 +190,12 @@ export async function downloadFolderAsZip(
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
   const url = URL.createObjectURL(zipBlob);
+
   const a = document.createElement("a");
   a.href = url;
   a.download = `${folderName}.zip`;
   a.click();
+
   URL.revokeObjectURL(url);
 }
 

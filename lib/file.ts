@@ -114,17 +114,16 @@ export async function waitForVersionId(key: string): Promise<string | null> {
       console.log(`[INFO] Retrying in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     } else {
-      // Add small delay before first try
       await new Promise((resolve) => setTimeout(resolve, baseDelay));
     }
 
-    try {
-      console.log(`[INFO] Fetching file versions (Attempt ${attempt + 1}/${maxRetries})`);
-      const versionId = await getFileVersions(key);
-      if (versionId) return versionId;
+    console.log(`[INFO] Attempt ${attempt + 1}/${maxRetries} to get versionId for ${key}`);
 
+    try {
+      const versionId = await getFileVersions(key); // ✅ this was missing
+      if (versionId) return versionId; // ✅ success!
     } catch (err) {
-      console.warn(`[WARN] Failed to get version (Attempt ${attempt + 1}):`, err);
+      console.warn(`[WARN] Attempt ${attempt + 1} failed:`, err);
     }
 
     attempt++;
@@ -133,6 +132,7 @@ export async function waitForVersionId(key: string): Promise<string | null> {
   console.error(`[FATAL] Unable to fetch versionId for key: ${key}`);
   return null;
 }
+
 
 
 
@@ -264,7 +264,21 @@ export async function processAndUploadFiles(
 
             try {
               const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
-              const versionId = await getFileVersions(storageKey);
+              let versionId: string | null = null;
+              let retries = 0;
+              while (!versionId && retries < 5) {
+                versionId = await getFileVersions(storageKey);
+                if (!versionId) {
+                  const delay = Math.pow(2, retries + 1) * 100;
+                  console.warn(`[RETRY] Waiting ${delay}ms for version info...`);
+                  await new Promise(res => setTimeout(res, delay));
+                }
+                retries++;
+              }
+              if (!versionId) {
+                await abortUpload(uploadedFiles, projectId);
+                throw new Error("Could not retrieve version ID after retry");
+              }
 
               const newFile = await createFile({
                 projectId,
@@ -682,6 +696,36 @@ export async function createFile({
   });
 }
 
+export async function createFolder(
+  projectId: string,
+  name: string,
+  ownerId: string,
+  parentId: string,
+  filepath: string
+) {
+  const fileId = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  const newFile = await createFile({
+    projectId,
+    fileId,
+    logicalId: fileId,
+    filename: name,
+    isDirectory: true,
+    filepath, // Full path like /ParentFolder/NewFolder
+    parentId, // Parent directory's fileId
+    size: 0,
+    storageId: null,
+    versionId: "1",
+    ownerId,
+    isDeleted: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return newFile;
+}
+
 // Retrieve the latest version of a file using the composite primary key
 export async function getLatestFileVersion(fileId: string) {
   try {
@@ -728,14 +772,14 @@ export async function updatefile(id: string, projectId: string, versionId: strin
 
 export async function deleteFile(id: string, version: string, projectId: string) {
   try {
-    const confirmDelete = window.confirm(
+   /* const confirmDelete = window.confirm(
       `Are you sure you want to delete the version: ${version}  of file with ID: ${id}?`
     );
 
     if (!confirmDelete) {
       alert("File deletion canceled.");
       return;
-    }
+    }*/
 
     const now = new Date().toISOString();
 

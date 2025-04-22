@@ -2,14 +2,12 @@ import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
 import { storage } from './storage/resource';
-import { version } from "./backend/function/version/resource";
 import { ManagedPolicy } from 'aws-cdk-lib/aws-iam';
 
 const backend = defineBackend({
   auth,
   storage,
   data,
-  version,
 });
 
 // Attach managed policy to authenticated users

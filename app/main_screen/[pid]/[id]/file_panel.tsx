@@ -16,12 +16,13 @@ import {
   getFileChildren, batchUpdateFilePath, pokeFile,
   updatefile,
   createNewVersion,
-  waitForVersionId
+  waitForVersionId,
+  createFolder
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
 import { generateClient } from "aws-amplify/api";
-import { startDownloadTask, downloadFolderAsZip, getFileVersions, uploadFile } from "@/lib/storage";
+import { startDownloadTask, downloadFolderAsZip, getFileVersions, uploadFile, ZipTask } from "@/lib/storage";
 import type { Schema } from "@/amplify/data/resource";
 import CreateFilePanel from "../../popout_create_file_panel"
 import {useRouter, useSearchParams} from "next/navigation"
@@ -91,6 +92,7 @@ interface fileInfo{
   filename: string,
   filepath: string,
   logicalId: string,
+  storageId: Nullable<string> |undefined,
   size: number,
   versionId: string,
   ownerId: string,
@@ -150,6 +152,10 @@ export default function FilePanel() {
   const observeMouseCoords = useRef<boolean>(true);
 
   const [contextMenuFileId, setContextMenuFileId] = useState<string | undefined>(undefined);
+
+  const [contextMenuStoragePath, setContextMenuStoragePath] = useState<Nullable<string> | undefined>(undefined);
+
+  const [contextMenuFileName, setContextMenuFileName] = useState<string | undefined>(undefined);
 
   const [contextMenuFilePath, setContextMenuFilePath] = useState<string | undefined>(undefined);
 
@@ -326,6 +332,7 @@ export default function FilePanel() {
         filename: latest.filename,
         filepath: latest.filepath,
         parentId: latest.parentId,
+        storageId: latest.storageId,
         size: latest.size,
         versionId: latest.versionId,
         ownerId: latest.ownerId,
@@ -410,7 +417,7 @@ export default function FilePanel() {
       },
       selectionSet: [
         "fileId", "filename", "filepath", "logicalId", "parentId", "size",
-        "versionId", "ownerId", "projectId", "createdAt", "updatedAt", "isDirectory", "isDeleted"
+        "versionId", "ownerId", "projectId", "createdAt", "updatedAt", "isDirectory", "isDeleted", "storageId"
       ],
     }).subscribe({
       next: async ({ items }) => {
@@ -445,6 +452,7 @@ export default function FilePanel() {
             filename: latest.filename,
             filepath: latest.filepath,
             logicalId: latest.logicalId,
+            storageId: latest.storageId,
             parentId: latest.parentId,
             size: latest.size,
             versionId: latest.versionId,
@@ -491,6 +499,7 @@ export default function FilePanel() {
               filename: file.filename,
               logicalId: file.logicalId,
               filepath: file.filepath,
+              storageId: file.storageId,
               parentId: file.parentId,
               size: file.size,
               versionId: file.versionId,
@@ -611,10 +620,9 @@ export default function FilePanel() {
 
   const activeDownloads = new Map<string, ReturnType<typeof startDownloadTask>>();
 
-  const handleDownload = async (filePath: string, fileId: string, fileuser: string) => {
-    filePath = `uploads/${fileuser}/${projectId}${filePath}`;
-    const task = startDownloadTask(filePath, (percent) => {
-      setDownloadProgressMap(prev => ({ ...prev, [fileId]: percent }));
+  const handleDownload = async (storagePath: string, filename: string, fileId: string) => {
+    const task = startDownloadTask(storagePath, (percent) => {
+      setDownloadProgressMap(prev => ({ ...prev, [filename]: percent }));
     });
 
     activeDownloads.set(fileId, task);
@@ -626,20 +634,73 @@ export default function FilePanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = filePath.split('/').pop() || "download";
+      a.download = storagePath.split('/').pop() || "download";
       a.click();
       URL.revokeObjectURL(url);
 
     } catch (error) {
       if (isCancelError(error)) {
-        console.warn(`[CANCELLED] Download cancelled: ${filePath}`);
+        console.warn(`[CANCELLED] Download cancelled: ${fileId}`);
       } else {
-        console.error(`[ERROR] Download failed: ${filePath}`, error);
+        console.error(`[ERROR] Download failed: ${fileId}`, error);
       }
     } finally {
       activeDownloads.delete(fileId);
     }
   };
+
+  const handleFolderDownload = async (folderName: string, folderLogicalId: string) => {
+    if (!projectId) return;
+  
+    const task: ZipTask = {
+      isCanceled: false,
+      cancel() {
+        task.isCanceled = true;
+      },
+    };
+  
+    const allChildren = await getFileChildren(projectId, folderLogicalId);
+    const validFiles = allChildren?.filter(f => !f.isDirectory && f.storageId && f.filepath);
+  
+    const fileList = validFiles?.map(file => ({
+      filepath: file.filepath,         // This is how it appears to the user
+      storageId: file.storageId!,      // This is how we fetch it
+    }));
+  
+    await downloadFolderAsZip(folderName, fileList as [], task);
+  };
+
+  const handleDownloadCurrentView = async () => {
+    if (!projectId) return;
+  
+    const task: ZipTask = {
+      isCanceled: false,
+      cancel() {
+        task.isCanceled = true;
+      },
+    };
+  
+    const fileList: { path: string; filename: string }[] = [];
+  
+    for (const file of filesRef.current) {
+      if (!file.storageId || file.isDirectory) continue;
+  
+      fileList.push({
+        path: file.storageId,
+        filename: file.filepath.startsWith("/") ? file.filepath.slice(1) : file.filepath, // Preserve structure
+      });
+    }
+  
+    if (fileList.length === 0) {
+      console.warn("No downloadable files in current view.");
+      return;
+    }
+  
+    const rootName = projectName.current || "project-files";
+    await downloadFolderAsZip(rootName, fileList as [], task);
+  };
+  
+  
 
   const cancelDownload = (fileId: string) => {
     const task = activeDownloads.get(fileId);
@@ -829,7 +890,8 @@ export default function FilePanel() {
       const fullPath = file.webkitRelativePath || file.name;
       const pathParts = fullPath.split("/");
       const fileName = pathParts.pop()!;
-      const filePath = "/" + fullPath;
+      const filePath = `${rootFilePath.replace(/\/$/, "")}/${fullPath}`.replace(/\/+/g, "/");
+      ;
 
       const conflict = filesRef.current.find(
           f => f.filepath === filePath && f.projectId === projectId
@@ -844,8 +906,10 @@ export default function FilePanel() {
 
       if (decision ==='overwrite' && conflict) {
         const { key: storageKey } = await uploadFile(file, ownerId, projectId, filePath);
-        const versionId = await waitForVersionId(storageKey);
-        await updatefile(conflict.fileId, projectId, versionId as string);
+        waitForVersionId(storageKey).then((versionId) => {
+          return updatefile(conflict.fileId, projectId, versionId as string);
+        });;
+        
       }
 
       let actualName = fileName;
@@ -868,7 +932,7 @@ export default function FilePanel() {
       if (!current.files) current.files = {};
       current.files[actualName] = file;
     }
-    uploadQueue.current.push({
+    uploadQueue.current?.push({
       folderDict,
       ownerId,
       projectId,
@@ -878,7 +942,7 @@ export default function FilePanel() {
         (percent: number) => setUploadProgress(percent));
 
     // After upload finishes, remove from queue and reset progress
-    uploadQueue.current.shift();
+    uploadQueue.current?.shift();
     setCompletedUploads((prev) => [...prev, 0]);
 
     // Delay removal of visual trace
@@ -919,14 +983,14 @@ export default function FilePanel() {
     const file = files.find(f => f.fileId === fileId);
     if (!file || !projectId) return;
 
-    const confirmDelete = window.confirm(
+    /*const confirmDelete = window.confirm(
         `Are you sure you want to delete ${file.isDirectory ? 'folder' : 'file'}: "${file.filename}"?`
     );
 
     if (!confirmDelete) {
       console.log("Deletion canceled by user.");
       return;
-    }
+    }*/
 
     if (file.isDirectory) {
       await recursiveDeleteFolder(fileId);
@@ -1228,9 +1292,23 @@ export default function FilePanel() {
     a.click();
   };
 
+  function handleCreateFolder() {
+    if (!projectId || !userId) return;
+  
+    const name = window.prompt("Name of folder", "New Folder");
+    if (!name) return;
+  
+    const parentId = contextMenuFileId ?? `ROOT-${projectId}`;
+    const parentPath = contextMenuFilePath ?? "";
+    const fullPath = `${parentPath}/${name}`.replace(/\/+/g, "/");
+  
+    createFolder(projectId, name, userId, parentId, fullPath);
+  }
+  
 
 
-  function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, location: string, userId: string | undefined){
+
+  function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, location: string, userId: string | undefined, storagePath: Nullable<string> |undefined, filename: string |undefined){
     if(e.target != e.currentTarget){
       return
     }
@@ -1245,6 +1323,8 @@ export default function FilePanel() {
     setContextMenuFilePath(filepath);
     setContextMenuTagPopout(false);
     setContextMenuUser(userId);
+    setContextMenuStoragePath(storagePath);
+    setContextMenuFileName(filename);
 
   }
 
@@ -1272,7 +1352,7 @@ export default function FilePanel() {
     
       <>
         <PanelContainer
-            onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel', undefined)}
+            onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel', undefined, undefined, undefined)}
             onMouseUp={(e) => onFilePlace(e, rootParentId, null)}
             onMouseMove = {(e) => {observeMouseCoords.current && (pickedUpFileGroup || pickedUpFileId) ? setMouseCoords([e.clientX, e.clientY]) : undefined}}
             onClick = {(e) => e.target == e.currentTarget ? setSelectedFileGroup(undefined) : undefined}
@@ -1330,13 +1410,14 @@ export default function FilePanel() {
                             onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : undefined}
                             onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
                             onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(e, filesByFileId.current[file.fileId])}
-                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId)}
+                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
                             onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
                             onDragLeave = {(e) => {handleDragOver(e, undefined)}}
                             onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ? handleFileDrag(e, projectId, userId, file.fileId, file.filepath) : undefined}}>
 
                         {file.isDirectory ? "📁" : "🗎"} {file.filename}
                         <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                                              logicalId={file.logicalId} storageId={file.storageId}
                                               size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                               projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
                                               updatedAt={file.updatedAt} visible={file.visible}
@@ -1357,11 +1438,12 @@ export default function FilePanel() {
                             onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : undefined}
                             onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
                             onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(e, filesByFileId.current[file.fileId])}
-                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId)}
+                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
                             onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
                             onDragLeave = {(e) => {handleDragOver(e, undefined)}}>
                         {file.isDirectory ? "📁" : "🗎"} {file.filename}
                         <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                                              logicalId={file.logicalId} storageId={file.storageId}
                                               size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                               projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
                                               updatedAt={file.updatedAt} visible={file.visible} open={file.open}
@@ -1396,28 +1478,31 @@ export default function FilePanel() {
                   <ContextMenu>
                     <ContextMenuItem
                         onClick={(e) => {
-                          setCreateFilePanelUp(true);
-                          createFilePanelInitX.current = e.pageX;
-                          createFilePanelInitY.current = e.pageY;
-                          createFileOrFolder.current = "File";
+                          handleCreateFolder();
                         }}
                     >
-                      Upload File/Folder
+                      Create Folder
                     </ContextMenuItem>
                     <ContextMenuItem>Open Chat</ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={() => handleDownloadCurrentView()}
+                    >
+                      Download All in View
+                    </ContextMenuItem>
+
                   </ContextMenu>
                 </ContextMenuWrapper>
             ) : contextMenuFileId && contextMenu && contextMenuType=="fileFile" ? (
 
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
-                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);setContextMenuVersionPopout(false)}}>
                       Rename
                     </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true);setContextMenuVersionPopout(false)}}>
                       Tags
                     </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);setContextMenuVersionPopout(false)}}>
                       Properties
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
@@ -1426,7 +1511,7 @@ export default function FilePanel() {
                     <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
                       Open Chat
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={() => handleDownload(contextMenuFilePath!, contextMenuFileId!,contextMenuUser!)}>
+                    <ContextMenuItem onClick={() => handleDownload(contextMenuStoragePath!, contextMenuFileName!,contextMenuFileId!)}>
                       Download
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => cancelDownload(contextMenuFileId!)}>
@@ -1441,6 +1526,7 @@ export default function FilePanel() {
                     >
                       Versions
                     </ContextMenuItem>
+                    </ContextMenu>
 
                     {/* Versions block inserted directly here */}
                     {contextMenuVersionPopout && contextFile?.versions && (
@@ -1479,7 +1565,6 @@ export default function FilePanel() {
                             })}
                         </ContextMenuPopout>
                       )}
-                  </ContextMenu>
                   {contextMenuTagPopout ?
                       <ContextMenuPopout $index={1}>
                         {contextMenuTags || contextMenuTags === null ?
@@ -1511,6 +1596,12 @@ export default function FilePanel() {
                     </ContextMenuItem>
                     <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
                       Properties
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onMouseOver={() => setContextMenuTagPopout(false)}
+                      onClick={() => handleFolderDownload(contextMenuFileName as string, contextMenuFileId as string)}
+                    >
+                      Download
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => setFileId(contextMenuFileId)} onMouseOver={() => setContextMenuTagPopout(false)}>
                       Open Chat
