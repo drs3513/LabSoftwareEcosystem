@@ -7,7 +7,7 @@ import { ManagedPolicy } from 'aws-cdk-lib/aws-iam';
 const backend = defineBackend({
   auth,
   storage,
-  data,
+  data
 });
 
 // Attach managed policy to authenticated users

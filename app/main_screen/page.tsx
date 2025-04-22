@@ -3,6 +3,7 @@ import TopBar from "./top_bar"
 import styled from 'styled-components'
 import PanelManager from "./panel_manager"
 import NotificationView from "./notification_view"
+import {ReactElement} from "react";
 
 const Body = styled.div`
     display: flex;
@@ -22,3 +23,12 @@ export default function Home() {
   );
 }
 
+//Home.getLayout = function getLayout(page: ReactElement) {
+//    return (
+//        <Body>
+//            <TopBar/>
+//            <PanelManager/>
+//            <NotificationView/>
+//        </Body>
+//    )
+//}

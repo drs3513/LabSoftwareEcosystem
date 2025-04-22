@@ -22,7 +22,7 @@ import {
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
 import { generateClient } from "aws-amplify/api";
-import { startDownloadTask, downloadFolderAsZip, getFileVersions, uploadFile, ZipTask } from "@/lib/storage";
+import { startDownloadTask, downloadFolderAsZip, uploadFile, ZipTask } from "@/lib/storage";
 import type { Schema } from "@/amplify/data/resource";
 import CreateFilePanel from "../../popout_create_file_panel"
 import {useRouter, useSearchParams} from "next/navigation"
@@ -35,7 +35,7 @@ import ConflictModal from '../../conflictModal';
 import IntrinsicElements = JSX.IntrinsicElements;
 import {isCancelError} from "aws-amplify/storage";
 import RecycleBinPanel from "@/app/main_screen/popout_recycling_bin";
-import { waitForDebugger } from 'inspector';
+
 
 const client = generateClient<Schema>();
 
@@ -345,7 +345,7 @@ export default function FilePanel() {
         versions,
       });
     }
-  
+    setLoading(false);
     setFiles(sort_files_with_path(groupedFiles));
     return groupedFiles;
   }

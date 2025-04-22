@@ -64,6 +64,7 @@ export default function CreateFilePanel({ initialPosX, initialPosY, parentFileId
 
 
     function handleStartDrag(e: React.DragEvent<HTMLDivElement>){
+        console.log("Happening?")
         const panel = e.currentTarget as HTMLDivElement
         const panelBoundingBox = panel.getBoundingClientRect()
         initialXDiff.current = e.pageX - panelBoundingBox.x
@@ -71,6 +72,7 @@ export default function CreateFilePanel({ initialPosX, initialPosY, parentFileId
     }
 
     function handleEndDrag(e: React.DragEvent<HTMLDivElement>){
+
         setPosX(e.pageX - initialXDiff.current)
         setPosY(e.pageY - initialYDiff.current)
     }

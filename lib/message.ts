@@ -2,7 +2,6 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import {Nullable} from "@aws-amplify/data-schema";
 
-
 const client = generateClient<Schema>();
 
 
@@ -19,14 +18,13 @@ export async function createMessage(fileId: string, userId: string, content: str
       userId,
       content,
       createdAt: now,
-      updatedAt: now, 
+      updatedAt: now,
     });
     return newMessage;
   } catch (error) {
     console.error("Error creating message:", error);
   }
 }
-
 
 
 export async function getMessagesForFile(fileId: string) {
@@ -57,8 +55,6 @@ export async function searchMessages(fileId: string, messageContents: string[], 
   }
 }
 
-
-
 export async function updateMessage(messageId: string, content: string, userId: string) {
   try {
     const now = new Date().toISOString();
@@ -66,7 +62,7 @@ export async function updateMessage(messageId: string, content: string, userId: 
     const updatedMessage = await client.models.Message.update({
       messageId,
       content,
-      updatedAt: now, 
+      updatedAt: now,
       isUpdated: true,
     });
     return updatedMessage;

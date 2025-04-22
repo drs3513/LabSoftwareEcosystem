@@ -29,7 +29,6 @@ export async function getFileVersions(key: string): Promise<string | null> {
       }
 
       const data = await response.json();
-      console.log("[DEBUG] Raw versions data:", data.versions);
       const versions = (data.versions || []).filter((v: any) => v.key === key);
 
       if (versions.length === 0) {
@@ -63,39 +62,12 @@ export async function getFileVersions(key: string): Promise<string | null> {
 }
 
 
-
-/*--------------------------------------
-        Trigger Func
---------------------------------------*/
-export async function uploadFileTrigger(
-  file: File,
-  ownerId: string,
-  projectId: string,
-  filepath: string,
-  metadata: Record<string, string>
-) {
-  const key = `uploads/${ownerId}/${projectId}${filepath}`;
-
-  const result = await uploadData({
-    key,
-    data: file,
-    options: {
-      metadata,
-    },
-  }).result;
-
-  return { key };
-}
-/*-------------------------------------
-------------------------------------*/
-
-
 // Upload file and return S3 key
 export async function uploadFile(
-  file: File,
-  userId: string,
-  projectId: string,
-  filePath: string
+    file: File,
+    userId: string,
+    projectId: string,
+    filePath: string
 ): Promise<{ key: string }> {
   try {
     const key = `uploads/${userId}/${projectId}${filePath}`;
@@ -190,12 +162,10 @@ export async function downloadFolderAsZip(
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
   const url = URL.createObjectURL(zipBlob);
-
   const a = document.createElement("a");
   a.href = url;
   a.download = `${folderName}.zip`;
   a.click();
-
   URL.revokeObjectURL(url);
 }
 
@@ -233,11 +203,10 @@ export function startDownloadTask(fileKey: string, onProgress: (percent: number)
 
 
 
-
 export async function downloadFileToMemory(fileKey: string): Promise<Blob> {
   try {
     const { body } = await (await downloadData({ path: fileKey })).result;
-    return await body.blob(); 
+    return await body.blob();
   } catch (error) {
     console.error("Error downloading file to memory:", error);
     throw error;
@@ -246,7 +215,7 @@ export async function downloadFileToMemory(fileKey: string): Promise<Blob> {
 
 export async function deleteFileFromStorage(fileKey: string): Promise<void> {
   try {
-    await remove({ path: fileKey }); 
+    await remove({ path: fileKey });
     console.log(`File deleted: ${fileKey}`);
   } catch (error) {
     console.error("Error deleting file:", error);

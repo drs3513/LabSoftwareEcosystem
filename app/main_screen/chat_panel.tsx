@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, use } from "react";
 import { useGlobalState } from "../GlobalStateContext";
 import {
   getMessagesForFile,
@@ -13,6 +13,9 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import {Nullable} from "@aws-amplify/data-schema";
 import styled from "styled-components";
+import { SqlServerEngineVersion } from "aws-cdk-lib/aws-rds";
+import {Nullable} from "@aws-amplify/data-schema";
+import {deleteTag} from "@/lib/file";
 
 const client = generateClient<Schema>();
 
@@ -34,13 +37,12 @@ interface Tag {
 }
 
 export default function ChatPanel() {
-  const { projectId, fileId, userId } = useGlobalState();
+  const { projectId, fileId, userId} = useGlobalState();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; messageId: string, msguserId: string } | null>(null);
-  
   const [tags, setTags] = useState<Array<Nullable<string>>>([]);
   const [contextMenuTagPopout, setContextMenuTagPopout] = useState(false);
   const [contextMenuMessageId, setContextMenuMessageId] = useState<string | null>(null);
@@ -51,6 +53,9 @@ export default function ChatPanel() {
   const [loading, setLoading] = useState(false)
   const [tagSearchTerm, setTagSearchTerm] = useState<Array<string>>([])
   const [authorSearchTerm, setAuthorSearchTerm] = useState<Array<string>>([])
+
+
+
 
   const observeMessages = () => {
     // if (!fileId) return;
@@ -139,7 +144,6 @@ export default function ChatPanel() {
     setLoading(false);
   }
 
-
   useEffect(() => {
 
     if (fileId) {
@@ -154,6 +158,49 @@ export default function ChatPanel() {
   }, [messages]);
 
   //fetching messages when found the search term
+  async function fetchMessagesWithSearch() {
+    setLoading(true)
+    if (!fileId ) return;
+    console.log("Fetching messages with search term:", searchTerm, "tagSearchTerm:", tagSearchTerm, "authorSearchTerm:", authorSearchTerm);
+    const searchedMessages = await searchMessages(fileId, searchTerm, tagSearchTerm, authorSearchTerm);
+    console.log("Fetched messages:", searchedMessages);
+    if(searchedMessages && searchedMessages.length > 0){
+      let temp_messages: Array<Message> = []
+      for(let msg of searchedMessages){
+        if(msg){
+          temp_messages = [...temp_messages,
+            {
+              messageId: msg.messageId,
+              fileId: msg.fileId,
+              userId: msg.userId,
+              content: msg.content,
+              createdAt: msg.createdAt,
+              edited: msg.isUpdated ?? false,
+              deleted: msg.isDeleted ?? false,
+              email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown"
+            }] }}
+      setMessages(temp_messages);
+      setLoading(false);
+      return temp_messages
+    }
+  }
+
+  useEffect(() => {
+    const hasSearchTerms =
+        searchTerm.length > 0 ||
+        tagSearchTerm.length > 0 ||
+        authorSearchTerm.length > 0;
+
+    if (hasSearchTerms) {
+      console.log("Searching...");
+      fetchMessagesWithSearch();
+    } else {
+      console.log("Fetching old messages when input is empty");
+      fetchMessages(); // restore full messages when no filters
+    }
+  }, [searchTerm, tagSearchTerm, authorSearchTerm]);
+
+//fetching messages when found the search term
   async function fetchMessagesWithSearch() {
     setLoading(true)
     if (!fileId ) return;
@@ -227,12 +274,10 @@ export default function ChatPanel() {
       console.log("Message input is empty. Aborting send.");
       return;
     }
-    
     if (!fileId || !userId || !projectId) {
       console.error("Missing required fields:", { fileId, userId, projectId });
       return;
     }
-  
     console.log("Sending message with the following data:");
     console.log("fileId:", fileId);
     console.log("userId:", userId);
@@ -242,7 +287,6 @@ export default function ChatPanel() {
     try {
       const response = await createMessage(fileId, userId, input.trim(), projectId as string);
   
-      console.log("Raw response from createMessage:", response);
   
       if (!response) {
         throw new Error("createMessage returned undefined");
@@ -281,9 +325,9 @@ export default function ChatPanel() {
       try {
         await updateMessage(messageId, newContent, userId!);
         setMessages((prevMessages) =>
-          prevMessages.map((msg) =>
-            msg.messageId === messageId ? { ...msg, content: newContent, edited: true } : msg
-          )
+            prevMessages.map((msg) =>
+                msg.messageId === messageId ? { ...msg, content: newContent, edited: true } : msg
+            )
         );
       } catch (error) {
         console.error("Error updating message:", error);
@@ -300,9 +344,9 @@ export default function ChatPanel() {
     try {
       await deleteMessage(messageId, userId as string);
       setMessages((prevMessages) =>
-        prevMessages.map((msg) =>
-          msg.messageId === messageId ? { ...msg, content: "", deleted: true } : msg
-        )
+          prevMessages.map((msg) =>
+              msg.messageId === messageId ? { ...msg, content: "", deleted: true } : msg
+          )
       );
     } catch (error) {
       console.error("Error deleting message:", error);
@@ -316,23 +360,23 @@ export default function ChatPanel() {
     }
   };
 
-    //create a function called handleTagInput to handle the tag input and create a new tag for the message
-    async function handleTagInput(e: React.KeyboardEvent<HTMLInputElement>) {
-      if(e.key == "Enter" ) {
-        if(contextMenuMessageId && projectId && (e.target as HTMLInputElement).value.length > 0){
-          const tag_name = (e.target as HTMLInputElement).value as string
-          (e.target as HTMLInputElement).value = ""
-          updateMessageTags(contextMenuMessageId, [...tags, tag_name])
-  
-          setTags([...tags, tag_name])
-  
-  
-        }
+  //create a function called handleTagInput to handle the tag input and create a new tag for the message
+  async function handleTagInput(e: React.KeyboardEvent<HTMLInputElement>) {
+    if(e.key == "Enter" ) {
+      if(contextMenuMessageId && projectId && (e.target as HTMLInputElement).value.length > 0){
+        const tag_name = (e.target as HTMLInputElement).value as string
+        (e.target as HTMLInputElement).value = ""
+        updateMessageTags(contextMenuMessageId, [...tags, tag_name])
+
+        setTags([...tags, tag_name])
+
+
       }
-  
     }
 
-      // Function to handle clearing the search input
+  }
+
+  // Function to handle clearing the search input
   const handleClearSearch = () => {
     setSearchInput(""); // Clear the input value
     setTagSearchTerm([]);
@@ -344,12 +388,12 @@ export default function ChatPanel() {
     return () => unsubscribe();
   };
 
-    // Function to handle search input changes
-    const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      setSearchInput(e.target.value);
-    };
+  // Function to handle search input changes
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchInput(e.target.value);
+  };
 
-      //Step 3: create a function to handleSearch for searching messages
+  //Step 3: create a function to handleSearch for searching messages
 
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -390,21 +434,20 @@ export default function ChatPanel() {
     }
   };
 
-    //fetching the tags for the message
-    async function fetchTagsForMessage() {
-      if( !contextMenuMessageId) {
-        console.log("No context menu message ID available. Aborting fetch.");
-        setTags([]);
-        return [];
-      }
-      console.log("Fetching tags for message ID:", contextMenuMessageId);
-      // Fetch tags for the current message
-      const messageTags = await getTagsForMessage(contextMenuMessageId);
-      setTags(messageTags)
-      console.log(tags)
+  //fetching the tags for the message
+  async function fetchTagsForMessage() {
+    if( !contextMenuMessageId) {
+      console.log("No context menu message ID available. Aborting fetch.");
+      setTags([]);
+      return [];
     }
+    console.log("Fetching tags for message ID:", contextMenuMessageId);
+    // Fetch tags for the current message
+    const messageTags = await getTagsForMessage(contextMenuMessageId);
+    setTags(messageTags)
+    console.log(tags)
+  }
 
-    
   const observeTags = () => {
     const subscription = client.models.Message.observeQuery({
       filter: {messageId: {eq: contextMenuMessageId ? contextMenuMessageId : undefined}},
@@ -435,18 +478,23 @@ export default function ChatPanel() {
     }
   }, [contextMenuMessageId]);
 
-    // Function to handle deleting a tag
-    const handleDeleteTag = async ( e: React.MouseEvent<HTMLButtonElement>, tagIndex: number) => {
-      e.stopPropagation(); // Prevent the context menu from closing
-      //console.log("Deleting tag with ID:", tagId);
-      if(!contextMenuMessageId) return
-      updateMessageTags(contextMenuMessageId, tags.filter((tag, i) => i !== tagIndex))
-      setTags(tags.filter((tag, i) => i !== tagIndex));
-      //fetchTagsForMessage(); // Fetch tags again after deletion
-      console.log("Tag deleted successfully.");
-    };
 
-    return (
+
+
+  // Function to handle deleting a tag
+  const handleDeleteTag = async ( e: React.MouseEvent<HTMLButtonElement>, tagIndex: number) => {
+    e.stopPropagation(); // Prevent the context menu from closing
+    //console.log("Deleting tag with ID:", tagId);
+    if(!contextMenuMessageId) return
+    updateMessageTags(contextMenuMessageId, tags.filter((tag, i) => i !== tagIndex))
+    setTags(tags.filter((tag, i) => i !== tagIndex));
+    //fetchTagsForMessage(); // Fetch tags again after deletion
+    console.log("Tag deleted successfully.");
+  };
+
+
+
+  return (
       //step 2: display the searching input to the top bar container and call the handleSearch function
       <ChatContainer>
         <TopBarContainer>

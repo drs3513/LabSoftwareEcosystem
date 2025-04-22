@@ -1,6 +1,6 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import {deleteFileFromStorage, getFileVersions, uploadFile, uploadFileTrigger} from "./storage";
+import {deleteFileFromStorage, getFileVersions, uploadFile} from "./storage";
 import {Nullable} from "@aws-amplify/data-schema";
 import React from "react";
 const client = generateClient<Schema>();
@@ -20,89 +20,6 @@ export async function listFiles(setFiles: (files: Array<Schema["File"]["type"]>)
   };
 }
 
-/*--------------------------------------------------------
-            TRIGGER FUNCTIONS
---------------------------------------------------------*/
-
-export async function createFileUploadTrigger(
-  file: File,
-  projectId: string,
-  ownerId: string,
-  parentId: string,
-  filepath: string
-) {
-  const logicalId = crypto.randomUUID(); // New file = new logical group
-  const fileId = crypto.randomUUID(); // Will be used by trigger
-  const now = new Date().toISOString();
-
-  await uploadFileTrigger(file, ownerId, projectId, filepath, {
-    filename: file.name,
-    filepath,
-    logicalid: logicalId,
-    fileid: fileId,
-    parentid: parentId || `ROOT-${projectId}`,
-    ownerid: ownerId,
-    projectid: projectId,
-    createdat: now,
-    updatedat: now,
-    mode: "create",
-  });
-}
-
-export async function createNewVersionTrigger(
-  file: File,
-  existingLogicalId: string,
-  projectId: string,
-  ownerId: string,
-  parentId: string,
-  filepath: string
-) {
-  const fileId = crypto.randomUUID(); // New version = new File ID
-  const now = new Date().toISOString();
-
-  await uploadFileTrigger(file, ownerId, projectId, filepath, {
-    filename: file.name,
-    filepath,
-    logicalid: existingLogicalId,
-    fileid: fileId,
-    parentid: parentId || `ROOT-${projectId}`,
-    ownerid: ownerId,
-    projectid: projectId,
-    createdat: now,
-    updatedat: now,
-    mode: "version",
-  });
-}
-
-export async function overwriteFileTrigger(
-  file: File,
-  fileId: string,
-  logicalId: string,
-  projectId: string,
-  ownerId: string,
-  parentId: string,
-  filepath: string
-) {
-  const now = new Date().toISOString();
-
-  await uploadFileTrigger(file, ownerId, projectId, filepath, {
-    filename: file.name,
-    filepath,
-    fileid: fileId,
-    logicalid: logicalId,
-    parentid: parentId || `ROOT-${projectId}`,
-    ownerid: ownerId,
-    projectid: projectId,
-    updatedat: now,
-    mode: "overwrite",
-  });
-}
-
-
-
-
-/*--------------------------------------------------------
---------------------------------------------------------*/
 export async function waitForVersionId(key: string): Promise<string | null> {
   const maxRetries = 1;
   const baseDelay = 300; // ms
@@ -415,6 +332,77 @@ export async function deleteFileFromDB(fileId: string, projectId: string): Promi
 }
 
 
+export async function hardDeleteFile(fileId: string, projectId: string) {
+  try {
+    // Step 1: Get the file by ID
+    const file = await client.models.File.get({ fileId, projectId });
+
+    if (!file || !file.data) {
+      alert("File not found.");
+      return;
+    }
+
+    // Step 2: Delete from S3
+    if (file?.data?.storageId) {
+      await deleteFileFromStorage(file.data.storageId);
+      console.log(`[HARD DELETE] Deleted from storage: ${file.data.storageId}`);
+    }
+
+    // Step 3: Delete from database
+    await client.models.File.delete({
+      fileId: file.data.fileId,
+      projectId: file.data.projectId,
+    });
+
+    console.log(`[HARD DELETE] Deleted DB record: ${file.data.fileId}`);
+    alert("File permanently deleted.");
+  } catch (error) {
+    console.error("[HARD DELETE ERROR]", error);
+    alert("An error occurred while hard deleting the file.");
+  }
+}
+
+
+
+
+
+
+
+export async function abortUpload(
+    uploadedFiles: { storageKey?: string, fileId?: string }[],
+    projectId: string
+) {
+  console.warn("[ABORT] Cleaning up uploaded files...");
+
+  // Reverse the list to delete children before parents
+  for (let i = uploadedFiles.length - 1; i >= 0; i--) {
+    const { storageKey, fileId } = uploadedFiles[i];
+
+    try {
+      if (storageKey) {
+        await deleteFileFromStorage(storageKey);
+        console.log(`[ABORT] Deleted storage: ${storageKey}`);
+      }
+
+      if (fileId) {
+        await deleteFileFromDB(fileId, projectId);
+        console.log(`[ABORT] Deleted DB record: ${fileId}`);
+      }
+    } catch (err) {
+      console.error(`[ABORT] Failed to delete ${storageKey ?? fileId}`, err);
+    }
+  }
+
+  console.warn("[ABORT] Upload aborted. Cleaned up uploaded files in reverse order.");
+}
+
+
+
+export async function deleteFileFromDB(fileId: string, projectId: string): Promise<void> {
+  await client.models.File.delete({fileId, projectId});
+}
+
+//PD : I updated this function to use 'filter' attribute
 export async function listFilesForProject(projectId: string) {
   try {
     const response = await client.models.File.listFileByProjectId(
@@ -518,7 +506,9 @@ export async function searchFiles(projectId: string, fileNames: string[], tagNam
     console.error("Error searching for files:", error)
   }
 }
-
+//recursively calls itself to receive a path of parent fileIds from a given fileId, going all the way to root
+//TODO Dangerous?
+//TODO SLOW
 export async function getFileIdPath(fileId: string, projectId: string): Promise<Nullable<string>[] | undefined>{
   try{
     const file = await client.models.File.get({
@@ -657,6 +647,7 @@ export async function createFile({
   storageId,
   size,
   versionId,
+    storageId,
   ownerId,
   isDeleted = 0,
   createdAt,
@@ -672,6 +663,7 @@ export async function createFile({
   parentId: string;
   size: number;
   versionId: string;
+  storageId?: string;
   ownerId: string;
   isDeleted?: number;
   createdAt: string;
@@ -690,6 +682,7 @@ export async function createFile({
     size,
     versionId,
     ownerId,
+    storageId,
     isDeleted,
     createdAt,
     updatedAt,
@@ -847,6 +840,7 @@ export async function updateFileLocation(id: string, path: string, parentId: Nul
         parentId: parentId
       })
     }
+    console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
   } catch(error) {
     console.error("Error updating file:", error);
     alert("An error occurred while updating the file. Please try again.")

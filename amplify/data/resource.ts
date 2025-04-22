@@ -1,5 +1,6 @@
-import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
+import {type ClientSchema, a, defineData, defineFunction} from "@aws-amplify/backend";
 import { ApiKey } from "aws-cdk-lib/aws-apigateway";
+
 
 const schema = a
   .schema({
@@ -48,17 +49,15 @@ const schema = a
         createdAt: a.datetime().required(),
         updatedAt: a.datetime().required(),
         messages: a.hasMany("Message", ["fileId","projectId"]),
-        tags: a.string().array(),
-        isDeleted: a.integer().required(),
+        tags: a.string().array(), // <-CHANGE
+        isDeleted: a.integer().required(), //0 : not deleted, 1 : deleted
         deletedAt: a.datetime(),
-    
         parent: a.belongsTo("File", ["parentId","projectId"]),
         children: a.hasMany("File", ["parentId","projectId"]),
-    
         ownerDetails: a.belongsTo("User", "ownerId"),
         project: a.belongsTo("Project", "projectId"),
       })
-      .identifier(["fileId","projectId"]) // Use only `fileId` as primary key
+      .identifier(["fileId","projectId"]) // Use only `fileId` as primary key, projectId as sort key
       .secondaryIndexes((index) => [
         index("logicalId").sortKeys(["versionId"]).name("Version"), //Secondary index
         index("projectId").name("byProject"),
@@ -110,9 +109,8 @@ const schema = a
         createdAt: a.datetime().required(),
         updatedAt: a.datetime(),
         isUpdated: a.boolean().default(false),
-        isDeleted: a.boolean().default(false),
-        path: a.string(),
-        tags: a.string().array(),
+          isDeleted: a.boolean().default(false),
+        tags: a.string().array(), // <- CHANGE
         file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
         
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
@@ -148,6 +146,7 @@ const schema = a
     project: a.belongsTo("Project", "projectId"),
   })
   .identifier(["whitelistId"]),
+
 }).authorization((allow) => [
   allow.authenticated(),
 ]);
