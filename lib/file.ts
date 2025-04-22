@@ -104,7 +104,7 @@ export async function overwriteFileTrigger(
 /*--------------------------------------------------------
 --------------------------------------------------------*/
 export async function waitForVersionId(key: string): Promise<string | null> {
-  const maxRetries = 5;
+  const maxRetries = 1;
   const baseDelay = 300; // ms
   let attempt = 0;
 
