@@ -4,8 +4,10 @@ import { useAuthenticator } from "@aws-amplify/ui-react";
 
 
 interface GlobalStateContextType {
-  projectId: string | undefined;
-  setProjectId: (id: string | undefined) => void;
+  role: string | null;
+  setRole: (role: string | null) => void;
+  projectId: string | null;
+  setProjectId: (id: string | null) => void;
   fileId: string | undefined;
   setFileId: (id: string | undefined) => void;
   userId: string | null;
@@ -22,7 +24,8 @@ const GlobalStateContext = createContext<GlobalStateContextType | undefined>(und
 
 export function GlobalStateProvider({ children }: { children: ReactNode }) {
   const { user } = useAuthenticator(); // Get authenticated user
-  const [projectId, setProjectId] = useState<string | undefined>(undefined);
+  const [role, setRole] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [fileId, setFileId] = useState<string | undefined>(undefined);
   const [userId, setUserId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<boolean>(false);
@@ -36,8 +39,8 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   return (
-    <GlobalStateContext.Provider value={{ projectId, setProjectId, fileId, setFileId, userId, contextMenu, setContextMenu,
-      contextMenuType, setContextMenuType, heldKeys, setHeldKeys, draggingFloatingWindow}}>
+    <GlobalStateContext.Provider value={{ role, setRole, projectId, setProjectId, fileId, setFileId, userId, contextMenu, setContextMenu,
+      contextMenuType, setContextMenuType, heldKeys, setHeldKeys}}>
       {children}
     </GlobalStateContext.Provider>
   );
