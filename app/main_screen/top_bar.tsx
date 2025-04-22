@@ -45,6 +45,7 @@ const Dropdown = styled.div`
   left: 0;
   width: 250px;
   background-color: white;
+  color: black;
   border: 1px solid black;
   border-radius: 5px;
   z-index: 10;

@@ -34,7 +34,25 @@ import icon_alphanumericreversesort from "/assets/icons/sort-alphabetical-revers
 import icon_binsolid from "/assets/icons/trash-3-outlined-rounded.svg";
 import icon_binline from "/assets/icons/trash-3-solid-rounded.svg";
 import icon_folder from "/assets/icons/folder-1-outlined-rounded.svg";
+
 import icon_filegeneric from "/assets/icons/file-outlined-rounded.svg";
+import icon_filecpp from "/assets/icons/file-icon-24x24-cpp.svg";
+import icon_filehtml from "/assets/icons/file-icon-24x24-html.svg";
+import icon_filejpg from "/assets/icons/file-icon-24x24-jpg.svg";
+import icon_filejs from "/assets/icons/file-icon-24x24-js.svg";
+import icon_filejson from "/assets/icons/file-icon-24x24-json.svg";
+import icon_filemp4 from "/assets/icons/file-icon-24x24-mp4.svg";
+import icon_filepdf from "/assets/icons/file-icon-24x24-pdf.svg";
+import icon_filepng from "/assets/icons/file-icon-24x24-png.svg";
+import icon_filepy from "/assets/icons/file-icon-24x24-py.svg";
+import icon_filesvg from "/assets/icons/file-icon-24x24-svg.svg";
+import icon_filetdp from "/assets/icons/file-icon-24x24-tdp.svg";
+import icon_filetds from "/assets/icons/file-icon-24x24-tds.svg";
+import icon_filetsx from "/assets/icons/file-icon-24x24-tsx.svg";
+import icon_filetxt from "/assets/icons/file-icon-24x24-txt.svg";
+import icon_filewebp from "/assets/icons/file-icon-24x24-webp.svg";
+import icon_filexml from "/assets/icons/file-icon-24x24-xml.svg";
+import icon_filezip from "/assets/icons/file-icon-24x24-zip.svg";
 
 
 import IntrinsicElements = JSX.IntrinsicElements;
@@ -206,6 +224,64 @@ export default function FilePanel() {
   const [showRecycleBin, setShowRecycleBin] = useState(false);
 
   const [dragOverFileId, setDragOverFileId] = useState<string | undefined>(undefined);
+
+  function return_file_icon(fileName: string){
+    var extension = fileName.split('.').pop()
+    switch(extension) {
+      case 'cpp': {
+        return icon_filecpp;
+      }
+      case 'html': {
+        return icon_filehtml;
+      }
+      case 'jpg': {
+        return icon_filejpg;
+      }
+      case 'js': {
+        return icon_filejs;
+      }
+      case 'json': {
+        return icon_filejson;
+      }
+      case 'mp4': {
+        return icon_filemp4;
+      }
+      case 'pdf': {
+        return icon_filepdf;
+      }
+      case 'png': {
+        return icon_filepng;
+      }
+      case 'py': {
+        return icon_filepy;
+      }
+      case 'svg': {
+        return icon_filesvg;
+      }
+      case 'tdp': {
+        return icon_filetdp;
+      }
+      case 'tds': {
+        return icon_filetds;
+      }
+      case 'tsx': {
+        return icon_filetsx;
+      }
+      case 'txt': {
+        return icon_filetxt;
+      }
+      case 'webp': {
+        return icon_filewebp;
+      }
+      case 'xml': {
+        return icon_filexml;
+      }
+      case 'zip': {
+        return icon_filezip;
+      }
+    }
+    return icon_filegeneric;
+  }
 
 
   //sorts files to be displayed by the user
@@ -1269,7 +1345,7 @@ export default function FilePanel() {
                             onDragLeave = {(e) => {handleDragOver(e, undefined)}}
                             onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ? handleFileDrag(e, projectId, userId, file.fileId, file.filepath) : undefined}}>
 
-                        <div style={{display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? <Image src={icon_folder} alt="" objectFit='contain'/> : <Image src={icon_filegeneric} alt="" objectFit='contain'/>} <div style={{marginLeft: '1em'}}>{file.filename} <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                        <div style={{display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? <Image src={icon_folder} alt="" objectFit='contain' width='36'/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36'/>} <div style={{marginLeft: '1em'}}>{file.filename} <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
                                               size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                               projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
                                               updatedAt={file.updatedAt} visible={file.visible}
