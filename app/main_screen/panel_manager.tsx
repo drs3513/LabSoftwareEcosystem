@@ -1,8 +1,5 @@
 import styled from "styled-components";
 import Panel from "./panel";
-import ProjectPanel from "./[pid]/[id]/project_panel";
-import FilePanel from "@/app/main_screen/[pid]/[id]/file_panel";
-import ChatPanel from "./chat_panel";
 import { useState, useEffect } from "react";
 
 

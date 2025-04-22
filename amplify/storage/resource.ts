@@ -5,19 +5,6 @@ export const storage = defineStorage({
     isDefault: true,
   access: (allow) => ({
     "uploads/*": [allow.authenticated.to(["read", "write", "delete"])], // Correct syntax
-  })});
-
-/*
-export const openSearchStorage = defineStorage(
-    {name: "opensearch-backup-bucket-amplify-gen-2",
-      access: allow => ({
-        'public/*': [
-          allow.authenticated.to(['list', 'write', 'get'])
-        ]
-      })
-    }
-    );
-
-
-
- */
+  }),
+  versioned: true,
+});

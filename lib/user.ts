@@ -1,6 +1,6 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { fetchUserAttributes } from "aws-amplify/auth"; // ✅ Corrected imports
+import { fetchUserAttributes } from "aws-amplify/auth"; 
 
 const client = generateClient<Schema>();
 

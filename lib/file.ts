@@ -20,39 +20,91 @@ export async function listFiles(setFiles: (files: Array<Schema["File"]["type"]>)
   };
 }
 
-// Retrieve all versions of a file using manual sorting
-export async function getVersionHistory(fileId: string): Promise<any[]> {
-  try {
-    const response = await client.models.File.list({
-      filter: {
-        fileId: { eq: fileId }, // Query all versions with the same fileId
-      },
-    });
+export async function waitForVersionId(key: string): Promise<string | null> {
+  const maxRetries = 1;
+  const baseDelay = 300; // ms
+  let attempt = 0;
 
-    if (!response.data || response.data.length === 0) {
-      return [];
+  while (attempt < maxRetries) {
+    if (attempt > 0) {
+      const delay = baseDelay * Math.pow(2, attempt); // exponential backoff
+      console.log(`[INFO] Retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, baseDelay));
     }
 
-    // Manually sort by versionId in descending order
-    return response.data.sort((a, b) => parseInt(b.versionId) - parseInt(a.versionId));
-  } catch (error) {
-    console.error("Error listing file versions:", error);
-    throw error;
+    console.log(`[INFO] Attempt ${attempt + 1}/${maxRetries} to get versionId for ${key}`);
+
+    try {
+      const versionId = await getFileVersions(key); // ✅ this was missing
+      if (versionId) return versionId; // ✅ success!
+    } catch (err) {
+      console.warn(`[WARN] Attempt ${attempt + 1} failed:`, err);
+    }
+
+    attempt++;
   }
+
+  console.error(`[FATAL] Unable to fetch versionId for key: ${key}`);
+  return null;
 }
 
 
+
+
+export async function createNewVersion(
+  file: File,
+  logicalId: string,
+  projectId: string,
+  ownerId: string,
+  parentId: string,
+  filepath: string
+) {
+  const now = new Date().toISOString();
+
+  // Upload the file to S3
+  const { key: storageKey } = await uploadFile(file, ownerId, projectId, filepath);
+
+  
+  const versionId = waitForVersionId(storageKey);
+  const newfileid = crypto.randomUUID();
+  console.log("Creating the versioned file");
+  if(!parentId){
+    parentId = `ROOT-${projectId}`;
+  }
+  // Create a new file version record in the database
+  await createFile({
+    projectId,
+    fileId:newfileid,
+    logicalId: logicalId,
+    filename: file.name,
+    isDirectory: false,
+    filepath,
+    parentId,
+    storageId: storageKey,
+    size: file.size,
+    versionId,
+    ownerId,
+    isDeleted: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+
+
 export async function processAndUploadFiles(
-    dict: Record<string, any>,
-    projectId: string,
-    ownerId: string,
-    parentId: string,
-    currentPath: string = "",
-    uploadTaskRef?: React.RefObject<{
-      isCanceled: boolean;
-      uploadedFiles: { storageKey?: string, fileId?: string }[];
-    }>,
-    setProgress?: (percent: number) => void
+  dict: Record<string, any>,
+  projectId: string,
+  ownerId: string,
+  parentId: string,
+  currentPath: string = "",
+  uploadTaskRef?: React.MutableRefObject<{
+    isCanceled: boolean;
+    uploadedFiles: { storageKey?: string, fileId?: string }[];
+  }>,
+  setProgress?: (percent: number) => void
 ) {
   const now = new Date().toISOString();
   const rootParentId = `ROOT-${projectId}`;
@@ -76,10 +128,10 @@ export async function processAndUploadFiles(
   fileCount = countFiles(dict);
 
   async function recursivePrint(
-      obj: Record<string, any>,
-      depth: number = 0,
-      currentParentId: string = parentId || rootParentId,
-      currentFilePath: string = currentPath
+    obj: Record<string, any>,
+    depth: number = 0,
+    currentParentId: string = parentId || rootParentId,
+    currentFilePath: string = currentPath
   ) {
     try {
       if (uploadTaskRef?.current?.isCanceled) {
@@ -96,12 +148,13 @@ export async function processAndUploadFiles(
           const newFile = await createFile({
             projectId,
             fileId: uuid,
+            logicalId: uuid,
             filename: key,
             isDirectory: true,
             filepath: `${currentFilePath}/${key}`,
             parentId: currentParentId,
             size: 0,
-            storageId: undefined,
+            storageId: null,
             versionId: "1",
             ownerId,
             isDeleted: 0,
@@ -128,11 +181,26 @@ export async function processAndUploadFiles(
 
             try {
               const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
-              const versionId = await getFileVersions(storageKey) || '1';
+              let versionId: string | null = null;
+              let retries = 0;
+              while (!versionId && retries < 5) {
+                versionId = await getFileVersions(storageKey);
+                if (!versionId) {
+                  const delay = Math.pow(2, retries + 1) * 100;
+                  console.warn(`[RETRY] Waiting ${delay}ms for version info...`);
+                  await new Promise(res => setTimeout(res, delay));
+                }
+                retries++;
+              }
+              if (!versionId) {
+                await abortUpload(uploadedFiles, projectId);
+                throw new Error("Could not retrieve version ID after retry");
+              }
 
               const newFile = await createFile({
                 projectId,
                 fileId: fileUuid,
+                logicalId: fileUuid,
                 filename: fileKey,
                 isDirectory: false,
                 filepath: `${currentFilePath}/${fileKey}`,
@@ -188,6 +256,79 @@ export async function Restorefile(fileId: string, versionId: string, projectId: 
     isDeleted: 0,
     deletedAt: null
   });
+}
+
+
+export async function hardDeleteFile(fileId: string, projectId: string) {
+  try {
+    // Step 1: Get the file by ID
+    const file = await client.models.File.get({ fileId, projectId });
+
+    if (!file) {
+      alert("File not found.");
+      return;
+    }
+
+    // Step 2: Delete from S3
+    if (file?.data?.storageId) {
+      await deleteFileFromStorage(file?.data?.storageId);
+      console.log(`[HARD DELETE] Deleted from storage: ${file?.data?.storageId}`);
+    }
+
+    // Step 3: Delete from database
+    if(file.data?.fileId && file.data.projectId){
+        await client.models.File.delete({
+          fileId: file?.data?.fileId,
+          projectId: file?.data?.projectId,
+        });
+    }
+
+    console.log(`[HARD DELETE] Deleted DB record: ${file?.data?.fileId}`);
+    alert("File permanently deleted.");
+  } catch (error) {
+    console.error("[HARD DELETE ERROR]", error);
+    alert("An error occurred while hard deleting the file.");
+  }
+}
+
+
+
+
+
+
+
+export async function abortUpload(
+  uploadedFiles: { storageKey?: string, fileId?: string }[],
+  projectId: string
+) {
+  console.warn("[ABORT] Cleaning up uploaded files...");
+
+  // Reverse the list to delete children before parents
+  for (let i = uploadedFiles.length - 1; i >= 0; i--) {
+    const { storageKey, fileId } = uploadedFiles[i];
+
+    try {
+      if (storageKey) {
+        await deleteFileFromStorage(storageKey);
+        console.log(`[ABORT] Deleted storage: ${storageKey}`);
+      }
+
+      if (fileId) {
+        await deleteFileFromDB(fileId, projectId);
+        console.log(`[ABORT] Deleted DB record: ${fileId}`);
+      }
+    } catch (err) {
+      console.error(`[ABORT] Failed to delete ${storageKey ?? fileId}`, err);
+    }
+  }
+
+  console.warn("[ABORT] Upload aborted. Cleaned up uploaded files in reverse order.");
+}
+
+
+
+export async function deleteFileFromDB(fileId: string, projectId: string): Promise<void> {
+  await client.models.File.delete({fileId, projectId});
 }
 
 
@@ -264,16 +405,11 @@ export async function deleteFileFromDB(fileId: string, projectId: string): Promi
 //PD : I updated this function to use 'filter' attribute
 export async function listFilesForProject(projectId: string) {
   try {
-    const response = await client.models.File.list({
-      filter: {
-        projectId: { eq: projectId }, // Query all files with the same projectId
-      },
-    }); // Fetch all files
+    const response = await client.models.File.listFileByProjectId(
+      {projectId}
+    ); // Fetch all files
     const files = response.data; // Extract file array
-
-    if (!files) return [];
-
-    return files;
+    return files.filter((file) => file ? file.projectId === projectId: null); // Filter files by projectId
 
   } catch (error) {
     console.error("Error fetching files for project:", error);
@@ -500,14 +636,15 @@ export async function getTags(id: string, projectId: string){
 }
 
 
-
 export async function createFile({
   projectId,
   fileId,
+  logicalId,
   filename,
   isDirectory,
   filepath,
   parentId,
+  storageId,
   size,
   versionId,
     storageId,
@@ -518,9 +655,11 @@ export async function createFile({
 }: {
   projectId: string;
   fileId: string;
+  logicalId: string;
   filename: string;
   isDirectory: boolean;
   filepath: string;
+  storageId: string | null;
   parentId: string;
   size: number;
   versionId: string;
@@ -530,13 +669,16 @@ export async function createFile({
   createdAt: string;
   updatedAt: string;
 }) {
+  console.log(`Creating file ${filename} with parent ${parentId}`);
   return client.models.File.create({
     fileId,
     projectId,
+    logicalId,
     filename,
     isDirectory,
     filepath,
     parentId,
+    storageId,
     size,
     versionId,
     ownerId,
@@ -547,13 +689,41 @@ export async function createFile({
   });
 }
 
+export async function createFolder(
+  projectId: string,
+  name: string,
+  ownerId: string,
+  parentId: string,
+  filepath: string
+) {
+  const fileId = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  const newFile = await createFile({
+    projectId,
+    fileId,
+    logicalId: fileId,
+    filename: name,
+    isDirectory: true,
+    filepath, // Full path like /ParentFolder/NewFolder
+    parentId, // Parent directory's fileId
+    size: 0,
+    storageId: null,
+    versionId: "1",
+    ownerId,
+    isDeleted: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return newFile;
+}
+
 // Retrieve the latest version of a file using the composite primary key
 export async function getLatestFileVersion(fileId: string) {
   try {
-    const response = await client.models.File.list({
-      filter: {
-        fileId: { eq: fileId }, // Query all versions with the same fileId
-      },
+    const response = await client.models.File.listFileByLogicalIdAndVersionId(
+        {logicalId: fileId // Query all versions with the same fileId
     });
 
     if (response.data.length === 0) {
@@ -574,12 +744,11 @@ export async function getLatestFileVersion(fileId: string) {
 
 
 
-export async function updatefile(id: string, projectId: string) {
+export async function updatefile(id: string, projectId: string, versionId: string) {
   try{  
     
     const now = new Date().toISOString();
-    const latestver = (await getVersionHistory(id)).length + 1;
-    const versionId = latestver.toString();
+    
     await client.models.File.update({
         fileId: id,
         projectId,
@@ -596,14 +765,14 @@ export async function updatefile(id: string, projectId: string) {
 
 export async function deleteFile(id: string, version: string, projectId: string) {
   try {
-    const confirmDelete = window.confirm(
+   /* const confirmDelete = window.confirm(
       `Are you sure you want to delete the version: ${version}  of file with ID: ${id}?`
     );
 
     if (!confirmDelete) {
       alert("File deletion canceled.");
       return;
-    }
+    }*/
 
     const now = new Date().toISOString();
 
@@ -614,8 +783,6 @@ export async function deleteFile(id: string, version: string, projectId: string)
       isDeleted: 1,
       deletedAt: now,
     });
-
-    alert("File deleted successfully.");
 
   } catch (error) {
     console.error("Error deleting file:", error);
@@ -660,7 +827,7 @@ export async function checkAndDeleteExpiredFiles(
   }
 }
 
-export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>, projectId: string | null){
+export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>, projectId: string){
   try {
     if(parentId == null){
       parentId = "ROOT-" + projectId

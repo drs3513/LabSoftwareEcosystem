@@ -35,10 +35,12 @@ const schema = a
       File: a
       .model({
         fileId: a.id().required(), // Primary key
+        logicalId: a.id().required(),
         filename: a.string().required(),
         isDirectory: a.boolean().default(false),
         filepath: a.string().required(),
         parentId: a.id().required(),
+        filetype: a.string(),
         size: a.integer().required(),
         storageId: a.id(),
         versionId: a.string().required(), // Sort key in secondary index
@@ -57,82 +59,43 @@ const schema = a
       })
       .identifier(["fileId","projectId"]) // Use only `fileId` as primary key, projectId as sort key
       .secondaryIndexes((index) => [
-        index("fileId").sortKeys(["versionId"]), //Secondary index
-          index("projectId"),
-          index("projectId").sortKeys(["isDeleted"]),
-          index("projectId").sortKeys(["filepath"])
+        index("logicalId").sortKeys(["versionId"]).name("Version"), //Secondary index
+        index("projectId").name("byProject"),
+        index("projectId").sortKeys(["isDeleted"]),
+        index("projectId").sortKeys(["filepath"])
       ]),
-      getFilesByRootId: a
-          .query()
-          .arguments({
-              rootIds: a.string().array(),
-              projectId: a.string()
-          })
-          .returns(a.json())
-          .handler(
-              a.handler.custom({
-                  dataSource: a.ref("File"),
-                  entry: "./getFilesByRootId.js"
-              })
-          ),
 
       batchUpdateFile: a
-          .mutation()
-          .arguments({
-              fileIds: a.string().array(),
-              projectId: a.string(),
-              parentIds: a.string().array(),
-              filepaths: a.string().array()
+      .mutation()
+      .arguments({
+          fileIds: a.string().array(),
+          projectId: a.string(),
+          parentIds: a.string().array(),
+          filepaths: a.string().array()
+      })
+      .returns(a.json())
+      .handler(
+          a.handler.custom({
+              dataSource: a.ref("File"),
+              entry: "./batchUpdateFile.js"
           })
-          .returns(a.json())
-          .handler(
-              a.handler.custom({
-                  dataSource: a.ref("File"),
-                  entry: "./batchUpdateFile.js"
-              })
-          ),
+      ),
 
-      searchFiles: a
-          .query()
-          .arguments({
-              projectId: a.string(),
-              fileNames: a.string().array(),
-              tagNames: a.string().array()
+  searchFiles: a
+      .query()
+      .arguments({
+          projectId: a.string(),
+          fileNames: a.string().array(),
+          tagNames: a.string().array()
+      })
+      .returns(a.ref("File").array())
+      .handler(
+          a.handler.custom({
+              dataSource: a.ref("File"),
+              entry: "./searchFiles.js"
+
           })
-          .returns(a.ref("File").array())
-          .handler(
-              a.handler.custom({
-                  dataSource: a.ref("File"),
-                  entry: "./searchFiles.js"
-
-              })
-          ),
-
-      //Opensearch searchFiles query
-      //openSearchSearchFiles: a
-      //    .query()
-      //    .arguments({
-      //        fileNames: a.string().array(),
-      //        tagNames: a.string().array()
-      //    })
-      //    .returns(a.ref("File").array())
-      //    .handler(
-      //        a.handler.custom({
-      //            entry: "./openSearchSearchFiles.js",
-      //            dataSource: "osDataSource"
-      //        })
-      //    ),
-      //openSearchExampleSearchFiles: a
-      //    .query()
-      //    .returns(a.ref("File").array())
-      //    //.authorization((allow) => [allow.publicApiKey()])
-      //    .handler(
-      //        a.handler.custom({
-      //            entry: "./openSearchExampleSearchFileResolver.js",
-      //            dataSource: "osDataSource",
-      //        })
-      //    ),
-    
+        ),
 
 
     // Message model
@@ -154,29 +117,28 @@ const schema = a
       })
       .identifier(["messageId"]),
 
-    searchMessages: a
-        .query()
-        .arguments({
-            fileId: a.string(),
-            messageContents: a.string().array(),
-            tagNames: a.string().array()
-        })
-        .returns(a.ref("Message").array())
-        .handler(
-            a.handler.custom({
-                dataSource: a.ref("Message"),
-                entry: "./searchMessages.js"
-            })
-        ),
-
-  // Whitelist model
+      searchMessages: a
+      .query()
+      .arguments({
+          fileId: a.string(),
+          messageContents: a.string().array(),
+          tagNames: a.string().array()
+      })
+      .returns(a.ref("Message").array())
+      .handler(
+          a.handler.custom({
+              dataSource: a.ref("Message"),
+              entry: "./searchMessages.js"
+          })
+      ),
+      
+    // Whitelist model
   Whitelist: a
   .model({
     whitelistId: a.id().required(),
     userIds: a.id().required(), // User ID being whitelisted
     createdAt: a.datetime().required(),
     projectId: a.id().required(),
-    isAdmin: a.boolean().default(false), // Indicates if user is admin for this file/project
     role: a.enum(["USER", "ADMIN", "HEAD"]), // Role-specific permission
 
     // Relationships

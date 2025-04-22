@@ -11,6 +11,7 @@ import {
 } from "@/lib/message";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
+import {Nullable} from "@aws-amplify/data-schema";
 import styled from "styled-components";
 import { SqlServerEngineVersion } from "aws-cdk-lib/aws-rds";
 import {Nullable} from "@aws-amplify/data-schema";
@@ -42,7 +43,6 @@ export default function ChatPanel() {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; messageId: string, msguserId: string } | null>(null);
-
   const [tags, setTags] = useState<Array<Nullable<string>>>([]);
   const [contextMenuTagPopout, setContextMenuTagPopout] = useState(false);
   const [contextMenuMessageId, setContextMenuMessageId] = useState<string | null>(null);
@@ -153,6 +153,52 @@ export default function ChatPanel() {
       return () => unsubscribe();
     }
   }, [fileId]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  //fetching messages when found the search term
+  async function fetchMessagesWithSearch() {
+    setLoading(true)
+    if (!fileId ) return;
+    console.log("Fetching messages with search term:", searchTerm, "tagSearchTerm:", tagSearchTerm, "authorSearchTerm:", authorSearchTerm);
+    const searchedMessages = await searchMessages(fileId, searchTerm, tagSearchTerm, authorSearchTerm);
+    console.log("Fetched messages:", searchedMessages);
+    if(searchedMessages && searchedMessages.length > 0){
+      let temp_messages: Array<Message> = []
+      for(let msg of searchedMessages){
+        if(msg){
+          temp_messages = [...temp_messages,
+            {
+              messageId: msg.messageId,
+              fileId: msg.fileId,
+              userId: msg.userId,
+              content: msg.content,
+              createdAt: msg.createdAt,
+              edited: msg.isUpdated ?? false,
+              deleted: msg.isDeleted ?? false,
+              email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown"
+            }] }}
+      setMessages(temp_messages);
+      setLoading(false);
+      return temp_messages
+    }
+  }
+
+  useEffect(() => {
+    const hasSearchTerms =
+        searchTerm.length > 0 ||
+        tagSearchTerm.length > 0 ||
+        authorSearchTerm.length > 0;
+
+    if (hasSearchTerms) {
+      console.log("Searching...");
+      fetchMessagesWithSearch();
+    } else {
+      console.log("Fetching old messages when input is empty");
+      fetchMessages(); // restore full messages when no filters
+    }
+  }, [searchTerm, tagSearchTerm, authorSearchTerm]);
 
 //fetching messages when found the search term
   async function fetchMessagesWithSearch() {
@@ -201,7 +247,6 @@ export default function ChatPanel() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
@@ -229,44 +274,40 @@ export default function ChatPanel() {
       console.log("Message input is empty. Aborting send.");
       return;
     }
-
     if (!fileId || !userId || !projectId) {
       console.error("Missing required fields:", { fileId, userId, projectId });
       return;
     }
-
     console.log("Sending message with the following data:");
     console.log("fileId:", fileId);
     console.log("userId:", userId);
     console.log("projectId:", projectId);
     console.log("content:", input.trim());
-
+  
     try {
-      const response = await createMessage(fileId, userId, input.trim(), projectId! as string);
-
-      console.log("Raw response from createMessage:", response);
-
+      const response = await createMessage(fileId, userId, input.trim(), projectId as string);
+  
+  
       if (!response) {
         throw new Error("createMessage returned undefined");
       }
-
+  
       const newMessage = response?.data ?? response;
-
+  
       if (!newMessage || !("messageId" in newMessage && "content" in newMessage)) {
         console.error("Invalid message response:", response);
         return;
       }
-
+  
       console.log("Successfully sent message:", newMessage);
-
+  
       setMessages((prevMessages) => [...prevMessages, newMessage]);
       setInput("");
     } catch (error) {
       console.error("Error sending message:", error);
     }
   };
-
-
+  
 
   const handleContextMenu = (e: React.MouseEvent, messageId: string, msguserId: string) => {
     e.preventDefault();

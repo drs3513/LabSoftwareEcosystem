@@ -19,9 +19,7 @@ export async function whitelistUser(fileId: string, projectId: string,  userEmai
       whitelistId,
       userIds: userEmail,
       projectId,
-      fileId,
       createdAt: now,
-      isAdmin: role === Role.ADMIN || role === Role.HEAD, 
       role: role,
     });
     return response;
@@ -70,7 +68,7 @@ export async function listUsersBelowRole(fileId: string, role: Role) {
     const response = await client.models.Whitelist.list();
     return response.data.filter((user) => {
       const userRole = user.role as Role || Role.USER;
-      return user.fileId === fileId && userRole !== Role.HEAD && userRole !== role;
+      return user.projectId === fileId && userRole !== Role.HEAD && userRole !== role;
     });
   } catch (error) {
     console.error("Error listing users:", error);
