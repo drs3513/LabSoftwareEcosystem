@@ -92,6 +92,14 @@ export async function createNewVersion(
   });
 }
 
+export async function fetchCachedUrl(path: string, versionId: string): Promise<string> {
+  const res = await fetch(`/api/files?key=${encodeURIComponent(path)}&versionId=${encodeURIComponent(versionId)}`);
+  if (!res.ok) throw new Error("Failed to fetch file preview");
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+
 
 
 export async function processAndUploadFiles(

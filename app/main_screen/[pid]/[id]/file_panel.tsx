@@ -17,7 +17,8 @@ import {
   updatefile,
   createNewVersion,
   waitForVersionId,
-  createFolder
+  createFolder,
+  fetchCachedUrl,
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
@@ -168,6 +169,7 @@ export default function FilePanel() {
   const [contextMenuVersionPopout, setContextMenuVersionPopout] = useState(false);
   const [showVersionPanel, setShowVersionPanel] = useState(false);
   const [versionPanelData, setVersionPanelData] = useState<fileInfo | null>(null);
+  
   
 
   const [files, setFiles] = useState<Array<fileInfo>>([]);
@@ -1533,6 +1535,106 @@ export default function FilePanel() {
                     >
                       Versions
                     </ContextMenuItem>
+                    <ContextMenuItem
+                        onClick={async () => {
+                          const file = files.find(f => f.fileId === contextMenuFileId);
+                          if (!file || !projectId) return;
+
+                          const ext = file.filename.split(".").pop()?.toLowerCase();
+                          if (!ext) return;
+
+                          const isText = ["txt", "md", "log", "csv"].includes(ext);
+                          const isOfficeDoc = ["doc", "docx", "rtf", "dox", "word"].includes(ext);
+                          const isPDF = ext === "pdf";
+                          const isImage = ["png", "jpg", "jpeg"].includes(ext);
+
+                          const path = file.storageId as string;
+                          const versionId = file.versionId;
+
+                          try {
+                            const cachedUrl = await fetchCachedUrl(path, versionId);
+                            const popup = window.open("", "_blank", "width=900,height=700");
+
+                            if (!popup) {
+                              alert("Popup blocked. Please allow popups for this site.");
+                              return;
+                            }
+
+                            const content = `
+                              <!DOCTYPE html>
+                              <html lang="en">
+                              <head>
+                                <title>Preview - ${file.filename}</title>
+                                <style>
+                                  body {
+                                    margin: 0;
+                                    font-family: sans-serif;
+                                    background: #f9f9f9;
+                                    display: flex;
+                                    flex-direction: column;
+                                    height: 100vh;
+                                  }
+                                  .toolbar {
+                                    background: #333;
+                                    color: white;
+                                    padding: 10px;
+                                    display: flex;
+                                    justify-content: space-between;
+                                    align-items: center;
+                                  }
+                                  .toolbar a {
+                                    color: white;
+                                    text-decoration: none;
+                                    background: #007bff;
+                                    padding: 6px 12px;
+                                    border-radius: 4px;
+                                  }
+                                  .preview {
+                                    flex: 1;
+                                    display: flex;
+                                    justify-content: center;
+                                    align-items: center;
+                                    padding: 1rem;
+                                    overflow: auto;
+                                  }
+                                  iframe, img {
+                                    max-width: 100%;
+                                    max-height: 100%;
+                                    border: none;
+                                  }
+                                </style>
+                              </head>
+                              <body>
+                                <div class="toolbar">
+                                  <div>Previewing: ${file.filename}</div>
+                                  <a href="${cachedUrl}" download="${file.filename}">Download</a>
+                                </div>
+                                <div class="preview">
+                                  ${
+                                    isPDF
+                                      ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
+                                      : isImage
+                                      ? `<img src="${cachedUrl}" alt="${file.filename}" />`
+                                      : isText
+                                      ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
+                                      : isOfficeDoc
+                                      ? `<iframe src="https://docs.google.com/gview?url=${encodeURIComponent(cachedUrl)}&embedded=true" width="100%" height="100%"></iframe>`
+                                      : `<p>Unsupported file type: .${ext}</p>`
+                                  }
+                                </div>
+                              </body>
+                              </html>
+                            `;
+
+                            popup.document.write(content);
+                            popup.document.close();
+                          } catch (err) {
+                            console.error("Preview failed:", err);
+                          }
+                        }}
+                      >
+                        Preview
+                      </ContextMenuItem>
                     </ContextMenu>
                   {contextMenuTagPopout ?
                       <ContextMenuPopout $index={1}>
@@ -1548,14 +1650,17 @@ export default function FilePanel() {
                                               X
                                             </ContextMenuExitButton>
                                           </ContextMenuItem>
+                    
                                       )) : <></>}
+
                             </>
                             : <ContextMenuItem>Loading...</ContextMenuItem>
                         }
+
                       </ContextMenuPopout>
+                      
                       : <></>
                   }
-                  
                 </ContextMenuWrapper>
             ) : contextMenu && contextMenuType=="fileFolder" ? (
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
@@ -1669,6 +1774,7 @@ export default function FilePanel() {
             onDownloadVersion={handleDownloadVersion}
           />
         )}
+
 
   </>
   );
