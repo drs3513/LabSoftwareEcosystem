@@ -1,5 +1,5 @@
 import '@aws-amplify/ui-react/styles.css';
-import React, {ChangeEvent, Component, ElementType, useEffect, useRef, useState} from "react";
+import React, {ChangeEvent, Component, ElementType, useEffect, useMemo, useRef, useState} from "react";
 import { useGlobalState } from "@/app/GlobalStateContext";
 import { useNotificationState } from "@/app/NotificationStateContext";
 import {
@@ -13,12 +13,16 @@ import {
   getFilePath,
   getFileIdPath,
   processAndUploadFiles, deleteFile, Restorefile, hardDeleteFile,
-  getFileChildren, batchUpdateFilePath, pokeFile
+  getFileChildren, batchUpdateFilePath, pokeFile,
+  updatefile,
+  createNewVersion,
+  waitForVersionId,
+  createFolder
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
 import { generateClient } from "aws-amplify/api";
-import { startDownloadTask, downloadFolderAsZip } from "@/lib/storage";
+import { startDownloadTask, downloadFolderAsZip, uploadFile, ZipTask } from "@/lib/storage";
 import type { Schema } from "@/amplify/data/resource";
 import CreateFilePanel from "../../popout_create_file_panel"
 import {useRouter, useSearchParams} from "next/navigation"
@@ -26,6 +30,7 @@ import {getProjectName} from "@/lib/project";
 import Link from "next/link";
 import {JSX} from "react/jsx-runtime";
 import ConflictModal from '../../conflictModal';
+import { isUserWhitelistedForProject } from '@/lib/whitelist';
 
 //SVG imports
 import Image from "next/image";
@@ -60,6 +65,7 @@ import icon_filezip from "/assets/icons/file-icon-24x24-zip.svg";
 import IntrinsicElements = JSX.IntrinsicElements;
 import {isCancelError} from "aws-amplify/storage";
 import RecycleBinPanel from "@/app/main_screen/popout_recycling_bin";
+
 
 const client = generateClient<Schema>();
 
@@ -107,10 +113,18 @@ const sort_style_map: {[key: string]: any} = {"alphanumeric" : compare_file_name
 const number_to_sort: {[key: number]: any} = {0: "alphanumeric", 1: "alphanumeric-reverse", 2: "chronological", 3: "chronological-reverse"}
 var sort_number = 0;
 
+type FileVersion = Pick<
+  Schema["File"]["type"],
+  "fileId" | "logicalId" | "filename" | "filepath" | "parentId" |
+  "size" | "versionId" | "ownerId" | "projectId" | "createdAt" | "updatedAt"
+>;
+
 interface fileInfo{
   fileId: string,
   filename: string,
   filepath: string,
+  logicalId: string,
+  storageId: Nullable<string> |undefined,
   size: number,
   versionId: string,
   ownerId: string,
@@ -121,6 +135,7 @@ interface fileInfo{
   visible: boolean,
   open: boolean,
   isDirectory: boolean | null
+  versions?: FileVersion[];
 }
 
 interface activeParent{
@@ -170,6 +185,10 @@ export default function FilePanel() {
 
   const [contextMenuFileId, setContextMenuFileId] = useState<string | undefined>(undefined);
 
+  const [contextMenuStoragePath, setContextMenuStoragePath] = useState<Nullable<string> | undefined>(undefined);
+
+  const [contextMenuFileName, setContextMenuFileName] = useState<string | undefined>(undefined);
+
   const [contextMenuFilePath, setContextMenuFilePath] = useState<string | undefined>(undefined);
 
   const [contextMenuTagPopout, setContextMenuTagPopout] = useState(false);
@@ -177,6 +196,8 @@ export default function FilePanel() {
   const [contextMenuTags, setContextMenuTags] = useState< Nullable<string>[] | null | undefined>(undefined)
 
   const [contextMenuUser, setContextMenuUser] = useState<string | undefined>(undefined);
+
+  const [contextMenuVersionPopout, setContextMenuVersionPopout] = useState(false);
 
   const [files, setFiles] = useState<Array<fileInfo>>([]);
   const filesRef = useRef(files)
@@ -291,6 +312,10 @@ export default function FilePanel() {
   //sorts files to be displayed by the user
   //TODO allow toggle of sort mode through setting 'sort' state
   function sort_files_with_path(files: Array<fileInfo>, sortStyle: string = "alphanumeric"){
+    if (activeParentIds.length === 0) {
+      console.log("Active Parent IDs are empty. Returning files without sorting.");
+      return files;
+    }
     //console.log(files)
     let index = 0
     function assignFileByParentId(file: fileInfo) {
@@ -373,39 +398,71 @@ export default function FilePanel() {
 
 
   async function fetchFiles() {
-    if (!projectId) return;
-    const projectFiles = await listFilesForProjectAndParentIds(projectId, activeParentIds.map(parent => parent.id))
-    //builds array of files with extra information for display
-    //Extra information :
-    //'visible' : designates if a file is current visible,
-    // 'open' : designates if a file is currently open (it's unclear that this is required)
-    if(projectFiles){
-      let temp_files: Array<fileInfo> = []
-      for(let file of projectFiles) {
-        temp_files = [...temp_files,
-          {
-            fileId: file.fileId,
-            filename: file.filename,
-            filepath: file.filepath,
-            parentId: file.parentId,
-            size: file.size,
-            versionId: file.versionId,
-            ownerId: file.ownerId,
-            projectId: file.projectId,
-            createdAt: file.createdAt,
-            updatedAt: file.updatedAt,
-            visible: true,
-            open: activeParentIds.some(parent => parent.id === file.fileId),
-            isDirectory: file.isDirectory
-          }]
-      }
-      setFiles(sort_files_with_path(temp_files))
-      setLoading(false);
-      return temp_files
-
+    //console.log("Anything")
+    if (!projectId || !userId){
+      console.log("Woah Nelly")
+      return
     }
+    //console.log(userId + " " + projectId)
+    const isWhitelisted = await isUserWhitelistedForProject(userId, projectId);
+      if (!isWhitelisted) {
+        console.log("User is not whitelisted for this project.");
+        setProjectId(undefined); 
+        setRootParentId(null);
+        setActiveParentIds([]);
+        setFilePathElement([]);
+        setFiles([]);
+        setLoading(false);
+        return;
+      }
+  
+    const projectFiles = await listFilesForProject(projectId); // This will return all versions
+    if (!projectFiles) return [];
+  
+    const grouped: Record<string, typeof projectFiles> = {};
+    for (const file of projectFiles) {
+      if (!file || (file.isDeleted && !showRecycleBin)) continue;
+  
+      if (!grouped[file.logicalId]) {
+        grouped[file.logicalId] = [];
+      }
+      grouped[file.logicalId].push(file);
+    }
+  
+    const groupedFiles: fileInfo[] = [];
+    for (const logicalId in grouped) {
+      const versions = grouped[logicalId].sort((a, b) =>
+        new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
+      );
+      const latest = versions[0];
+  
+      groupedFiles.push({
+        fileId: latest.fileId,
+        logicalId: latest.logicalId,
+        filename: latest.filename,
+        filepath: latest.filepath,
+        parentId: latest.parentId,
+        storageId: latest.storageId,
+        size: latest.size,
+        versionId: latest.versionId,
+        ownerId: latest.ownerId,
+        projectId: latest.projectId,
+        createdAt: latest.createdAt,
+        updatedAt: latest.updatedAt,
+        visible: true,
+        open: false,
+        isDirectory: latest.isDirectory,
+        versions,
+      });
+    }
+    setLoading(false);
+    setFiles(sort_files_with_path(groupedFiles));
+    return groupedFiles;
   }
+  
   useEffect(() => {
+    // console.log("Nelly Woah")
+    // console.log(projectId)
     if(search) return
     if(projectId){
       fetchFiles();
@@ -416,25 +473,52 @@ export default function FilePanel() {
   }, [activeParentIds, search]);
 
   useEffect(() => {
-    setLoading(true)
-    const proj_id = routerSearchParams.get("pid")
-    const root_id = routerSearchParams.get("id")
-    if(!proj_id) {
-      setLoading(false)
-      return
+    setLoading(true);
+    const proj_id = routerSearchParams.get("pid");
+    const root_id = routerSearchParams.get("id");
+    if (!proj_id || !userId) {
+      setFiles([]);
+      setActiveParentIds([]);
+      setFilePathElement([]);
+      setFiles([]);
+      setLoading(false);
+      return;
     }
-    setProjectId(proj_id)
 
-    if(!root_id) {
-      setLoading(false)
-      return
-    }
-    setRootParentId(root_id)
-    setActiveParentIds([{id: root_id, depth: 0}])
-    fetchRootInfo(root_id, proj_id)
+    const initializeProject = async () => {
+      if (!userId) {
+        setLoading(false);
+        return;
+      }
+      
+      const isWhitelisted = await isUserWhitelistedForProject(userId, proj_id);
+      if (!isWhitelisted) {
+        console.warn("User is not whitelisted for this project.");
+        setProjectId(undefined);
+        //setRootParentId(null);
+        setActiveParentIds([]);
+        setFilePathElement([]);
+        setFiles([]);
+        setLoading(false);
+        return;
+      }
 
-    //setActiveParentIds([routerSearchParams.id])
-  }, [routerSearchParams])
+      setProjectId(proj_id);
+
+      if (!root_id) {
+        setLoading(false);
+        return;
+      }
+
+      setRootParentId(root_id);
+      setActiveParentIds([{ id: root_id, depth: 0 }]);
+      await fetchRootInfo(root_id, proj_id);
+      //fetchFiles();
+    };
+
+    initializeProject();
+  }, [routerSearchParams, userId]);
+
   async function fetchRootInfo(root_id: string, proj_id: string){
     const activeFilePath = await getFilePath(root_id, proj_id)
 
@@ -451,7 +535,7 @@ export default function FilePanel() {
   async function createFileIdMapping(root_id: string, proj_id: string, activeFilePath: string, projectName: string | undefined){
     //console.log(filepath.split("/").splice(1))
     let fileIdPath = await getFileIdPath(root_id, proj_id)
-    console.log(fileIdPath)
+    //console.log(fileIdPath)
     if(!fileIdPath) {
       setFilePathElement([])
       return
@@ -464,66 +548,81 @@ export default function FilePanel() {
   }
 
   const observeFiles = () => {
-
     const subscription = client.models.File.observeQuery({
       filter: {
-            and: [
-              {
-                or: activeParentIds.map(parent => ({
-                  parentId: {eq: parent.id}
-                })),
-              },
-              {
-                isDeleted: {eq: 0}
-              }
-            ]
-            //projectId: {eq: projectId}
-
+        or: activeParentIds.map(parent => ({
+          parentId: { eq: parent.id },
+        })),
       },
-      selectionSet: ["fileId", "filename", "filepath", "parentId", "size", "versionId", "ownerId", "projectId", "createdAt",
-      "updatedAt", "isDirectory"]
+      selectionSet: [
+        "fileId", "filename", "filepath", "logicalId", "parentId", "size",
+        "versionId", "ownerId", "projectId", "createdAt", "updatedAt", "isDirectory", "isDeleted", "storageId"
+      ],
     }).subscribe({
       next: async ({ items }) => {
-        console.log("Hello")
-        if(items.length == 0){
-          return []
+        if (items.length === 0) {
+          setFiles([]);
+          return;
         }
-
-        let temp_files = items.map(file => ({
-          fileId: file.fileId,
-          filename: file.filename,
-          filepath: file.filepath,
-          parentId: file.parentId,
-          size: file.size,
-          versionId: file.versionId,
-          ownerId: file.ownerId,
-          projectId: file.projectId,
-          createdAt: file.createdAt,
-          updatedAt: file.updatedAt,
-          visible: true,
-          open: activeParentIds.some(parent => parent.id === file.fileId),
-          isDirectory: file.isDirectory
-        }));
-        console.log(activeParentIds)
-        //console.log(temp_files)
+  
+        // Apply client-side filter
+        const visibleItems = items.filter(file =>
+          showRecycleBin ? file.isDeleted === 1 : file.isDeleted === 0
+        );
+  
+        // Group by logicalId and pick latest version
+        const grouped: Record<string, typeof visibleItems> = {};
+        for (const file of visibleItems) {
+          if (!grouped[file.logicalId]) {
+            grouped[file.logicalId] = [];
+          }
+          grouped[file.logicalId].push(file);
+        }
+  
+        const temp_files = Object.values(grouped).map(versions => {
+          const sorted = versions.sort(
+            (a, b) =>
+              new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
+          );
+          const latest = sorted[0];
+  
+          return {
+            fileId: latest.fileId,
+            filename: latest.filename,
+            filepath: latest.filepath,
+            logicalId: latest.logicalId,
+            storageId: latest.storageId,
+            parentId: latest.parentId,
+            size: latest.size,
+            versionId: latest.versionId,
+            ownerId: latest.ownerId,
+            projectId: latest.projectId,
+            createdAt: latest.createdAt,
+            updatedAt: latest.updatedAt,
+            visible: true,
+            open: activeParentIds.some(parent => parent.id === latest.fileId),
+            isDirectory: latest.isDirectory,
+            versions: sorted,
+          };
+        });
+  
         setFiles(sort_files_with_path(temp_files));
-        return temp_files;
       },
       error: (error) => {
         console.error("[ERROR] Error observing files:", error);
       },
     });
-
-    return () => {
-      subscription.unsubscribe();
-    };
+  
+    return () => subscription.unsubscribe();
   };
+  
+  
 
 
   async function fetchFilesWithSearch(){
     setLoading(true);
     if (!projectId) return;
-    console.log("Here")
+    //console.log("Here")
     const projectFiles = await searchFiles(projectId, searchTerm, tagSearchTerm, authorSearchTerm)
     //builds array of files with extra information for display
     //Extra information :
@@ -537,7 +636,9 @@ export default function FilePanel() {
             {
               fileId: file.fileId,
               filename: file.filename,
+              logicalId: file.logicalId,
               filepath: file.filepath,
+              storageId: file.storageId,
               parentId: file.parentId,
               size: file.size,
               versionId: file.versionId,
@@ -610,11 +711,11 @@ export default function FilePanel() {
 
   async function fetchTags(fileId: string){
     if (!projectId) return
-    console.log("Here!")
+    //console.log("Here!")
     const tempTags = await getTags(fileId, projectId)
 
     setContextMenuTags(tempTags)
-    console.log(tempTags)
+    //console.log(tempTags)
   }
 
 
@@ -658,10 +759,9 @@ export default function FilePanel() {
 
   const activeDownloads = new Map<string, ReturnType<typeof startDownloadTask>>();
 
-  const handleDownload = async (filePath: string, fileId: string, fileuser: string) => {
-    filePath = `uploads/${fileuser}/${projectId}${filePath}`;
-    const task = startDownloadTask(filePath, (percent) => {
-      setDownloadProgressMap(prev => ({ ...prev, [fileId]: percent }));
+  const handleDownload = async (storagePath: string, filename: string, fileId: string) => {
+    const task = startDownloadTask(storagePath, (percent) => {
+      setDownloadProgressMap(prev => ({ ...prev, [filename]: percent }));
     });
 
     activeDownloads.set(fileId, task);
@@ -673,27 +773,80 @@ export default function FilePanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = filePath.split('/').pop() || "download";
+      a.download = storagePath.split('/').pop() || "download";
       a.click();
       URL.revokeObjectURL(url);
 
     } catch (error) {
       if (isCancelError(error)) {
-        console.warn(`[CANCELLED] Download cancelled: ${filePath}`);
+        console.warn(`[CANCELLED] Download cancelled: ${fileId}`);
       } else {
-        console.error(`[ERROR] Download failed: ${filePath}`, error);
+        console.error(`[ERROR] Download failed: ${fileId}`, error);
       }
     } finally {
       activeDownloads.delete(fileId);
     }
   };
 
+  const handleFolderDownload = async (folderName: string, folderLogicalId: string) => {
+    if (!projectId) return;
+  
+    const task: ZipTask = {
+      isCanceled: false,
+      cancel() {
+        task.isCanceled = true;
+      },
+    };
+  
+    const allChildren = await getFileChildren(projectId, folderLogicalId);
+    const validFiles = allChildren?.filter(f => !f.isDirectory && f.storageId && f.filepath);
+  
+    const fileList = validFiles?.map(file => ({
+      filepath: file.filepath,         // This is how it appears to the user
+      storageId: file.storageId!,      // This is how we fetch it
+    }));
+  
+    await downloadFolderAsZip(folderName, fileList as [], task);
+  };
+
+  const handleDownloadCurrentView = async () => {
+    if (!projectId) return;
+  
+    const task: ZipTask = {
+      isCanceled: false,
+      cancel() {
+        task.isCanceled = true;
+      },
+    };
+  
+    const fileList: { path: string; filename: string }[] = [];
+  
+    for (const file of filesRef.current) {
+      if (!file.storageId || file.isDirectory) continue;
+  
+      fileList.push({
+        path: file.storageId,
+        filename: file.filepath.startsWith("/") ? file.filepath.slice(1) : file.filepath, // Preserve structure
+      });
+    }
+  
+    if (fileList.length === 0) {
+      console.warn("No downloadable files in current view.");
+      return;
+    }
+  
+    const rootName = projectName.current || "project-files";
+    await downloadFolderAsZip(rootName, fileList as [], task);
+  };
+  
+  
+
   const cancelDownload = (fileId: string) => {
     const task = activeDownloads.get(fileId);
     if (task) {
       task.cancel();
       activeDownloads.delete(fileId);
-      console.log(`[INFO] Download cancelled for fileId: ${fileId}`);
+      //console.log(`[INFO] Download cancelled for fileId: ${fileId}`);
     }
   };
 
@@ -876,7 +1029,8 @@ export default function FilePanel() {
       const fullPath = file.webkitRelativePath || file.name;
       const pathParts = fullPath.split("/");
       const fileName = pathParts.pop()!;
-      const filePath = "/" + fullPath;
+      const filePath = `${rootFilePath.replace(/\/$/, "")}/${fullPath}`.replace(/\/+/g, "/");
+      ;
 
       const conflict = filesRef.current.find(
           f => f.filepath === filePath && f.projectId === projectId
@@ -889,17 +1043,22 @@ export default function FilePanel() {
         if (decision === 'cancel') continue;
       }
 
-      if (conflict && applyToAll && globalDecision) {
-        decision = globalDecision;
-        if (decision === 'cancel') continue;
+      if (decision ==='overwrite' && conflict) {
+        const { key: storageKey } = await uploadFile(file, ownerId, projectId, filePath);
+        waitForVersionId(storageKey).then((versionId) => {
+          return updatefile(conflict.fileId, projectId, versionId as string);
+        });;
+        
       }
 
       let actualName = fileName;
       if (decision === 'version') {
-        const versionTag = `__v${Date.now()}`;
-        const base = fileName.includes(".") ? fileName.substring(0, fileName.lastIndexOf(".")) : fileName;
-        const ext = fileName.includes(".") ? fileName.substring(fileName.lastIndexOf(".")) : "";
-        actualName = `${base}${ext}`;
+        try {
+                await createNewVersion(file, conflict?.logicalId as string, projectId, ownerId, parentId, filePath);
+              } catch (error) {
+                console.error("[VERSION ERROR] Failed to create version for:", file.name, error);
+              }
+              continue;
       }
 
       // Place the file into the shared folderDict
@@ -912,7 +1071,7 @@ export default function FilePanel() {
       if (!current.files) current.files = {};
       current.files[actualName] = file;
     }
-    uploadQueue.current.push({
+    uploadQueue.current?.push({
       folderDict,
       ownerId,
       projectId,
@@ -922,7 +1081,7 @@ export default function FilePanel() {
         (percent: number) => setUploadProgress(percent));
 
     // After upload finishes, remove from queue and reset progress
-    uploadQueue.current.shift();
+    uploadQueue.current?.shift();
     setCompletedUploads((prev) => [...prev, 0]);
 
     // Delay removal of visual trace
@@ -963,14 +1122,14 @@ export default function FilePanel() {
     const file = files.find(f => f.fileId === fileId);
     if (!file || !projectId) return;
 
-    const confirmDelete = window.confirm(
+    /*const confirmDelete = window.confirm(
         `Are you sure you want to delete ${file.isDirectory ? 'folder' : 'file'}: "${file.filename}"?`
     );
 
     if (!confirmDelete) {
       console.log("Deletion canceled by user.");
       return;
-    }
+    }*/
 
     if (file.isDirectory) {
       await recursiveDeleteFolder(fileId);
@@ -1004,9 +1163,9 @@ export default function FilePanel() {
 
       for(let fileIndex of pickedUpFileGroup) {
         if(!projectId) return
-        console.log("Here!")
+        //console.log("Here!")
         const children = await getFileChildren(projectId, files[fileIndex].filepath)
-        console.log(children)
+        //console.log(children)
       }
       setPickedUpFileGroup(undefined)
 
@@ -1043,7 +1202,7 @@ export default function FilePanel() {
       const fileIds = children.map((child) => child.fileId)
       const filepaths = children.map((child) => new_file_path + child.filepath.slice(files[filesByFileId.current[pickedUpFileId]].filepath.length))
       const parentIds = children.map((child) => child.fileId == pickedUpFileId ? (overFileId ? overFileId : `ROOT-${projectId}`) : child.parentId)
-      console.log(filepaths)
+      //console.log(filepaths)
       //`if(overFileId){
       //`  console.log(files[filesByFileId.current[overFileId]].filepath)
       //`} else {
@@ -1054,7 +1213,7 @@ export default function FilePanel() {
       const poke = await pokeFile(fileIds[0], projectId, filepaths[0])
       setPickedUpFileId(undefined)
 
-      console.log(returnedValue)
+      //console.log(returnedValue)
     }
     observeMouseCoords.current = true
   }
@@ -1145,7 +1304,7 @@ export default function FilePanel() {
       }
 
 
-      console.log(files[index])
+      //console.log(files[index])
     }
   }
   function selectFileGroup(index: number){
@@ -1187,7 +1346,7 @@ export default function FilePanel() {
       setTagSearchTerm(temp_tag_set)
       setAuthorSearchTerm(temp_author_set)
       setSearchTerm(temp_name_set)
-      console.log(temp_name_set)
+      //console.log(temp_name_set)
       setSearch(true)
     }
 
@@ -1252,14 +1411,52 @@ export default function FilePanel() {
     }
   }
 
+  const handleDownloadVersion = async (
+    versionId: string,
+    logicalId: string,
+    filename: string,
+    filepath: string,
+    ownerId: string,
+    projectId: string
+  ) => {
+    const path = `uploads/${ownerId}/${projectId}${filepath}`;
+  
+    if (!path || !versionId || !filepath) {
+      console.error("❌ Missing path, versionId, or filename");
+      return;
+    }
+  
+    // Generate the URL to your redirecting API route
+    const downloadUrl = `/api/files?key=${encodeURIComponent(path)}&versionId=${encodeURIComponent(versionId)}`;
+  
+    // Open in a new tab or force download via anchor
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = filename;
+    a.click();
+  };
+
+  function handleCreateFolder() {
+    if (!projectId || !userId) return;
+  
+    const name = window.prompt("Name of folder", "New Folder");
+    if (!name) return;
+  
+    const parentId = contextMenuFileId ?? `ROOT-${projectId}`;
+    const parentPath = contextMenuFilePath ?? "";
+    const fullPath = `${parentPath}/${name}`.replace(/\/+/g, "/");
+  
+    createFolder(projectId, name, userId, parentId, fullPath);
+  }
+  
 
 
 
-  function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, location: string, userId: string | undefined){
+  function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, location: string, userId: string | undefined, storagePath: Nullable<string> |undefined, filename: string |undefined){
     if(e.target != e.currentTarget){
       return
     }
-    console.log("This was called")
+    //console.log("This was called")
     isLongPress.current = false;
     clearTimeout(timer.current);
     e.preventDefault();
@@ -1270,6 +1467,8 @@ export default function FilePanel() {
     setContextMenuFilePath(filepath);
     setContextMenuTagPopout(false);
     setContextMenuUser(userId);
+    setContextMenuStoragePath(storagePath);
+    setContextMenuFileName(filename);
 
   }
 
@@ -1288,10 +1487,16 @@ export default function FilePanel() {
     setDragOverFileId(fileId)
   }
 
+  const contextFile = useMemo(() => {
+    return files.find(f => f.fileId === contextMenuFileId);
+  }, [files, contextMenuFileId]);
+
+  
   return (
+    
       <>
         <PanelContainer
-            onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel', undefined)}
+            onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel', undefined, undefined, undefined)}
             onMouseUp={(e) => onFilePlace(e, rootParentId, null)}
             onMouseMove = {(e) => {observeMouseCoords.current && (pickedUpFileGroup || pickedUpFileId) ? setMouseCoords([e.clientX, e.clientY]) : undefined}}
             onClick = {(e) => e.target == e.currentTarget ? setSelectedFileGroup(undefined) : undefined}
@@ -1342,12 +1547,14 @@ export default function FilePanel() {
                             onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : undefined}
                             onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
                             onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(e, filesByFileId.current[file.fileId])}
-                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId)}
+                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
                             onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
                             onDragLeave = {(e) => {handleDragOver(e, undefined)}}
                             onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ? handleFileDrag(e, projectId, userId, file.fileId, file.filepath) : undefined}}>
 
-                        <div style={{display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? <Image src={icon_folder} alt="" objectFit='contain' width='36'/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36'/>} <div style={{marginLeft: '1em'}}>{file.filename} <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                        <div style={{display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? <Image src={icon_folder} alt="" objectFit='contain' width='36'/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36'/>} <div style={{marginLeft: '1em'}}>{file.filename}
+                        <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                                              logicalId={file.logicalId} storageId={file.storageId}
                                               size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                               projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
                                               updatedAt={file.updatedAt} visible={file.visible}
@@ -1368,11 +1575,12 @@ export default function FilePanel() {
                             onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : undefined}
                             onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
                             onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(e, filesByFileId.current[file.fileId])}
-                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId)}
+                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
                             onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
                             onDragLeave = {(e) => {handleDragOver(e, undefined)}}>
                         {file.isDirectory ? "📁" : "🗎"} {file.filename}
                         <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                                              logicalId={file.logicalId} storageId={file.storageId}
                                               size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                               projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
                                               updatedAt={file.updatedAt} visible={file.visible} open={file.open}
@@ -1407,28 +1615,31 @@ export default function FilePanel() {
                   <ContextMenu>
                     <ContextMenuItem
                         onClick={(e) => {
-                          setCreateFilePanelUp(true);
-                          createFilePanelInitX.current = e.pageX;
-                          createFilePanelInitY.current = e.pageY;
-                          createFileOrFolder.current = "File";
+                          handleCreateFolder();
                         }}
                     >
-                      Upload File/Folder
+                      Create Folder
                     </ContextMenuItem>
                     <ContextMenuItem>Open Chat</ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={() => handleDownloadCurrentView()}
+                    >
+                      Download All in View
+                    </ContextMenuItem>
+
                   </ContextMenu>
                 </ContextMenuWrapper>
             ) : contextMenuFileId && contextMenu && contextMenuType=="fileFile" ? (
 
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
-                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);setContextMenuVersionPopout(false)}}>
                       Rename
                     </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true);setContextMenuVersionPopout(false)}}>
                       Tags
                     </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);setContextMenuVersionPopout(false)}}>
                       Properties
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
@@ -1437,13 +1648,60 @@ export default function FilePanel() {
                     <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
                       Open Chat
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={() => handleDownload(contextMenuFilePath!, contextMenuFileId!,contextMenuUser!)}>
+                    <ContextMenuItem onClick={() => handleDownload(contextMenuStoragePath!, contextMenuFileName!,contextMenuFileId!)}>
                       Download
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => cancelDownload(contextMenuFileId!)}>
                       Cancel Download
                     </ContextMenuItem>
-                  </ContextMenu>
+                    <ContextMenuItem
+                      style={{ fontWeight: "bold", cursor: "default" }}
+                      onMouseOver={() => {
+                        setContextMenuVersionPopout(true);
+                        setContextMenuTagPopout(false); // optionally close tags
+                      }}
+                    >
+                      Versions
+                    </ContextMenuItem>
+                    </ContextMenu>
+
+                    {/* Versions block inserted directly here */}
+                    {contextMenuVersionPopout && contextFile?.versions && (
+                        <ContextMenuPopout $index={contextMenuTagPopout ? 2 : 1}>
+                          {[...contextFile.versions]
+                            .sort((a, b) => new Date(a.updatedAt!).getTime() - new Date(b.updatedAt!).getTime())
+                            .reverse()
+                            .map((version, idx, arr) => {
+                              const versionNumber = `v${arr.length - idx}`;
+                              const isCurrent = version.versionId === contextFile.versionId;
+                              const dateStr = new Date(version.updatedAt!).toLocaleString();
+
+                              return (
+                                <ContextMenuItem
+                                  key={`${version.versionId}-${idx}`}
+                                  style={{
+                                    fontSize: "12px",
+                                    paddingLeft: "1.5rem",
+                                    color: isCurrent ? "#000" : "#555",
+                                    fontWeight: isCurrent ? "bold" : "normal"
+                                  }}
+                                  onClick={() =>
+                                    handleDownloadVersion(
+                                      version.versionId,
+                                      contextFile.logicalId,
+                                      contextFile.filename,
+                                      contextFile.filepath,
+                                      contextFile.ownerId,
+                                      contextFile.projectId
+                                    )
+                                  }
+                                >
+                                  {versionNumber} – {dateStr}
+                                </ContextMenuItem>
+                              );
+                            })}
+                        </ContextMenuPopout>
+                      )}
                   {contextMenuTagPopout ?
                       <ContextMenuPopout $index={1}>
                         {contextMenuTags || contextMenuTags === null ?
@@ -1465,6 +1723,7 @@ export default function FilePanel() {
                       </ContextMenuPopout>
                       : <></>
                   }
+                  
                 </ContextMenuWrapper>
             ) : contextMenu && contextMenuType=="fileFolder" ? (
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
@@ -1474,6 +1733,12 @@ export default function FilePanel() {
                     </ContextMenuItem>
                     <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
                       Properties
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onMouseOver={() => setContextMenuTagPopout(false)}
+                      onClick={() => handleFolderDownload(contextMenuFileName as string, contextMenuFileId as string)}
+                    >
+                      Download
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => setFileId(contextMenuFileId)} onMouseOver={() => setContextMenuTagPopout(false)}>
                       Open Chat
@@ -1662,6 +1927,8 @@ const ContextMenu = styled.div`
     display: flex;
     flex-direction: column;
     height: max-content;
+    max-height: 300px; /* Add this */
+    overflow-y: auto;   /* Add this */
 `;
 const ContextMenuPopout = styled.div<{$index: number}>`
     margin-top: ${(props) => "calc(" + props.$index + "* calc(21px + 0.4rem) + 1px)"};

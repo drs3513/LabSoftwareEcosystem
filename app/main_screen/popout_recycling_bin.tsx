@@ -106,11 +106,12 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
     }
 
     async function handleHardDelete(fileId: string) {
-        const confirmed = window.confirm("This will permanently delete this file and all versions. Continue?");
-        if (!confirmed || !projectId) return;
+        /*const confirmed = window.confirm("This will permanently delete this file and all versions. Continue?");
+        if (!confirmed || !projectId) return;*/
 
         try {
             await hardDeleteFile(fileId, projectId);
+            fetchFiles();
         } catch (err) {
             console.error("Hard delete failed:", err);
         }

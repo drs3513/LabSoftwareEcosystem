@@ -5,19 +5,14 @@ import JSZip from "jszip";
 const s3Client = new S3Client({ region: "us-east-1" });
 
 export async function getFileVersions(key: string): Promise<string | null> {
-  const maxRetries = 5;
+  const maxRetries = 1;
   let attempt = 0;
 
   while (attempt < maxRetries) {
-    try {
-      console.log(`[INFO] Fetching file versions (Attempt ${attempt + 1}/${maxRetries})`);
+    console.log(`[INFO] Fetching file versions (Attempt ${attempt + 1}/${maxRetries})`);
 
-      let session;
-      try {
-        session = await fetchAuthSession();
-      } catch (authError) {
-        throw new Error(`[AUTH ERROR] ${authError}`);
-      }
+    try {
+      const session = await fetchAuthSession();
 
       if (!session || !session.credentials) {
         throw new Error("No valid credentials found");
@@ -25,13 +20,8 @@ export async function getFileVersions(key: string): Promise<string | null> {
 
       const response = await fetch("/api/s3-versions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          credentials: session.credentials,
-          key,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credentials: session.credentials, key }),
       });
 
       if (!response.ok) {
@@ -39,16 +29,15 @@ export async function getFileVersions(key: string): Promise<string | null> {
       }
 
       const data = await response.json();
-      const versions = data.versions.filter((v: any) => v.key === key);
+      const versions = (data.versions || []).filter((v: any) => v.key === key);
 
       if (versions.length === 0) {
         console.warn(`[WARN] No versions found for key: ${key}`);
-        return null;
+        throw new Error("No versions found");
       }
 
-      versions.sort(
-          (a: any, b: any) =>
-              new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
+      versions.sort((a: any, b: any) =>
+        new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
       );
 
       console.log(`[SUCCESS] Retrieved latest version for key: ${key}`);
@@ -71,8 +60,6 @@ export async function getFileVersions(key: string): Promise<string | null> {
 
   return null;
 }
-
-
 
 
 // Upload file and return S3 key
@@ -140,37 +127,33 @@ export type ZipTask = {
 };
 
 export async function downloadFolderAsZip(
-    folderName: string,
-    fileList: { path: string; filename: string }[],
-    task: ZipTask
+  folderName: string,
+  fileList: { filepath: string; storageId: string }[],
+  task: ZipTask
 ) {
   const zip = new JSZip();
 
   for (const file of fileList) {
     if (task.isCanceled) {
-      console.warn(`[CANCEL] Folder download canceled.`);
+      console.warn("[CANCEL] Folder download canceled.");
       return;
     }
 
     try {
       const { body } = await downloadData({
-        path: file.path,
-        options: {
-          onProgress: (progress) => {
-            if (!progress.totalBytes) return
-            console.log(`[PROGRESS] ${file.filename}: ${(progress.transferredBytes / progress.totalBytes) * 100}%`);
-          },
-        },
+        key: file.storageId,
       }).result;
 
       const blob = await body.blob();
-      zip.file(file.filename, blob);
+
+      // Add to zip under the desired directory structure
+      zip.file(file.filepath.replace(/^\//, ""), blob);
     } catch (error) {
       if (isCancelError(error)) {
-        console.warn(`[CANCELLED] ${file.filename}`);
+        console.warn(`[CANCELLED] ${file.filepath}`);
         return;
       } else {
-        console.error(`[ERROR] Failed to download ${file.path}`, error);
+        console.error(`[ERROR] Failed to download storageId: ${file.storageId}`, error);
       }
     }
   }
@@ -204,9 +187,13 @@ export function startDownloadTask(fileKey: string, onProgress: (percent: number)
     path: fileKey,
     options: {
       onProgress: (progress) => {
-        if (!progress.totalBytes) return
-        const percent = (progress.transferredBytes / progress.totalBytes) * 100;
-        onProgress(percent);
+        if (progress.totalBytes && progress.totalBytes > 0) {
+          const percent = (progress.transferredBytes / progress.totalBytes) * 100;
+          onProgress(percent);
+        } else {
+          // If totalBytes is undefined or 0, fallback to indeterminate progress (optional)
+          onProgress(0);
+        }
       }
     }
   });

@@ -1,5 +1,4 @@
 import React, {createContext, useContext, useState, ReactNode, useRef, RefObject} from "react";
-import {createTag as backendCreateTag} from "@/lib/tag";
 import {processAndUploadFiles as backendProcessAndUploadFiles} from "@/lib/file";
 
 //USAGE GUIDE : For many calls to backend functions, functionality may be as simple as creating a reference to whichever API call you are interested in, and redefining the instance of 'functionName' in your component to be in NotificationStateContext, as opposed to whichever library it came from
@@ -9,7 +8,6 @@ interface NotificationStateContextType {
   activeNotifications: notificationType[];
   pushNotification: (val: notificationType) => void;
   removeNotification: (index: number) => void;
-  createTag: (tagType: "file" | "message", fileId: string, projectId: string, tagName: string) => void;
   uploadQueue: RefObject<uploadQueueType[]>;
   uploadTask: RefObject<uploadTaskType>;
   uploadProgress: number | null;
@@ -64,19 +62,10 @@ export function NotificationStateProvider({ children }: {children: ReactNode}) {
     activeNotificationsRef.current = [...activeNotificationsRef.current.filter((item, i) => i != index)]
   }
 
-  //Example implementation of "createTag" function, implemented using notification state context
-  async function createTag(tagType: "file" | "message", fileId: string, projectId: string, tagName: string){
-      pushNotification({taskType: "upload", message: `Uploading Tag : \"${tagName}\"`})
-      if(await backendCreateTag(tagType, fileId, projectId, tagName)){
-        pushNotification({taskType: "upload", message: `Successfully Uploaded Tag : \"${tagName}\"`})
-      } else {
-        pushNotification({taskType: "error", message: 'Something went wrong!'})
-      }
-  }
 
 
   return (
-      <NotificationStateContext.Provider value = {{activeNotifications, pushNotification, removeNotification, createTag, uploadQueue, uploadTask, uploadProgress, setUploadProgress, downloadProgressMap, setDownloadProgressMap, completedUploads, setCompletedUploads, showProgressPanel, setShowProgressPanel}}>
+      <NotificationStateContext.Provider value = {{activeNotifications, pushNotification, removeNotification, uploadQueue, uploadTask, uploadProgress, setUploadProgress, downloadProgressMap, setDownloadProgressMap, completedUploads, setCompletedUploads, showProgressPanel, setShowProgressPanel}}>
         {children}
       </NotificationStateContext.Provider>
   )

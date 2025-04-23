@@ -20,9 +20,6 @@ export default function CreateFilePanel({ initialPosX, initialPosY, parentFileId
     if (initialPosY + 400 > document.documentElement.offsetHeight) {
         initialPosY = document.documentElement.offsetHeight - 400;
     }
-
-
-
     const [tags, setTags] = useState<Array<string>>([])
     const [posX, setPosX] = useState(initialPosX)
     const [posY, setPosY] = useState(initialPosY)
@@ -35,7 +32,7 @@ export default function CreateFilePanel({ initialPosX, initialPosY, parentFileId
     const fileName = useRef("");
     const {projectId, userId} = useGlobalState();
     const [dragging, setDragging] = useState(false);
-
+    
     function handleDragOver(e: DragEvent<HTMLDivElement>) {
         e.preventDefault();
         setDragging(true);
@@ -46,12 +43,12 @@ export default function CreateFilePanel({ initialPosX, initialPosY, parentFileId
     }
 
     async function handleDrop(e: DragEvent<HTMLDivElement>) {
-        dragFile(
-            e,
-            projectId as string,
-            userId as string,
-            parentFileId as string
-        );
+            dragFile(
+                e,
+                projectId as string,
+                userId as string,
+                parentFileId as string
+            );
     }
 
     function handleInsertTag(e: React.KeyboardEvent<HTMLInputElement>){
@@ -94,43 +91,43 @@ export default function CreateFilePanel({ initialPosX, initialPosY, parentFileId
 
     return (
         <PanelContainer
-            $posX = {posX}
-            $posY = {posY}
-            $width = {panelWidth}
-            $height = {panelHeight}
+        $posX = {posX}
+        $posY = {posY}
+        $width = {panelWidth}
+        $height = {panelHeight}
 
-        >
-            <Header draggable={true} onDragStart={(e) => handleStartDrag(e)}
-                    onDragEnd={(e) => handleEndDrag(e)}>
-                {isDirectory === "File" ? "File Upload" : "Folder Upload"}
-                <CloseButton onClick={close}>
-                    X
-                </CloseButton>
-            </Header>
+    >
+        <Header draggable={true} onDragStart={(e) => handleStartDrag(e)}
+                onDragEnd={(e) => handleEndDrag(e)}>
+            {isDirectory === "File" ? "File Upload" : "Folder Upload"}
+            <CloseButton onClick={close}>
+                X
+            </CloseButton>
+        </Header>
 
-            <TagInputContainer>
-                <InputSmall onKeyDown={e => handleInsertTag(e)} placeholder={"Tag"}></InputSmall>
-            </TagInputContainer>
+        <TagInputContainer>
+            <InputSmall onKeyDown={e => handleInsertTag(e)} placeholder={"Tag"}></InputSmall>
+        </TagInputContainer>
 
-            <TagDisplay>
-                {tags.length > 0 ? (
-                    <>
-                        <TagLabel>
-                            Tags :
-                        </TagLabel>
-                        <TagDisplayContainer $height={panelHeight}>
-                            {
-                                tags.map((tag, key) => (
-                                    <TagDisplayIndex key={key}>
-                                        {tag}
-                                    </TagDisplayIndex>
-                                ))
-                            }
-                        </TagDisplayContainer>
-                    </>
-                ) : <></>
-                }
-            </TagDisplay>
+        <TagDisplay>
+            {tags.length > 0 ? (
+                <>
+                    <TagLabel>
+                        Tags :
+                    </TagLabel>
+                    <TagDisplayContainer $height={panelHeight}>
+                        {
+                            tags.map((tag, key) => (
+                                <TagDisplayIndex key={key}>
+                                    {tag}
+                                </TagDisplayIndex>
+                            ))
+                        }
+                    </TagDisplayContainer>
+                </>
+            ) : <></>
+            }
+        </TagDisplay>
             <DropZone onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} $dragging={dragging}>
                 <DropText>{dragging ? "Drop files/folders here..." : "Drag and drop files or folders"}</DropText>
                 <UploadButton onClick={() => inputFile(false, projectId as string, userId as string, parentFileId as string)}>Browse Files</UploadButton>

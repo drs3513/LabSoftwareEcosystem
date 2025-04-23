@@ -7,9 +7,8 @@ const client = generateClient<Schema>();
 
 export async function createMessage(fileId: string, userId: string, content: string, projectId: string) {
   try {
-    const fileMessages = await getMessagesForFile(fileId);
-    const messageCount = fileMessages.length || 0;
-    const messageId = `${fileId}M${messageCount + 1}`;
+    const uuid = crypto.randomUUID();
+    const messageId = `${uuid}`;
     const now = new Date().toISOString();
 
     const newMessage = await client.models.Message.create({
@@ -100,6 +99,7 @@ export async function getTagsForMessage (messageId: string) {
     return [];
   }
 }
+
 
 export async function deleteMessage(messageId: string, userId: string) {
   try {
