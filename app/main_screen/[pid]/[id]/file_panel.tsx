@@ -29,8 +29,10 @@ import ConflictModal from '../../conflictModal';
 
 //SVG imports
 import Image from "next/image";
-import icon_alphanumericsort from "/assets/icons/sort-alphabetical-outlined-rounded.svg";
-import icon_alphanumericreversesort from "/assets/icons/sort-alphabetical-reverse-outlined-rounded.svg";
+import icon_sort0 from "/assets/icons/sort-alphabetical-outlined-rounded.svg";
+import icon_sort1 from "/assets/icons/sort-alphabetical-reverse-outlined-rounded.svg";
+import icon_sort2 from "/assets/icons/sort-high-to-low-outlined-rounded.svg";
+import icon_sort3 from "/assets/icons/sort-low-to-high-outlined-rounded.svg";
 import icon_binsolid from "/assets/icons/trash-3-outlined-rounded.svg";
 import icon_binline from "/assets/icons/trash-3-solid-rounded.svg";
 import icon_folder from "/assets/icons/folder-1-outlined-rounded.svg";
@@ -102,6 +104,8 @@ function compare_file_name_reverse(file_1: any, file_2: any){
 }
 
 const sort_style_map: {[key: string]: any} = {"alphanumeric" : compare_file_name, "alphanumeric-reverse" : compare_file_name_reverse, "chronological" : compare_file_date, "chronological-reverse" : compare_file_date_reverse}
+const number_to_sort: {[key: number]: any} = {0: "alphanumeric", 1: "alphanumeric-reverse", 2: "chronological", 3: "chronological-reverse"}
+var sort_number = 0;
 
 interface fileInfo{
   fileId: string,
@@ -1196,6 +1200,11 @@ export default function FilePanel() {
 
   }
 
+  function sortButtonClicked(){
+    sort_number = (sort_number+1)%4;
+    handleSwitchSort(number_to_sort[sort_number]);
+  }
+
 
 
   async function handleTagInput(e: React.KeyboardEvent<HTMLInputElement>){
@@ -1310,16 +1319,9 @@ export default function FilePanel() {
                   </Input>
                   <SortContainer>
                     <SortSelector
-                        $selected = {sort ==='alphanumeric'}
-                        onClick={() => handleSwitchSort("alphanumeric")}>
-                      <Image src={icon_alphanumericsort} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/>
+                        onClick={() => sortButtonClicked()}>
+                      <Image src={sort_number == 0 ? icon_sort0 : sort_number == 1 ? icon_sort1 : sort_number == 2 ? icon_sort2 : icon_sort3} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/>
                     </SortSelector>
-                    <SortSelector
-                        $selected = {sort ==='alphanumeric-reverse'}
-                        onClick = {() => handleSwitchSort("alphanumeric-reverse")}>
-                      <Image src={icon_alphanumericreversesort} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/>
-                    </SortSelector>
-
                   </SortContainer>
                 </TopBarContainer>
                 </>
@@ -1561,11 +1563,7 @@ const SortContainer = styled.div`
   width: auto;
   height: 3rem;
 `
-const SortSelector = styled.button.attrs<{$selected: boolean}>(props => ({
-  style : {
-    backgroundColor: props.$selected ? 'lightgray' : 'white'
-  }
-}))`
+const SortSelector = styled.button`
   width: 2rem;
   height: 2rem;
   margin: auto .5rem;

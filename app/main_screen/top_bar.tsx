@@ -7,6 +7,10 @@ import { createProject } from "@/lib/project";
 import { useGlobalState } from "../GlobalStateContext";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 
+//SVG imports
+import Image from "next/image";
+import icon_signout from "/assets/icons/exit.svg";
+
 const Top_Bar = styled.div`
   background-color: #AFC1D0;
   border-bottom: 2px solid #D7DADD;
@@ -64,13 +68,12 @@ const DropdownItem = styled.div`
 
 const SignOutButton = styled.div`
   margin-left: auto;
-  padding: 0.5rem 1rem;
   border-radius: 5px;
-  background-color: darkred;
   color: white;
   &:hover {
     cursor: pointer;
     background-color: darkred;
+    color: white;
     transition: 0.2s;
   }
 `;
@@ -216,7 +219,7 @@ export default function TopBar() {
         </UserDetailsPanel>
       )}
 
-      <SignOutButton onClick={handleSignOut}>Sign Out</SignOutButton>
+      <SignOutButton onClick={handleSignOut}><Image src={icon_signout} alt="" height="36" objectPosition='fill'></Image></SignOutButton>
     </Top_Bar>
   );
 }
