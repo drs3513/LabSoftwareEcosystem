@@ -137,7 +137,7 @@ export default function ProjectPanel() {
               setRole(usrrole);
             }}
           >
-📁 {project.projectName}
+    {project.projectName}
           </Project>
         ))
       ) : (
