@@ -67,7 +67,7 @@ export async function createNewVersion(
   const { key: storageKey } = await uploadFile(file, ownerId, projectId, filepath);
 
   
-  const versionId = waitForVersionId(storageKey);
+  const versionId = waitForVersionId(storageKey) as unknown as string;
   const newfileid = crypto.randomUUID();
   console.log("Creating the versioned file");
   if(!parentId){
@@ -332,76 +332,6 @@ export async function deleteFileFromDB(fileId: string, projectId: string): Promi
 }
 
 
-export async function hardDeleteFile(fileId: string, projectId: string) {
-  try {
-    // Step 1: Get the file by ID
-    const file = await client.models.File.get({ fileId, projectId });
-
-    if (!file || !file.data) {
-      alert("File not found.");
-      return;
-    }
-
-    // Step 2: Delete from S3
-    if (file?.data?.storageId) {
-      await deleteFileFromStorage(file.data.storageId);
-      console.log(`[HARD DELETE] Deleted from storage: ${file.data.storageId}`);
-    }
-
-    // Step 3: Delete from database
-    await client.models.File.delete({
-      fileId: file.data.fileId,
-      projectId: file.data.projectId,
-    });
-
-    console.log(`[HARD DELETE] Deleted DB record: ${file.data.fileId}`);
-    alert("File permanently deleted.");
-  } catch (error) {
-    console.error("[HARD DELETE ERROR]", error);
-    alert("An error occurred while hard deleting the file.");
-  }
-}
-
-
-
-
-
-
-
-export async function abortUpload(
-    uploadedFiles: { storageKey?: string, fileId?: string }[],
-    projectId: string
-) {
-  console.warn("[ABORT] Cleaning up uploaded files...");
-
-  // Reverse the list to delete children before parents
-  for (let i = uploadedFiles.length - 1; i >= 0; i--) {
-    const { storageKey, fileId } = uploadedFiles[i];
-
-    try {
-      if (storageKey) {
-        await deleteFileFromStorage(storageKey);
-        console.log(`[ABORT] Deleted storage: ${storageKey}`);
-      }
-
-      if (fileId) {
-        await deleteFileFromDB(fileId, projectId);
-        console.log(`[ABORT] Deleted DB record: ${fileId}`);
-      }
-    } catch (err) {
-      console.error(`[ABORT] Failed to delete ${storageKey ?? fileId}`, err);
-    }
-  }
-
-  console.warn("[ABORT] Upload aborted. Cleaned up uploaded files in reverse order.");
-}
-
-
-
-export async function deleteFileFromDB(fileId: string, projectId: string): Promise<void> {
-  await client.models.File.delete({fileId, projectId});
-}
-
 //PD : I updated this function to use 'filter' attribute
 export async function listFilesForProject(projectId: string) {
   try {
@@ -647,7 +577,6 @@ export async function createFile({
   storageId,
   size,
   versionId,
-    storageId,
   ownerId,
   isDeleted = 0,
   createdAt,
@@ -663,7 +592,6 @@ export async function createFile({
   parentId: string;
   size: number;
   versionId: string;
-  storageId?: string;
   ownerId: string;
   isDeleted?: number;
   createdAt: string;
@@ -682,7 +610,6 @@ export async function createFile({
     size,
     versionId,
     ownerId,
-    storageId,
     isDeleted,
     createdAt,
     updatedAt,

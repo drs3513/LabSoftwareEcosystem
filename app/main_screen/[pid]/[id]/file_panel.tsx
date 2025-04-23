@@ -30,7 +30,7 @@ import {getProjectName} from "@/lib/project";
 import Link from "next/link";
 import {JSX} from "react/jsx-runtime";
 import ConflictModal from '../../conflictModal';
-
+import VersionPanel from "@/app/main_screen/popout_version_panel";
 
 import IntrinsicElements = JSX.IntrinsicElements;
 import {isCancelError} from "aws-amplify/storage";
@@ -166,6 +166,9 @@ export default function FilePanel() {
   const [contextMenuUser, setContextMenuUser] = useState<string | undefined>(undefined);
 
   const [contextMenuVersionPopout, setContextMenuVersionPopout] = useState(false);
+  const [showVersionPanel, setShowVersionPanel] = useState(false);
+  const [versionPanelData, setVersionPanelData] = useState<fileInfo | null>(null);
+  
 
   const [files, setFiles] = useState<Array<fileInfo>>([]);
   const filesRef = useRef(files)
@@ -1303,9 +1306,7 @@ export default function FilePanel() {
     const fullPath = `${parentPath}/${name}`.replace(/\/+/g, "/");
   
     createFolder(projectId, name, userId, parentId, fullPath);
-  }
-  
-
+  }  
 
 
   function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, location: string, userId: string | undefined, storagePath: Nullable<string> |undefined, filename: string |undefined){
@@ -1347,6 +1348,12 @@ export default function FilePanel() {
     return files.find(f => f.fileId === contextMenuFileId);
   }, [files, contextMenuFileId]);
 
+  useEffect(() => {
+    if (contextMenuVersionPopout && contextFile) {
+      setShowVersionPanel(true);
+      setVersionPanelData(contextFile);
+    }
+  }, [contextMenuVersionPopout, contextFile]);
   
   return (
     
@@ -1496,13 +1503,13 @@ export default function FilePanel() {
 
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
-                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);setContextMenuVersionPopout(false)}}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);}}>
                       Rename
                     </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true);setContextMenuVersionPopout(false)}}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true);}}>
                       Tags
                     </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);setContextMenuVersionPopout(false)}}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);}}>
                       Properties
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
@@ -1519,7 +1526,7 @@ export default function FilePanel() {
                     </ContextMenuItem>
                     <ContextMenuItem
                       style={{ fontWeight: "bold", cursor: "default" }}
-                      onMouseOver={() => {
+                      onClick={() => {
                         setContextMenuVersionPopout(true);
                         setContextMenuTagPopout(false); // optionally close tags
                       }}
@@ -1527,44 +1534,6 @@ export default function FilePanel() {
                       Versions
                     </ContextMenuItem>
                     </ContextMenu>
-
-                    {/* Versions block inserted directly here */}
-                    {contextMenuVersionPopout && contextFile?.versions && (
-                        <ContextMenuPopout $index={contextMenuTagPopout ? 2 : 1}>
-                          {[...contextFile.versions]
-                            .sort((a, b) => new Date(a.updatedAt!).getTime() - new Date(b.updatedAt!).getTime())
-                            .reverse()
-                            .map((version, idx, arr) => {
-                              const versionNumber = `v${arr.length - idx}`;
-                              const isCurrent = version.versionId === contextFile.versionId;
-                              const dateStr = new Date(version.updatedAt!).toLocaleString();
-
-                              return (
-                                <ContextMenuItem
-                                  key={`${version.versionId}-${idx}`}
-                                  style={{
-                                    fontSize: "12px",
-                                    paddingLeft: "1.5rem",
-                                    color: isCurrent ? "#000" : "#555",
-                                    fontWeight: isCurrent ? "bold" : "normal"
-                                  }}
-                                  onClick={() =>
-                                    handleDownloadVersion(
-                                      version.versionId,
-                                      contextFile.logicalId,
-                                      contextFile.filename,
-                                      contextFile.filepath,
-                                      contextFile.ownerId,
-                                      contextFile.projectId
-                                    )
-                                  }
-                                >
-                                  {versionNumber} – {dateStr}
-                                </ContextMenuItem>
-                              );
-                            })}
-                        </ContextMenuPopout>
-                      )}
                   {contextMenuTagPopout ?
                       <ContextMenuPopout $index={1}>
                         {contextMenuTags || contextMenuTags === null ?
@@ -1680,6 +1649,26 @@ export default function FilePanel() {
     {displayConflictModal && conflictModalData.current && (
         <ConflictModal filename={conflictModalData.current.fileName} onResolve={conflictModalData.current.onResolve} />
     )}
+    {showVersionPanel && versionPanelData && (
+          <VersionPanel
+            fileId={versionPanelData.fileId}
+            fileName={versionPanelData.filename}
+            logicalId={versionPanelData.logicalId}
+            filepath={versionPanelData.filepath}
+            ownerId={versionPanelData.ownerId}
+            projectId={versionPanelData.projectId}
+            versions={versionPanelData.versions ?? []}
+            currentVersionId={versionPanelData.versionId}
+            initialX={contextMenuPosition[0]}
+            initialY={contextMenuPosition[1]}
+            close={() => {
+              setShowVersionPanel(false);
+              setVersionPanelData(null);
+            }}
+            onDownloadVersion={handleDownloadVersion}
+          />
+        )}
+
   </>
   );
 
