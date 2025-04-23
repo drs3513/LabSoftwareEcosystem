@@ -112,6 +112,8 @@ const PanelContainer = styled.div.attrs<{$posX: number; $posY: number; $width: n
 
     display: flex;
     flex-direction: column;
+
+    z-index: 1000;
 `;
 
 const Header = styled.div`
@@ -149,7 +151,7 @@ const Resize = styled.div`
 export default function TopBar() {
   const router = useRouter();
   const { userId } = useGlobalState();
-  const [role, setRole] = useState<string | null>(null);
+  //const [role, setRole] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
   const [showWhitelist, setShowWhitelist] = useState(false);
@@ -164,26 +166,37 @@ export default function TopBar() {
   useEffect(() => {
     const urlParams = new URLSearchParams(new URL(window.location.href).search);
     const pid = urlParams.get("pid");
+    if (!pid) return;
+    const userWhitelisted = async () => {
+      if (!userId) return false;
+      return await isUserWhitelistedForProject(userId, pid);
+    }
     if (pid) {
+      if (!userWhitelisted()) return;
       setProjectId(pid);
+      // const setUserRole = async () => {
+      //   const role = await getUserRole(pid, userId!);
+      //   setRole(role);
+      // }
+      //setUserRole();
     }
   }, []);
 
-  // Fetch and update role when projectId changes
-  useEffect(() => {
-    if (projectId && userId) {
-      const fetchRole = async () => {
-        try {
-          const userRole = await getUserRole(projectId, userId);
-          setRole(userRole || "No role assigned");
-        } catch (error) {
-          console.error("Error fetching role:", error);
-          setRole("Error fetching role");
-        }
-      };
-      fetchRole();
-    }
-  }, [projectId, userId]);
+  // // Fetch and update role when projectId changes
+  // useEffect(() => {
+  //   if (projectId && userId) {
+  //     const fetchRole = async () => {
+  //       try {
+  //         //const userRole = await getUserRole(projectId, userId);
+  //         //setRole(userRole || "No role assigned");
+  //       } catch (error) {
+  //         console.error("Error fetching role:", error);
+  //         setRole("Error fetching role");
+  //       }
+  //     };
+  //     fetchRole();
+  //   }
+  // }, [projectId, userId]);
 
   // Fetch users when Whitelist dropdown is toggled
   useEffect(() => {
@@ -265,25 +278,31 @@ export default function TopBar() {
   };
 
   async function handleWhitelistUser() {
+    if (!projectId) {
+      alert("No project selected.");
+      return;
+    }
+    const role = await getUserRole(projectId!, userId!);
+    console.log("Role for current user:" + role);
     if (role !== Role.HEAD && role !== Role.ADMIN) {
       alert("Only the project head or admins can whitelist users.");
       return;
     }
     const userEmail = prompt("Enter User Email:");
     if (!userEmail) return;
-    const userId = await getUserIdFromEmail(userEmail);
-    if (!userId) {
+    const addingUserId = await getUserIdFromEmail(userEmail);
+    if (!addingUserId) {
       alert("User not found. Please check the email and try again.");
       return;
     }
-    if (userId && projectId) {
-      if (await isUserWhitelistedForProject(userId, projectId)) {
+    if (addingUserId && projectId) {
+      if (await isUserWhitelistedForProject(addingUserId, projectId)) {
         alert(userEmail + " is already whitelisted for this project!");
         return;
       }
       let confirm = window.confirm("Are you sure you want to whitelist " + userEmail + " for this project?");
       if (!confirm) return;
-      const success = await whitelistUser(projectId, userId, Role.USER);
+      const success = await whitelistUser(projectId, addingUserId, Role.USER);
       if (success) {
         alert(userEmail + " successfully whitelisted to project");
       } else {
@@ -293,6 +312,11 @@ export default function TopBar() {
   };
 
   async function handleMakeAdmin() {
+    if (!projectId) {
+      alert("No project selected.");
+      return;
+    }
+    const role = await getUserRole(projectId!, userId!);
     if (role !== Role.HEAD) {
       alert("Only the project head can elevate users to admin.");
       return;
@@ -319,6 +343,11 @@ export default function TopBar() {
   }
 
   async function handleRevokeAdmin() {
+    if (!projectId) {
+      alert("No project selected.");
+      return;
+    }
+    const role = await getUserRole(projectId!, userId!);
     if (role !== Role.HEAD) {
       alert("Only the project head can revoke admin rights.");
       return;
@@ -345,6 +374,11 @@ export default function TopBar() {
   }
 
   async function handleRemoveUser() {
+    if (!projectId) {
+      alert("No project selected.");
+      return;
+    }
+    const role = await getUserRole(projectId!, userId!);
     if (role !== Role.HEAD && role !== Role.ADMIN) {
       alert("Only the project head or admins can remove users.");
       return;
@@ -523,9 +557,6 @@ export default function TopBar() {
               close={toggleWhitelist}
             />
           )}
-        </Top_Bar_Item>
-        <Top_Bar_Item>
-          Project role: {role}
         </Top_Bar_Item>
 
       </Top_Bar_Group>

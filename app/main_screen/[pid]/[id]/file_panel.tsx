@@ -30,6 +30,7 @@ import {getProjectName} from "@/lib/project";
 import Link from "next/link";
 import {JSX} from "react/jsx-runtime";
 import ConflictModal from '../../conflictModal';
+import { isUserWhitelistedForProject } from '@/lib/whitelist';
 
 
 import IntrinsicElements = JSX.IntrinsicElements;
@@ -222,6 +223,10 @@ export default function FilePanel() {
   //sorts files to be displayed by the user
   //TODO allow toggle of sort mode through setting 'sort' state
   function sort_files_with_path(files: Array<fileInfo>, sortStyle: string = "alphanumeric"){
+    if (activeParentIds.length === 0) {
+      console.log("Active Parent IDs are empty. Returning files without sorting.");
+      return files;
+    }
     //console.log(files)
     let index = 0
     function assignFileByParentId(file: fileInfo) {
@@ -304,7 +309,23 @@ export default function FilePanel() {
 
 
   async function fetchFiles() {
-    if (!projectId) return;
+    //console.log("Anything")
+    if (!projectId || !userId){
+      console.log("Woah Nelly")
+      return
+    }
+    //console.log(userId + " " + projectId)
+    const isWhitelisted = await isUserWhitelistedForProject(userId, projectId);
+      if (!isWhitelisted) {
+        console.log("User is not whitelisted for this project.");
+        setProjectId(undefined); 
+        setRootParentId(null);
+        setActiveParentIds([]);
+        setFilePathElement([]);
+        setFiles([]);
+        setLoading(false);
+        return;
+      }
   
     const projectFiles = await listFilesForProject(projectId); // This will return all versions
     if (!projectFiles) return [];
@@ -351,6 +372,8 @@ export default function FilePanel() {
   }
   
   useEffect(() => {
+    // console.log("Nelly Woah")
+    // console.log(projectId)
     if(search) return
     if(projectId){
       fetchFiles();
@@ -361,25 +384,52 @@ export default function FilePanel() {
   }, [activeParentIds, search]);
 
   useEffect(() => {
-    setLoading(true)
-    const proj_id = routerSearchParams.get("pid")
-    const root_id = routerSearchParams.get("id")
-    if(!proj_id) {
-      setLoading(false)
-      return
+    setLoading(true);
+    const proj_id = routerSearchParams.get("pid");
+    const root_id = routerSearchParams.get("id");
+    if (!proj_id || !userId) {
+      setFiles([]);
+      setActiveParentIds([]);
+      setFilePathElement([]);
+      setFiles([]);
+      setLoading(false);
+      return;
     }
-    setProjectId(proj_id)
 
-    if(!root_id) {
-      setLoading(false)
-      return
-    }
-    setRootParentId(root_id)
-    setActiveParentIds([{id: root_id, depth: 0}])
-    fetchRootInfo(root_id, proj_id)
+    const initializeProject = async () => {
+      if (!userId) {
+        setLoading(false);
+        return;
+      }
+      
+      const isWhitelisted = await isUserWhitelistedForProject(userId, proj_id);
+      if (!isWhitelisted) {
+        console.warn("User is not whitelisted for this project.");
+        setProjectId(undefined);
+        //setRootParentId(null);
+        setActiveParentIds([]);
+        setFilePathElement([]);
+        setFiles([]);
+        setLoading(false);
+        return;
+      }
 
-    //setActiveParentIds([routerSearchParams.id])
-  }, [routerSearchParams])
+      setProjectId(proj_id);
+
+      if (!root_id) {
+        setLoading(false);
+        return;
+      }
+
+      setRootParentId(root_id);
+      setActiveParentIds([{ id: root_id, depth: 0 }]);
+      await fetchRootInfo(root_id, proj_id);
+      //fetchFiles();
+    };
+
+    initializeProject();
+  }, [routerSearchParams, userId]);
+
   async function fetchRootInfo(root_id: string, proj_id: string){
     const activeFilePath = await getFilePath(root_id, proj_id)
 
@@ -396,7 +446,7 @@ export default function FilePanel() {
   async function createFileIdMapping(root_id: string, proj_id: string, activeFilePath: string, projectName: string | undefined){
     //console.log(filepath.split("/").splice(1))
     let fileIdPath = await getFileIdPath(root_id, proj_id)
-    console.log(fileIdPath)
+    //console.log(fileIdPath)
     if(!fileIdPath) {
       setFilePathElement([])
       return
@@ -483,7 +533,7 @@ export default function FilePanel() {
   async function fetchFilesWithSearch(){
     setLoading(true);
     if (!projectId) return;
-    console.log("Here")
+    //console.log("Here")
     const projectFiles = await searchFiles(projectId, searchTerm, tagSearchTerm, authorSearchTerm)
     //builds array of files with extra information for display
     //Extra information :
@@ -572,11 +622,11 @@ export default function FilePanel() {
 
   async function fetchTags(fileId: string){
     if (!projectId) return
-    console.log("Here!")
+    //console.log("Here!")
     const tempTags = await getTags(fileId, projectId)
 
     setContextMenuTags(tempTags)
-    console.log(tempTags)
+    //console.log(tempTags)
   }
 
 
@@ -707,7 +757,7 @@ export default function FilePanel() {
     if (task) {
       task.cancel();
       activeDownloads.delete(fileId);
-      console.log(`[INFO] Download cancelled for fileId: ${fileId}`);
+      //console.log(`[INFO] Download cancelled for fileId: ${fileId}`);
     }
   };
 
@@ -1024,9 +1074,9 @@ export default function FilePanel() {
 
       for(let fileIndex of pickedUpFileGroup) {
         if(!projectId) return
-        console.log("Here!")
+        //console.log("Here!")
         const children = await getFileChildren(projectId, files[fileIndex].filepath)
-        console.log(children)
+        //console.log(children)
       }
       setPickedUpFileGroup(undefined)
 
@@ -1063,7 +1113,7 @@ export default function FilePanel() {
       const fileIds = children.map((child) => child.fileId)
       const filepaths = children.map((child) => new_file_path + child.filepath.slice(files[filesByFileId.current[pickedUpFileId]].filepath.length))
       const parentIds = children.map((child) => child.fileId == pickedUpFileId ? (overFileId ? overFileId : `ROOT-${projectId}`) : child.parentId)
-      console.log(filepaths)
+      //console.log(filepaths)
       //`if(overFileId){
       //`  console.log(files[filesByFileId.current[overFileId]].filepath)
       //`} else {
@@ -1074,7 +1124,7 @@ export default function FilePanel() {
       const poke = await pokeFile(fileIds[0], projectId, filepaths[0])
       setPickedUpFileId(undefined)
 
-      console.log(returnedValue)
+      //console.log(returnedValue)
     }
     observeMouseCoords.current = true
   }
@@ -1165,7 +1215,7 @@ export default function FilePanel() {
       }
 
 
-      console.log(files[index])
+      //console.log(files[index])
     }
   }
   function selectFileGroup(index: number){
@@ -1207,7 +1257,7 @@ export default function FilePanel() {
       setTagSearchTerm(temp_tag_set)
       setAuthorSearchTerm(temp_author_set)
       setSearchTerm(temp_name_set)
-      console.log(temp_name_set)
+      //console.log(temp_name_set)
       setSearch(true)
     }
 
@@ -1312,7 +1362,7 @@ export default function FilePanel() {
     if(e.target != e.currentTarget){
       return
     }
-    console.log("This was called")
+    //console.log("This was called")
     isLongPress.current = false;
     clearTimeout(timer.current);
     e.preventDefault();

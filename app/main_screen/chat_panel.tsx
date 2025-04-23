@@ -16,6 +16,7 @@ import styled from "styled-components";
 import { SqlServerEngineVersion } from "aws-cdk-lib/aws-rds";
 import {Nullable} from "@aws-amplify/data-schema";
 import {deleteTag} from "@/lib/file";
+import {useRouter, useSearchParams} from 'next/navigation'
 
 const client = generateClient<Schema>();
 
@@ -54,8 +55,21 @@ export default function ChatPanel() {
   const [tagSearchTerm, setTagSearchTerm] = useState<Array<string>>([])
   const [authorSearchTerm, setAuthorSearchTerm] = useState<Array<string>>([])
 
+  const routerSearchParams = useSearchParams()
 
-
+  useEffect(() => {
+      setLoading(true);
+      const proj_id = routerSearchParams.get("pid");
+      if (!proj_id || !userId) {
+        setMessages([]);
+        setSearchInput("");
+        setTagSearchTerm([]);
+        setAuthorSearchTerm([]);
+        setInput("");
+        setLoading(false);
+        return;
+      }
+    }, [routerSearchParams, userId]);
 
   const observeMessages = () => {
     // if (!fileId) return;
@@ -195,7 +209,7 @@ export default function ChatPanel() {
       console.log("Searching...");
       fetchMessagesWithSearch();
     } else {
-      console.log("Fetching old messages when input is empty");
+      //console.log("Fetching old messages when input is empty");
       fetchMessages(); // restore full messages when no filters
     }
   }, [searchTerm, tagSearchTerm, authorSearchTerm]);

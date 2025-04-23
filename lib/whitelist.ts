@@ -108,6 +108,14 @@ export async function getUserRole(projectId: string, userId: string): Promise<Ro
 export async function listUsersBelowRole(projectId: string, role: Role) {
   try {
     // Slice the global roleHierarchy to the current role
+    if (!roleHierarchy.includes(role)) {
+      console.error("Invalid role provided.");
+      return [];
+    }
+    if (role === Role.NONE) {
+      console.error("Role is NONE, no users to list.");
+      return [];
+    }
     const slicedHierarchy = roleHierarchy.slice(0, roleHierarchy.indexOf(role));
 
     // Fetch whitelist entries for project where role is below the current role

@@ -259,37 +259,37 @@ export async function Restorefile(fileId: string, versionId: string, projectId: 
 }
 
 
-export async function hardDeleteFile(fileId: string, projectId: string) {
-  try {
-    // Step 1: Get the file by ID
-    const file = await client.models.File.get({ fileId, projectId });
+// export async function hardDeleteFile(fileId: string, projectId: string) {
+//   try {
+//     // Step 1: Get the file by ID
+//     const file = await client.models.File.get({ fileId, projectId });
 
-    if (!file) {
-      alert("File not found.");
-      return;
-    }
+//     if (!file) {
+//       alert("File not found.");
+//       return;
+//     }
 
-    // Step 2: Delete from S3
-    if (file?.data?.storageId) {
-      await deleteFileFromStorage(file?.data?.storageId);
-      console.log(`[HARD DELETE] Deleted from storage: ${file?.data?.storageId}`);
-    }
+//     // Step 2: Delete from S3
+//     if (file?.data?.storageId) {
+//       await deleteFileFromStorage(file?.data?.storageId);
+//       console.log(`[HARD DELETE] Deleted from storage: ${file?.data?.storageId}`);
+//     }
 
-    // Step 3: Delete from database
-    if(file.data?.fileId && file.data.projectId){
-        await client.models.File.delete({
-          fileId: file?.data?.fileId,
-          projectId: file?.data?.projectId,
-        });
-    }
+//     // Step 3: Delete from database
+//     if(file.data?.fileId && file.data.projectId){
+//         await client.models.File.delete({
+//           fileId: file?.data?.fileId,
+//           projectId: file?.data?.projectId,
+//         });
+//     }
 
-    console.log(`[HARD DELETE] Deleted DB record: ${file?.data?.fileId}`);
-    alert("File permanently deleted.");
-  } catch (error) {
-    console.error("[HARD DELETE ERROR]", error);
-    alert("An error occurred while hard deleting the file.");
-  }
-}
+//     console.log(`[HARD DELETE] Deleted DB record: ${file?.data?.fileId}`);
+//     alert("File permanently deleted.");
+//   } catch (error) {
+//     console.error("[HARD DELETE ERROR]", error);
+//     alert("An error occurred while hard deleting the file.");
+//   }
+// }
 
 
 
@@ -327,9 +327,9 @@ export async function abortUpload(
 
 
 
-export async function deleteFileFromDB(fileId: string, projectId: string): Promise<void> {
-  await client.models.File.delete({fileId, projectId});
-}
+// export async function deleteFileFromDB(fileId: string, projectId: string): Promise<void> {
+//   await client.models.File.delete({fileId, projectId});
+// }
 
 
 export async function hardDeleteFile(fileId: string, projectId: string) {
@@ -368,33 +368,33 @@ export async function hardDeleteFile(fileId: string, projectId: string) {
 
 
 
-export async function abortUpload(
-    uploadedFiles: { storageKey?: string, fileId?: string }[],
-    projectId: string
-) {
-  console.warn("[ABORT] Cleaning up uploaded files...");
+// export async function abortUpload(
+//     uploadedFiles: { storageKey?: string, fileId?: string }[],
+//     projectId: string
+// ) {
+//   console.warn("[ABORT] Cleaning up uploaded files...");
 
-  // Reverse the list to delete children before parents
-  for (let i = uploadedFiles.length - 1; i >= 0; i--) {
-    const { storageKey, fileId } = uploadedFiles[i];
+//   // Reverse the list to delete children before parents
+//   for (let i = uploadedFiles.length - 1; i >= 0; i--) {
+//     const { storageKey, fileId } = uploadedFiles[i];
 
-    try {
-      if (storageKey) {
-        await deleteFileFromStorage(storageKey);
-        console.log(`[ABORT] Deleted storage: ${storageKey}`);
-      }
+//     try {
+//       if (storageKey) {
+//         await deleteFileFromStorage(storageKey);
+//         console.log(`[ABORT] Deleted storage: ${storageKey}`);
+//       }
 
-      if (fileId) {
-        await deleteFileFromDB(fileId, projectId);
-        console.log(`[ABORT] Deleted DB record: ${fileId}`);
-      }
-    } catch (err) {
-      console.error(`[ABORT] Failed to delete ${storageKey ?? fileId}`, err);
-    }
-  }
+//       if (fileId) {
+//         await deleteFileFromDB(fileId, projectId);
+//         console.log(`[ABORT] Deleted DB record: ${fileId}`);
+//       }
+//     } catch (err) {
+//       console.error(`[ABORT] Failed to delete ${storageKey ?? fileId}`, err);
+//     }
+//   }
 
-  console.warn("[ABORT] Upload aborted. Cleaned up uploaded files in reverse order.");
-}
+//   console.warn("[ABORT] Upload aborted. Cleaned up uploaded files in reverse order.");
+// }
 
 
 
