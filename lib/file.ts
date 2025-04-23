@@ -107,7 +107,7 @@ export async function processAndUploadFiles(
   projectId: string,
   ownerId: string,
   parentId: string,
-  currentPath: string = "",
+  currentPath: string,
   uploadTaskRef?: React.MutableRefObject<{
     isCanceled: boolean;
     uploadedFiles: { storageKey?: string, fileId?: string }[];
@@ -119,7 +119,7 @@ export async function processAndUploadFiles(
   const uploadedFiles: { storageKey?: string, fileId?: string }[] = [];
   let fileCount = 0;
   let processed = 0;
-
+  
   // First, count all files
   function countFiles(obj: Record<string, any>): number {
     let count = 0;
@@ -139,7 +139,7 @@ export async function processAndUploadFiles(
     obj: Record<string, any>,
     depth: number = 0,
     currentParentId: string = parentId || rootParentId,
-    currentFilePath: string = currentPath
+    currentFilePath: string = ""
   ) {
     try {
       if (uploadTaskRef?.current?.isCanceled) {
@@ -250,7 +250,7 @@ export async function processAndUploadFiles(
   }
 
   try {
-    await recursivePrint(dict);
+    await recursivePrint(dict, 0, parentId || rootParentId, currentPath);;
   } catch (e) {
     console.warn("[FINAL] Upload process was aborted.");
   }

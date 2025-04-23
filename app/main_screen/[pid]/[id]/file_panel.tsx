@@ -140,6 +140,9 @@ export default function FilePanel() {
 
   const projectName = useRef<string | undefined>(undefined)
 
+  const currentParentRef = useRef<fileInfo | null>(null);
+
+
   const [filePathElement, setFilePathElement] = useState<{fileName: string | undefined, href: string}[]>([])
 
   const [activeParentIds, setActiveParentIds] = useState<activeParent[]>([])
@@ -389,6 +392,29 @@ export default function FilePanel() {
     const activeFilePath = await getFilePath(root_id, proj_id)
 
     projectName.current = await getProjectName(proj_id)
+
+    const { data: file } = await client.models.File.get({ fileId: root_id, projectId: proj_id });
+
+    if (file) {
+      currentParentRef.current = {
+        fileId: file.fileId,
+        filename: file.filename,
+        filepath: file.filepath,
+        logicalId: file.logicalId,
+        storageId: file.storageId,
+        parentId: file.parentId,
+        size: file.size,
+        versionId: file.versionId,
+        ownerId: file.ownerId,
+        projectId: file.projectId,
+        createdAt: file.createdAt,
+        updatedAt: file.updatedAt,
+        visible: true,
+        open: false,
+        isDirectory: file.isDirectory ?? true,
+      };
+    }
+
     if(activeFilePath) {
       await createFileIdMapping(root_id, proj_id, activeFilePath, projectName.current)
 
@@ -853,17 +879,21 @@ export default function FilePanel() {
       console.error("[ERROR] No valid files or directories found.");
       return;
     }
-
+    
+    
     handleCreateFile(directories.length > 0, projectId, ownerId, parentId, files, rootFilePath);
   };
 
-
+  function getFullPathFromParentId(parentId: string): string {
+    const file = filesRef.current.find(f => f.fileId === parentId);
+    return file?.filepath || "/";
+  }
+  
 
   /** Processes files and uploads them */
   const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId: string, parentId: string, files: File[], rootFilePath: string) => {
     let globalDecision: 'overwrite' | 'version' | 'cancel' | null = null;
     let applyToAll = false;
-
     const showConflictModal = (filename: string) => {
       return new Promise<'overwrite' | 'version' | 'cancel'>(resolve => {
 
@@ -912,15 +942,19 @@ export default function FilePanel() {
     for (const file of files) {
       if (uploadTask.current.isCanceled) break;
 
-      const fullPath = file.webkitRelativePath || file.name;
-      const pathParts = fullPath.split("/");
-      const fileName = pathParts.pop()!;
-      const filePath = `${rootFilePath.replace(/\/$/, "")}/${fullPath}`.replace(/\/+/g, "/");
-      ;
+const relativePath = file.webkitRelativePath || file.name;
+const filePath =`${relativePath}`.replace(/\/+/g, "/");
+
+const normalizedPath = filePath.replace(/\/+/g, "/");
+
+const pathParts = normalizedPath.split("/");
+const actualName = pathParts.pop()!;
 
       const conflict = filesRef.current.find(
-          f => f.filepath === filePath && f.projectId === projectId
+        f => f.projectId === projectId && f.filepath.replace(/\/+/g, "/") === normalizedPath
       );
+    
+
 
       let decision: 'overwrite' | 'version' | 'cancel' = 'overwrite';
 
@@ -936,8 +970,6 @@ export default function FilePanel() {
         });;
         
       }
-
-      let actualName = fileName;
       if (decision === 'version') {
         try {
                 await createNewVersion(file, conflict?.logicalId as string, projectId, ownerId, parentId, filePath);
@@ -1386,11 +1418,18 @@ export default function FilePanel() {
             onMouseMove = {(e) => {observeMouseCoords.current && (pickedUpFileGroup || pickedUpFileId) ? setMouseCoords([e.clientX, e.clientY]) : undefined}}
             onClick = {(e) => e.target == e.currentTarget ? setSelectedFileGroup(undefined) : undefined}
             onDrop={(e) => {
-              if (!projectId || !userId || activeParentIds.length === 0) return;
+             if (!projectId || !userId || activeParentIds.length === 0) return;
             
-              const currentParentId = activeParentIds[activeParentIds.length - 1].id;
-              const currentParent = filesRef.current.find(f => f.fileId === currentParentId);
-              const currentPath = currentParent?.filepath || "";
+              const currentParentId =
+              activeParentIds.length > 0
+                ? activeParentIds[activeParentIds.length - 1].id
+                : `ROOT-${projectId}`;
+            
+            
+            const currentParent = filesRef.current.find(f => f.fileId === currentParentId);
+            
+            const currentPath = currentParentRef.current?.filepath ?? "/";
+                
             
               handleFileDrag(e, projectId, userId, currentParentId, currentPath);
             }}            
@@ -1567,119 +1606,121 @@ export default function FilePanel() {
                       onClick={async () => {
                         const file = files.find(f => f.fileId === contextMenuFileId);
                         if (!file || !projectId) return;
-
+                      
                         const ext = file.filename.split(".").pop()?.toLowerCase();
-                        const isText = ["txt", "md", "log", "csv", "py"].includes(ext!);
+                        const isText = ["txt", "md", "log", "csv"].includes(ext!); // Removed "py"
                         const isOfficeDoc = ["doc", "docx", "rtf", "dox", "word"].includes(ext!);
                         const isPDF = ext === "pdf";
                         const isImage = ["png", "jpg", "jpeg"].includes(ext!);
-
+                      
                         if (!isText && !isOfficeDoc && !isPDF && !isImage) return;
-
+                      
                         const path = file.storageId as string;
                         const versionId = file.versionId;
-
+                      
                         try {
                           const cachedUrl = await fetchCachedUrl(path, versionId);
                           const popup = window.open("", "_blank", "width=800,height=600");
-
+                      
                           if (!popup) {
                             alert("Popup blocked. Please allow popups for this site.");
                             return;
                           }
-
+                      
                           const previewContent = isPDF
-                            ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
-                            : isImage
-                            ? `<img src="${cachedUrl}" alt="${file.filename}" />`
-                            : isText
-                            ? `<pre><code id="code-block">Loading...</code></pre>
-                              <script>
-                                fetch("${cachedUrl}")
-                                  .then(res => res.text())
-                                  .then(code => {
-                                    document.getElementById("code-block").textContent = code;
-                                  });
-                              </script>`
-                            : `<p>Unsupported file type.</p>`;
-
-                          const html = `
-                            <!DOCTYPE html>
-                            <html lang="en">
-                            <head>
-                              <title>Preview - ${file.filename}</title>
-                              <style>
-                                body {
-                                  margin: 0;
-                                  font-family: sans-serif;
-                                  background: #f0f0f0;
-                                  display: flex;
-                                  flex-direction: column;
-                                  height: 100vh;
-                                  overflow: hidden;
-                                }
-                                .toolbar {
-                                  width: 100%;
-                                  background: #333;
-                                  color: white;
-                                  padding: 10px;
-                                  display: flex;
-                                  justify-content: space-between;
-                                  align-items: center;
-                                  box-sizing: border-box;
-                                }
-                                .toolbar a {
-                                  color: white;
-                                  text-decoration: none;
-                                  padding: 8px 12px;
-                                  background-color: #007bff;
-                                  border-radius: 5px;
-                                }
-                                .preview {
-                                  flex: 1;
-                                  overflow: auto;
-                                  display: flex;
-                                  justify-content: center;
-                                  align-items: center;
-                                  padding: 1rem;
-                                }
-                                iframe, img {
-                                  max-width: 90%;
-                                  max-height: 90%;
-                                  border: none;
-                                }
-                                pre {
-                                  background: white;
-                                  padding: 1rem;
-                                  overflow: auto;
-                                  white-space: pre-wrap;
-                                  word-wrap: break-word;
-                                  max-width: 100%;
-                                }
-                              </style>
-                            </head>
-                            <body>
-                              <div class="toolbar">
-                                <div>Previewing: ${file.filename}</div>
-                                <a href="${cachedUrl}" download="${file.filename}">Download</a>
-                              </div>
-                              <div class="preview">
-                                ${previewContent}
-                              </div>
-                            </body>
-                            </html>
-                          `;
-
+                          ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
+                          : isImage
+                          ? `<img src="${cachedUrl}" alt="${file.filename}" />`
+                          : isText
+                          ? `<pre><code id="code-block">Loading...</code></pre>`
+                          : `<p>Unsupported file type.</p>`;
+                        
+                        const html = `
+                          <!DOCTYPE html>
+                          <html lang="en">
+                          <head>
+                            <title>Preview - ${file.filename}</title>
+                            <style>
+                              html, body {
+                                height: 100%;
+                                margin: 0;
+                                font-family: sans-serif;
+                                background: #f0f0f0;
+                              }
+                              .toolbar {
+                                width: 100%;
+                                background: #333;
+                                color: white;
+                                padding: 10px;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                box-sizing: border-box;
+                              }
+                              .toolbar a {
+                                color: white;
+                                text-decoration: none;
+                                padding: 8px 12px;
+                                background-color: #007bff;
+                                border-radius: 5px;
+                              }
+                              .preview {
+                                height: calc(100% - 50px); /* Leave space for toolbar */
+                                overflow: auto;
+                                display: block;
+                              }
+                              iframe, img {
+                                max-width: 90%;
+                                max-height: 90%;
+                                border: none;
+                                margin: auto;
+                              }
+                              pre {
+                                background: white;
+                                padding: 1rem;
+                                margin: 0;
+                                width: 100%;
+                                height: 100%;
+                                box-sizing: border-box;
+                                overflow: auto;
+                                white-space: pre-wrap;
+                                word-wrap: break-word;
+                              }
+                            </style>
+                          </head>
+                          <body>
+                            <div class="toolbar">
+                              <div>Previewing: ${file.filename}</div>
+                              <a href="${cachedUrl}" download="${file.filename}">Download</a>
+                            </div>
+                            <div class="preview">
+                              ${previewContent}
+                            </div>
+                            ${
+                              isText
+                                ? `<script>
+                                     fetch("${cachedUrl}")
+                                       .then(res => res.text())
+                                       .then(code => {
+                                         document.getElementById("code-block").textContent = code;
+                                       });
+                                   </script>`
+                                : ""
+                            }
+                          </body>
+                          </html>
+                        `;
+                        
+                      
                           popup.document.write(html);
                           popup.document.close();
                         } catch (err) {
                           console.error("Preview failed:", err);
                         }
-                      }}
+                      }}  
                     >
                       Preview
                     </ContextMenuItem>
-
                     </ContextMenu>
                   {contextMenuTagPopout ?
                       <ContextMenuPopout $index={1}>
