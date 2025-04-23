@@ -146,14 +146,17 @@ const schema = a
         createdAt: a.datetime().required(),
         updatedAt: a.datetime(),
         isUpdated: a.boolean().default(false),
-          isDeleted: a.boolean().default(false),
+        isDeleted: a.boolean().default(false),
         tags: a.string().array(), // <- CHANGE
         file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
         
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
       })
-      .identifier(["messageId"]),
-
+      .identifier(["messageId"])
+      .secondaryIndexes((index) => [
+        index("fileId").sortKeys(["createdAt"]).name("messagesByFileIdAndPagination"), // Secondary index for querying messages by fileId
+      ]),
+    
     searchMessages: a
         .query()
         .arguments({
@@ -168,6 +171,21 @@ const schema = a
                 entry: "./searchMessages.js"
             })
         ),
+  
+  getMessagesByFileId: a
+  .query()
+  .arguments({
+    fileId: a.string(),
+    nextToken: a.string(),
+    limit: a.integer(),
+  })
+  .returns(a.json())
+  .handler(
+    a.handler.custom({
+      dataSource: a.ref("Message"),
+      entry: "./getMessagesByFileId.js",
+    })
+  ),
 
   // Whitelist model
   Whitelist: a
@@ -189,6 +207,7 @@ const schema = a
   allow.authenticated(),
 ]);
 export type Schema = ClientSchema<typeof schema>;
+
 
 export const data = defineData({
   schema,
