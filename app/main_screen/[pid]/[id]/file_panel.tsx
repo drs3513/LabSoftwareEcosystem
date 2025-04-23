@@ -1664,6 +1664,7 @@ export default function FilePanel() {
             close={() => {
               setShowVersionPanel(false);
               setVersionPanelData(null);
+              setContextMenuVersionPopout(false);
             }}
             onDownloadVersion={handleDownloadVersion}
           />
@@ -1800,7 +1801,7 @@ const ContextMenuPopout = styled.div<{$index: number}>`
 
 const ContextMenuWrapper = styled.div<{$x: number, $y: number}>`
     position: fixed;
-    z-index: 2;
+    z-index: 9999;
     left: ${(props) => props.$x}px;
     top: ${(props) => props.$y}px;
     display: flex;
