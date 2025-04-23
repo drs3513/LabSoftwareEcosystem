@@ -137,7 +137,7 @@ export default function ProjectPanel() {
               setRole(usrrole);
             }}
           >
-📁 {project.projectName}
+    {project.projectName}
           </Project>
         ))
       ) : (
@@ -151,7 +151,7 @@ export default function ProjectPanel() {
 const PanelContainer = styled.div`
   width: 100%;
   height: 100%;
-  background-color: black;
+  background-color: #FFFFFF;
   padding: 1rem;
   text-align: center;
   overflow-y: auto;
@@ -160,15 +160,18 @@ const PanelContainer = styled.div`
 
 const Project = styled.div.attrs<{$selected: boolean}>(props => ({
   style: {
-    filter: props.$selected ? "drop-shadow(0px 0px 5px cornflowerblue)" : "none"
+    filter: props.$selected ? "drop-shadow(0px 0px 5px #5C9ECC)" : "none"
   }
 }))`
   background-color: white;
   padding: 1rem;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid #D7DADD;
+  overflow: hidden;
   cursor: pointer;
   &:hover {
-    background-color: lightblue;
+    background-color: #365679;
+    color: white;
+    transition: 0.2s;
   }
   &:last-child{
     border-bottom-style: none;

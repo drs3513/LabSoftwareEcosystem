@@ -79,12 +79,12 @@ export default function CreateFilePanel({ initialPosX, initialPosY, parentFileId
 
     function handleResize(e: React.DragEvent<HTMLDivElement>) {
         const newWidth = panelWidth-((posX + panelWidth) - e.pageX)
-        if(newWidth > 400){
+        if(newWidth > 24){
             setPanelWidth(newWidth)
         }
 
         const newHeight = panelHeight - ((posY + panelHeight) - e.pageY)
-        if(newHeight > 400){
+        if(newHeight > 24){
             setPanelHeight(newHeight)
         }
     }
@@ -152,7 +152,6 @@ const Resize = styled.div`
     stroke: black;
     stroke-width: 3;
     cursor: nwse-resize;
-    overflow: hidden;
 `
 
 const PanelContainer = styled.div.attrs<{$posX: number, $posY: number, $width: number, $height: number}>(props => ({
@@ -174,6 +173,7 @@ const PanelContainer = styled.div.attrs<{$posX: number, $posY: number, $width: n
     border-width: 2px;
     border-color: gray;
     filter: drop-shadow(0px 0px 2px gray);
+    overflow: hidden;
     
     display: flex;
     flex-direction: column;
@@ -183,6 +183,7 @@ const PanelContainer = styled.div.attrs<{$posX: number, $posY: number, $width: n
 const TagInputContainer = styled.div`
     display: flex;
     flex-direction: row;
+    overflow: hidden;
 `
 
 
@@ -193,6 +194,7 @@ const TagDisplay = styled.div`
     margin-left: 10%;
     margin-top: 1rem;
     height: auto;
+    overflow: hidden;
 `
 const TagLabel = styled.h3`
     margin: 0;
@@ -204,15 +206,21 @@ const TagDisplayContainer = styled.div.attrs<{$height: number}>(props => ({
     }
 }))`
     display: flex;
-    flex-direction: column;
-    width: auto;
-    
-    overflow: scroll;
+    flex-direction: row;
+    width: 80%;
+    height: auto;
+    flex-wrap: wrap;
+
+    overflow: auto;
 `
 const TagDisplayIndex = styled.div`
-    margin: .5rem;
+    margin: .3rem;
     text-align: left;
-    border-bottom: 2px solid #ccc;
+    height: min-content;
+    padding: .5rem;
+    padding-top: .2rem;
+    background-color: #ccc;;
+    border-radius: 18px;
 `
 const Header = styled.div`
     width: 100%;

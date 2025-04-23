@@ -32,6 +32,35 @@ import {JSX} from "react/jsx-runtime";
 import ConflictModal from '../../conflictModal';
 import { isUserWhitelistedForProject } from '@/lib/whitelist';
 
+//SVG imports
+import Image from "next/image";
+import icon_sort0 from "/assets/icons/sort-alphabetical-outlined-rounded.svg";
+import icon_sort1 from "/assets/icons/sort-alphabetical-reverse-outlined-rounded.svg";
+import icon_sort2 from "/assets/icons/sort-high-to-low-outlined-rounded.svg";
+import icon_sort3 from "/assets/icons/sort-low-to-high-outlined-rounded.svg";
+import icon_binsolid from "/assets/icons/trash-3-outlined-rounded.svg";
+import icon_binline from "/assets/icons/trash-3-solid-rounded.svg";
+import icon_folder from "/assets/icons/folder-1-outlined-rounded.svg";
+
+import icon_filegeneric from "/assets/icons/file-outlined-rounded.svg";
+import icon_filecpp from "/assets/icons/file-icon-24x24-cpp.svg";
+import icon_filehtml from "/assets/icons/file-icon-24x24-html.svg";
+import icon_filejpg from "/assets/icons/file-icon-24x24-jpg.svg";
+import icon_filejs from "/assets/icons/file-icon-24x24-js.svg";
+import icon_filejson from "/assets/icons/file-icon-24x24-json.svg";
+import icon_filemp4 from "/assets/icons/file-icon-24x24-mp4.svg";
+import icon_filepdf from "/assets/icons/file-icon-24x24-pdf.svg";
+import icon_filepng from "/assets/icons/file-icon-24x24-png.svg";
+import icon_filepy from "/assets/icons/file-icon-24x24-py.svg";
+import icon_filesvg from "/assets/icons/file-icon-24x24-svg.svg";
+import icon_filetdp from "/assets/icons/file-icon-24x24-tdp.svg";
+import icon_filetds from "/assets/icons/file-icon-24x24-tds.svg";
+import icon_filetsx from "/assets/icons/file-icon-24x24-tsx.svg";
+import icon_filetxt from "/assets/icons/file-icon-24x24-txt.svg";
+import icon_filewebp from "/assets/icons/file-icon-24x24-webp.svg";
+import icon_filexml from "/assets/icons/file-icon-24x24-xml.svg";
+import icon_filezip from "/assets/icons/file-icon-24x24-zip.svg";
+
 
 import IntrinsicElements = JSX.IntrinsicElements;
 import {isCancelError} from "aws-amplify/storage";
@@ -81,6 +110,8 @@ function compare_file_name_reverse(file_1: any, file_2: any){
 }
 
 const sort_style_map: {[key: string]: any} = {"alphanumeric" : compare_file_name, "alphanumeric-reverse" : compare_file_name_reverse, "chronological" : compare_file_date, "chronological-reverse" : compare_file_date_reverse}
+const number_to_sort: {[key: number]: any} = {0: "alphanumeric", 1: "alphanumeric-reverse", 2: "chronological", 3: "chronological-reverse"}
+var sort_number = 0;
 
 type FileVersion = Pick<
   Schema["File"]["type"],
@@ -218,6 +249,64 @@ export default function FilePanel() {
   const [showRecycleBin, setShowRecycleBin] = useState(false);
 
   const [dragOverFileId, setDragOverFileId] = useState<string | undefined>(undefined);
+
+  function return_file_icon(fileName: string){
+    var extension = fileName.split('.').pop()
+    switch(extension) {
+      case 'cpp': {
+        return icon_filecpp;
+      }
+      case 'html': {
+        return icon_filehtml;
+      }
+      case 'jpg': {
+        return icon_filejpg;
+      }
+      case 'js': {
+        return icon_filejs;
+      }
+      case 'json': {
+        return icon_filejson;
+      }
+      case 'mp4': {
+        return icon_filemp4;
+      }
+      case 'pdf': {
+        return icon_filepdf;
+      }
+      case 'png': {
+        return icon_filepng;
+      }
+      case 'py': {
+        return icon_filepy;
+      }
+      case 'svg': {
+        return icon_filesvg;
+      }
+      case 'tdp': {
+        return icon_filetdp;
+      }
+      case 'tds': {
+        return icon_filetds;
+      }
+      case 'tsx': {
+        return icon_filetsx;
+      }
+      case 'txt': {
+        return icon_filetxt;
+      }
+      case 'webp': {
+        return icon_filewebp;
+      }
+      case 'xml': {
+        return icon_filexml;
+      }
+      case 'zip': {
+        return icon_filezip;
+      }
+    }
+    return icon_filegeneric;
+  }
 
 
   //sorts files to be displayed by the user
@@ -1270,6 +1359,11 @@ export default function FilePanel() {
 
   }
 
+  function sortButtonClicked(){
+    sort_number = (sort_number+1)%4;
+    handleSwitchSort(number_to_sort[sort_number]);
+  }
+
 
 
   async function handleTagInput(e: React.KeyboardEvent<HTMLInputElement>){
@@ -1423,23 +1517,16 @@ export default function FilePanel() {
                   </FilePathContainer>
                 <TopBarContainer>
                   <FloatingRecycleButton onClick={() => setShowRecycleBin(!showRecycleBin)} title="Recycle Bin">
-                    {showRecycleBin ? "📁" : "🗑️"}
+                    <div style={{justifyContent:"center"}}>{showRecycleBin ? <Image src={icon_binline} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/> : <Image src={icon_binsolid} alt="" layout="fill" objectFit='contain' objectFit='scale-down' objectPosition='center'/>}</div>
                   </FloatingRecycleButton>
                   <Input onKeyDown={(e) => handleSearch(e)} onChange = {(e) => e.target.value.length == 0 ? setSearch(false) : undefined}>
 
                   </Input>
                   <SortContainer>
                     <SortSelector
-                        $selected = {sort ==='alphanumeric'}
-                        onClick={() => handleSwitchSort("alphanumeric")}>
-                      A
+                        onClick={() => sortButtonClicked()}>
+                      <Image src={sort_number == 0 ? icon_sort0 : sort_number == 1 ? icon_sort1 : sort_number == 2 ? icon_sort2 : icon_sort3} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/>
                     </SortSelector>
-                    <SortSelector
-                        $selected = {sort ==='alphanumeric-reverse'}
-                        onClick = {() => handleSwitchSort("alphanumeric-reverse")}>
-                      B
-                    </SortSelector>
-
                   </SortContainer>
                 </TopBarContainer>
                 </>
@@ -1465,14 +1552,14 @@ export default function FilePanel() {
                             onDragLeave = {(e) => {handleDragOver(e, undefined)}}
                             onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ? handleFileDrag(e, projectId, userId, file.fileId, file.filepath) : undefined}}>
 
-                        {file.isDirectory ? "📁" : "🗎"} {file.filename}
+                        <div style={{display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? <Image src={icon_folder} alt="" objectFit='contain' width='36'/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36'/>} <div style={{marginLeft: '1em'}}>{file.filename}
                         <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
                                               logicalId={file.logicalId} storageId={file.storageId}
                                               size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                               projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
                                               updatedAt={file.updatedAt} visible={file.visible}
                                               open={file.open}
-                                              isDirectory={file.isDirectory}></FileContext>
+                                              isDirectory={file.isDirectory}></FileContext></div></div>
                       </File>
 
 
@@ -1741,11 +1828,7 @@ const SortContainer = styled.div`
   width: auto;
   height: 3rem;
 `
-const SortSelector = styled.button.attrs<{$selected: boolean}>(props => ({
-  style : {
-    backgroundColor: props.$selected ? 'lightgray' : 'white'
-  }
-}))`
+const SortSelector = styled.button`
   width: 2rem;
   height: 2rem;
   margin: auto .5rem;
@@ -1757,7 +1840,8 @@ const SortSelector = styled.button.attrs<{$selected: boolean}>(props => ({
   filter: drop-shadow(1px 1px 1px #000000);
   &:hover{
     
-    background-color: lightgray !important;
+    background-color: #D7DADD !important;
+    transition: 0.2s;
   }
 `
 const ContextMenuExitButton = styled.button`
@@ -1883,12 +1967,25 @@ export function FileContext(file: fileInfo ) {
   const now = new Date()
   const updated = new Date(file.updatedAt)
 
+
   return (
       <FileContextItem>
         Last
-        updated: {updated.toDateString() == now.toDateString() ? updated.toLocaleTimeString("en-US") : updated.toLocaleDateString("en-US")} {file.isDirectory? "" : "Size:"+file.size+"b"}
+        updated: {updated.toDateString() == now.toDateString() ? updated.toLocaleTimeString("en-US") : updated.toLocaleDateString("en-US")} {file.isDirectory? "" : "Size: "+formatBytes(file.size)}
       </FileContextItem>
   );
+}
+
+export function formatBytes(bytes: number, decimals = 2) {
+  if(!+bytes) return '0 B'
+
+  const kilo = 1024
+    const dec = decimals < 0 ? 0 : decimals
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+
+    const i = Math.floor(Math.log(bytes) / Math.log(kilo))
+
+    return `${parseFloat((bytes / Math.pow(kilo, i)).toFixed(dec))} ${sizes[i]}`
 }
 
 const PanelContainer = styled.div<{$dragging: boolean}>`
@@ -1931,7 +2028,7 @@ const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: n
   border-radius: 0;
   &:hover {
 
-    border: solid lightblue;
+    filter: drop-shadow(0px 0px 5px #5C9ECC);
 
     padding-top: calc(1rem - 2px);
     padding-bottom: calc(1rem - 2px);
@@ -1963,10 +2060,10 @@ const FilePathContainer = styled.div`
     top: 0;
     width: 100%;
     border-bottom-style: solid;
-    border-bottom-width: 3px;
-    border-bottom-color: black;
+    border-bottom-width: 2px;
+    border-bottom-color: #D7DADD;
     padding: 15px;
-      overflow-x: scroll;
+      overflow-x: auto;
     white-space: nowrap;
 `;
 const Input = styled.input`
@@ -2061,15 +2158,17 @@ const FloatingRecycleButton = styled.button`
   border-style: solid;
   border-width: 2px;
   border-color: #ccc;
+  background: white;
   cursor: pointer;
   filter: drop-shadow(1px 1px 1px #000000);
   &:hover{
 
-    background-color: lightgray !important;
+    background-color: #D7DADD !important;
+    transition: 0.2s;
   }
 
   &:hover {
-    background-color: #ddd;
+    background-color: #D7DADD;
   }
 `;
 /*

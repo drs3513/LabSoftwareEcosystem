@@ -10,9 +10,13 @@ import { useAuthenticator } from "@aws-amplify/ui-react";
 import { Button } from "@aws-amplify/ui-react";
 import { useRouter } from "next/navigation";
 
+//SVG imports
+import Image from "next/image";
+import icon_signout from "/assets/icons/exit.svg";
+
 const Top_Bar = styled.div`
-  background-color: tan;
-  border-bottom: 2px solid black;
+  background-color: #AFC1D0;
+  border-bottom: 2px solid #D7DADD;
   display: flex;
   flex-direction: row;
   justify-content: space-between;
@@ -30,13 +34,14 @@ const Top_Bar_Item = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 1.5rem;
+  height: 2rem;
   padding: 0.5rem 1rem;
   border-radius: 5px;
   position: relative;
   &:hover {
     cursor: pointer;
-    background-color: saddlebrown;
+    background-color: #365679;
+    color: white;
     transition: 0.2s;
   }
 `;
@@ -47,6 +52,7 @@ const Dropdown = styled.div`
   left: 0;
   width: 250px;
   background-color: white;
+  color: black;
   border: 1px solid black;
   border-radius: 5px;
   z-index: 10;
@@ -65,13 +71,12 @@ const DropdownItem = styled.div`
 
 const SignOutButton = styled.div`
   margin-left: auto;
-  padding: 0.5rem 1rem;
   border-radius: 5px;
-  background-color: darkred;
   color: white;
   &:hover {
     cursor: pointer;
-    background-color: red;
+    background-color: darkred;
+    color: white;
     transition: 0.2s;
   }
 `;
@@ -119,29 +124,36 @@ const PanelContainer = styled.div.attrs<{$posX: number; $posY: number; $width: n
 const Header = styled.div`
     padding: 0.5rem;
     height: 3rem;
-    background-color: lightgray;
-    text-align: left;
+    color: black;
+    background-color: #AFC1D0;
+    text-align: center;
+    font-size: 16px;
+    font-weight: bold;
     -webkit-user-select: none;
     -ms-user-select: none;
     user-select: none;
 `;
 
 const CloseButton = styled.button`
-    margin-left: auto;
-    width: 30px;
-    height: 30px;
-    float: right;
-    border-radius: 15px;
-    border-style: solid;
-    border-color: gray;
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    background: none;
+    border: none;
+    font-size: 16px;
     cursor: pointer;
+    &:hover {
+        color: white;
+        transition: 0.2s;
+    }
 `;
 
 const Resize = styled.div`
     width: 24px;
     height: 24px;
+    position: fixed;
     right: 0;
-    margin-left: auto;
+    bottom: 0;
     stroke: black;
     stroke-width: 3;
     cursor: nwse-resize;
@@ -434,12 +446,12 @@ export default function TopBar() {
 
     function handleResize(e: React.DragEvent<HTMLDivElement>) {
       const newWidth = panelWidth - (whitelistPanelPos.posX + panelWidth - e.pageX);
-      if (newWidth > 400) {
+      if (newWidth > 200) {
         setPanelWidth(newWidth);
       }
 
       const newHeight = panelHeight - (whitelistPanelPos.posY + panelHeight - e.pageY);
-      if (newHeight > 400) {
+      if (newHeight > 200) {
         setPanelHeight(newHeight);
       }
     }
@@ -464,7 +476,7 @@ export default function TopBar() {
               close();
             }}
           >
-            X
+            ✖
           </CloseButton>
         </Header>
         <UserList>
@@ -569,7 +581,7 @@ export default function TopBar() {
         />
       )}
 
-      <SignOutButton onClick={handleSignOut}>Sign Out</SignOutButton>
+      <SignOutButton onClick={handleSignOut}><Image src={icon_signout} alt="" height="36" objectPosition='fill'></Image></SignOutButton>
     </Top_Bar>
   );
 }

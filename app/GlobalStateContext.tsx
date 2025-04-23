@@ -40,7 +40,7 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
 
   return (
     <GlobalStateContext.Provider value={{ role, setRole, projectId, setProjectId, fileId, setFileId, userId, contextMenu, setContextMenu,
-      contextMenuType, setContextMenuType, heldKeys, setHeldKeys}}>
+      contextMenuType, setContextMenuType, heldKeys, setHeldKeys, draggingFloatingWindow}}>
       {children}
     </GlobalStateContext.Provider>
   );

@@ -12,9 +12,9 @@ const Holder = styled.div`
 `;
 
 const Border = styled.div<{ $width: string; $width_type: string }>`
-  width: ${(props) => "calc(" + props.$width + props.$width_type + " - 2px)" || "5px"};
-  border-right: grey 2px solid;
-  border-left: grey 2px solid;
+  width: ${(props) => "calc(" + props.$width + props.$width_type + " - 4px)" || "3px"};
+  border-right: #D7DADD 1px solid;
+  border-left: #D7DADD 1px solid;
   background-color: black;
   &:hover {
     cursor: ew-resize;
