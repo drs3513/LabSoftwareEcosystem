@@ -1702,12 +1702,25 @@ export function FileContext(file: fileInfo ) {
   const now = new Date()
   const updated = new Date(file.updatedAt)
 
+
   return (
       <FileContextItem>
         Last
-        updated: {updated.toDateString() == now.toDateString() ? updated.toLocaleTimeString("en-US") : updated.toLocaleDateString("en-US")} {file.isDirectory? "" : "Size:"+file.size+"b"}
+        updated: {updated.toDateString() == now.toDateString() ? updated.toLocaleTimeString("en-US") : updated.toLocaleDateString("en-US")} {file.isDirectory? "" : "Size: "+formatBytes(file.size)}
       </FileContextItem>
   );
+}
+
+export function formatBytes(bytes: number, decimals = 2) {
+  if(!+bytes) return '0 B'
+
+  const kilo = 1024
+    const dec = decimals < 0 ? 0 : decimals
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+
+    const i = Math.floor(Math.log(bytes) / Math.log(kilo))
+
+    return `${parseFloat((bytes / Math.pow(kilo, i)).toFixed(dec))} ${sizes[i]}`
 }
 
 const PanelContainer = styled.div<{$dragging: boolean}>`
