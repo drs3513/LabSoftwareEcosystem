@@ -1385,7 +1385,15 @@ export default function FilePanel() {
             onMouseUp={(e) => onFilePlace(e, rootParentId, null)}
             onMouseMove = {(e) => {observeMouseCoords.current && (pickedUpFileGroup || pickedUpFileId) ? setMouseCoords([e.clientX, e.clientY]) : undefined}}
             onClick = {(e) => e.target == e.currentTarget ? setSelectedFileGroup(undefined) : undefined}
-            onDrop = {(e) => {projectId && userId ? handleFileDrag(e, projectId, userId, "ROOT-"+projectId, "") : undefined}}
+            onDrop={(e) => {
+              if (!projectId || !userId || activeParentIds.length === 0) return;
+            
+              const currentParentId = activeParentIds[activeParentIds.length - 1].id;
+              const currentParent = filesRef.current.find(f => f.fileId === currentParentId);
+              const currentPath = currentParent?.filepath || "";
+            
+              handleFileDrag(e, projectId, userId, currentParentId, currentPath);
+            }}            
             onDragOver = {(e) => {handleDragOver(e, "ROOT-"+projectId)}}
             onDragLeave = {(e) => {handleDragOver(e, undefined)}}
             $dragging={dragOverFileId == "ROOT-"+projectId}
