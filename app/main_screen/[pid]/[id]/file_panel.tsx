@@ -678,6 +678,8 @@ export default function FilePanel() {
   const handleDownloadCurrentView = async () => {
     if (!projectId) return;
   
+    console.log("[DEBUG] Files in current view:", filesRef.current);
+  
     const task: ZipTask = {
       isCanceled: false,
       cancel() {
@@ -685,25 +687,43 @@ export default function FilePanel() {
       },
     };
   
-    const fileList: { path: string; filename: string }[] = [];
+    const rootLogicalId = rootParentId?.replace("ROOT-", "") || "";
   
-    for (const file of filesRef.current) {
-      if (!file.storageId || file.isDirectory) continue;
+    let fileList: { filepath: string; storageId: string }[] = [];
   
-      fileList.push({
-        path: file.storageId,
-        filename: file.filepath.startsWith("/") ? file.filepath.slice(1) : file.filepath, // Preserve structure
-      });
+    try {
+      const allChildren = await getFileChildren(projectId, rootLogicalId);
+      fileList = (allChildren || [])
+        .filter(f => !f.isDirectory && f.storageId && f.filepath)
+        .map(f => ({
+          filepath: f.filepath.startsWith("/") ? f.filepath.slice(1) : f.filepath,
+          storageId: f.storageId!,
+        }));
+  
+      // Merge in case anything else is in filesRef (optional)
+      for (const file of filesRef.current) {
+        if (!file.storageId || file.isDirectory) continue;
+  
+        fileList.push({
+          filepath: file.filepath.startsWith("/") ? file.filepath.slice(1) : file.filepath,
+          storageId: file.storageId,
+        });
+      }
+  
+      if (fileList.length === 0) {
+        console.warn("No downloadable files in current view.");
+        return;
+      }
+      const rootName = filePathElement.length > 0
+      ? filePathElement[filePathElement.length - 1].fileName?.replace("/", "") || "project-files"
+      : projectName.current || "project-files";
+      await downloadFolderAsZip(rootName, fileList, task);
+    } catch (err) {
+      console.error("Download error:", err);
     }
   
-    if (fileList.length === 0) {
-      console.warn("No downloadable files in current view.");
-      return;
-    }
-  
-    const rootName = projectName.current || "project-files";
-    await downloadFolderAsZip(rootName, fileList as [], task);
   };
+  
   
   
 
@@ -1536,105 +1556,122 @@ export default function FilePanel() {
                       Versions
                     </ContextMenuItem>
                     <ContextMenuItem
-                        onClick={async () => {
-                          const file = files.find(f => f.fileId === contextMenuFileId);
-                          if (!file || !projectId) return;
+                      onClick={async () => {
+                        const file = files.find(f => f.fileId === contextMenuFileId);
+                        if (!file || !projectId) return;
 
-                          const ext = file.filename.split(".").pop()?.toLowerCase();
-                          if (!ext) return;
+                        const ext = file.filename.split(".").pop()?.toLowerCase();
+                        const isText = ["txt", "md", "log", "csv", "py"].includes(ext!);
+                        const isOfficeDoc = ["doc", "docx", "rtf", "dox", "word"].includes(ext!);
+                        const isPDF = ext === "pdf";
+                        const isImage = ["png", "jpg", "jpeg"].includes(ext!);
 
-                          const isText = ["txt", "md", "log", "csv"].includes(ext);
-                          const isOfficeDoc = ["doc", "docx", "rtf", "dox", "word"].includes(ext);
-                          const isPDF = ext === "pdf";
-                          const isImage = ["png", "jpg", "jpeg"].includes(ext);
+                        if (!isText && !isOfficeDoc && !isPDF && !isImage) return;
 
-                          const path = file.storageId as string;
-                          const versionId = file.versionId;
+                        const path = file.storageId as string;
+                        const versionId = file.versionId;
 
-                          try {
-                            const cachedUrl = await fetchCachedUrl(path, versionId);
-                            const popup = window.open("", "_blank", "width=900,height=700");
+                        try {
+                          const cachedUrl = await fetchCachedUrl(path, versionId);
+                          const popup = window.open("", "_blank", "width=800,height=600");
 
-                            if (!popup) {
-                              alert("Popup blocked. Please allow popups for this site.");
-                              return;
-                            }
-
-                            const content = `
-                              <!DOCTYPE html>
-                              <html lang="en">
-                              <head>
-                                <title>Preview - ${file.filename}</title>
-                                <style>
-                                  body {
-                                    margin: 0;
-                                    font-family: sans-serif;
-                                    background: #f9f9f9;
-                                    display: flex;
-                                    flex-direction: column;
-                                    height: 100vh;
-                                  }
-                                  .toolbar {
-                                    background: #333;
-                                    color: white;
-                                    padding: 10px;
-                                    display: flex;
-                                    justify-content: space-between;
-                                    align-items: center;
-                                  }
-                                  .toolbar a {
-                                    color: white;
-                                    text-decoration: none;
-                                    background: #007bff;
-                                    padding: 6px 12px;
-                                    border-radius: 4px;
-                                  }
-                                  .preview {
-                                    flex: 1;
-                                    display: flex;
-                                    justify-content: center;
-                                    align-items: center;
-                                    padding: 1rem;
-                                    overflow: auto;
-                                  }
-                                  iframe, img {
-                                    max-width: 100%;
-                                    max-height: 100%;
-                                    border: none;
-                                  }
-                                </style>
-                              </head>
-                              <body>
-                                <div class="toolbar">
-                                  <div>Previewing: ${file.filename}</div>
-                                  <a href="${cachedUrl}" download="${file.filename}">Download</a>
-                                </div>
-                                <div class="preview">
-                                  ${
-                                    isPDF
-                                      ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
-                                      : isImage
-                                      ? `<img src="${cachedUrl}" alt="${file.filename}" />`
-                                      : isText
-                                      ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
-                                      : isOfficeDoc
-                                      ? `<iframe src="https://docs.google.com/gview?url=${encodeURIComponent(cachedUrl)}&embedded=true" width="100%" height="100%"></iframe>`
-                                      : `<p>Unsupported file type: .${ext}</p>`
-                                  }
-                                </div>
-                              </body>
-                              </html>
-                            `;
-
-                            popup.document.write(content);
-                            popup.document.close();
-                          } catch (err) {
-                            console.error("Preview failed:", err);
+                          if (!popup) {
+                            alert("Popup blocked. Please allow popups for this site.");
+                            return;
                           }
-                        }}
-                      >
-                        Preview
-                      </ContextMenuItem>
+
+                          const previewContent = isPDF
+                            ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
+                            : isImage
+                            ? `<img src="${cachedUrl}" alt="${file.filename}" />`
+                            : isText
+                            ? `<pre><code id="code-block">Loading...</code></pre>
+                              <script>
+                                fetch("${cachedUrl}")
+                                  .then(res => res.text())
+                                  .then(code => {
+                                    document.getElementById("code-block").textContent = code;
+                                  });
+                              </script>`
+                            : `<p>Unsupported file type.</p>`;
+
+                          const html = `
+                            <!DOCTYPE html>
+                            <html lang="en">
+                            <head>
+                              <title>Preview - ${file.filename}</title>
+                              <style>
+                                body {
+                                  margin: 0;
+                                  font-family: sans-serif;
+                                  background: #f0f0f0;
+                                  display: flex;
+                                  flex-direction: column;
+                                  height: 100vh;
+                                  overflow: hidden;
+                                }
+                                .toolbar {
+                                  width: 100%;
+                                  background: #333;
+                                  color: white;
+                                  padding: 10px;
+                                  display: flex;
+                                  justify-content: space-between;
+                                  align-items: center;
+                                  box-sizing: border-box;
+                                }
+                                .toolbar a {
+                                  color: white;
+                                  text-decoration: none;
+                                  padding: 8px 12px;
+                                  background-color: #007bff;
+                                  border-radius: 5px;
+                                }
+                                .preview {
+                                  flex: 1;
+                                  overflow: auto;
+                                  display: flex;
+                                  justify-content: center;
+                                  align-items: center;
+                                  padding: 1rem;
+                                }
+                                iframe, img {
+                                  max-width: 90%;
+                                  max-height: 90%;
+                                  border: none;
+                                }
+                                pre {
+                                  background: white;
+                                  padding: 1rem;
+                                  overflow: auto;
+                                  white-space: pre-wrap;
+                                  word-wrap: break-word;
+                                  max-width: 100%;
+                                }
+                              </style>
+                            </head>
+                            <body>
+                              <div class="toolbar">
+                                <div>Previewing: ${file.filename}</div>
+                                <a href="${cachedUrl}" download="${file.filename}">Download</a>
+                              </div>
+                              <div class="preview">
+                                ${previewContent}
+                              </div>
+                            </body>
+                            </html>
+                          `;
+
+                          popup.document.write(html);
+                          popup.document.close();
+                        } catch (err) {
+                          console.error("Preview failed:", err);
+                        }
+                      }}
+                    >
+                      Preview
+                    </ContextMenuItem>
+
                     </ContextMenu>
                   {contextMenuTagPopout ?
                       <ContextMenuPopout $index={1}>

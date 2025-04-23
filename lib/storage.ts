@@ -141,7 +141,7 @@ export async function downloadFolderAsZip(
 
     try {
       const { body } = await downloadData({
-        key: file.storageId,
+        path: file.storageId,
       }).result;
 
       const blob = await body.blob();
