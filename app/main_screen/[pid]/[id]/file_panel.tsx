@@ -1,3 +1,4 @@
+
 import '@aws-amplify/ui-react/styles.css';
 import React, {ChangeEvent, Component, ElementType, useEffect, useMemo, useRef, useState} from "react";
 import { useGlobalState } from "@/app/GlobalStateContext";
@@ -226,7 +227,7 @@ export default function FilePanel() {
 
   const timer = useRef(setTimeout(() => {}, 500));
 
-  const isLongPress = useRef(false);
+  const isLongPress  = useRef(false);
 
   const [createFilePanelUp, setCreateFilePanelUp] = useState(false);
 
@@ -400,11 +401,11 @@ export default function FilePanel() {
   async function fetchFiles() {
     //console.log("Anything")
     if (!projectId || !userId){
-      console.log("Woah Nelly")
       return
     }
     //console.log(userId + " " + projectId)
     const isWhitelisted = await isUserWhitelistedForProject(userId, projectId);
+
       if (!isWhitelisted) {
         console.log("User is not whitelisted for this project.");
         setProjectId(undefined); 
@@ -415,14 +416,14 @@ export default function FilePanel() {
         setLoading(false);
         return;
       }
-  
-    const projectFiles = await listFilesForProject(projectId); // This will return all versions
+
+    const projectFiles = await listFilesForProjectAndParentIds(projectId, activeParentIds.map(parent => parent.id)); // This will return all versions
     if (!projectFiles) return [];
   
     const grouped: Record<string, typeof projectFiles> = {};
     for (const file of projectFiles) {
       if (!file || (file.isDeleted && !showRecycleBin)) continue;
-  
+
       if (!grouped[file.logicalId]) {
         grouped[file.logicalId] = [];
       }
@@ -456,13 +457,12 @@ export default function FilePanel() {
       });
     }
     setLoading(false);
+
     setFiles(sort_files_with_path(groupedFiles));
     return groupedFiles;
   }
   
   useEffect(() => {
-    // console.log("Nelly Woah")
-    // console.log(projectId)
     if(search) return
     if(projectId){
       fetchFiles();
@@ -523,7 +523,7 @@ export default function FilePanel() {
     const activeFilePath = await getFilePath(root_id, proj_id)
 
     projectName.current = await getProjectName(proj_id)
-    if(activeFilePath) {
+    if(activeFilePath) {    console.log('here')
       await createFileIdMapping(root_id, proj_id, activeFilePath, projectName.current)
 
     } else {
@@ -559,6 +559,7 @@ export default function FilePanel() {
         "versionId", "ownerId", "projectId", "createdAt", "updatedAt", "isDirectory", "isDeleted", "storageId"
       ],
     }).subscribe({
+
       next: async ({ items }) => {
         if (items.length === 0) {
           setFiles([]);
@@ -569,7 +570,7 @@ export default function FilePanel() {
         const visibleItems = items.filter(file =>
           showRecycleBin ? file.isDeleted === 1 : file.isDeleted === 0
         );
-  
+
         // Group by logicalId and pick latest version
         const grouped: Record<string, typeof visibleItems> = {};
         for (const file of visibleItems) {
@@ -578,14 +579,14 @@ export default function FilePanel() {
           }
           grouped[file.logicalId].push(file);
         }
-  
+        console.log(grouped)
         const temp_files = Object.values(grouped).map(versions => {
           const sorted = versions.sort(
             (a, b) =>
               new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
           );
           const latest = sorted[0];
-  
+
           return {
             fileId: latest.fileId,
             filename: latest.filename,
@@ -605,7 +606,6 @@ export default function FilePanel() {
             versions: sorted,
           };
         });
-  
         setFiles(sort_files_with_path(temp_files));
       },
       error: (error) => {
@@ -1145,6 +1145,8 @@ export default function FilePanel() {
 
   //TODO Make this do something!
   async function onFilePlace(e: React.MouseEvent<HTMLButtonElement> | React.MouseEvent<HTMLDivElement>, overFileId: Nullable<string>, overFilePath: Nullable<string>) {
+    isLongPress.current = false;
+    clearTimeout(timer.current)
     if(search){
       return
     }
@@ -1155,18 +1157,72 @@ export default function FilePanel() {
     if(!overFileId) return
     observeMouseCoords.current = false
 
+    console.log(overFileId)
 
-    isLongPress.current = false;
     clearTimeout(timer.current);
     //console.log(pickedUpFileGroup)
     if(pickedUpFileGroup != undefined){
 
-      for(let fileIndex of pickedUpFileGroup) {
-        if(!projectId) return
-        //console.log("Here!")
-        const children = await getFileChildren(projectId, files[fileIndex].filepath)
-        //console.log(children)
+      observeMouseCoords.current = false
+
+      let parentsToMove: string[] = []
+      let initialParentsToMove = pickedUpFileGroup.map((index) => (files[index]))
+      let initialParentsToMoveIds = pickedUpFileGroup.map((index) => (files[index].fileId))
+      for(let file of initialParentsToMove) {
+        if(!initialParentsToMoveIds.includes(file.parentId)){
+          parentsToMove.push(file.fileId)
+        }
       }
+
+      for(let fileId of parentsToMove){
+        const children = await getFileChildren(projectId, files[filesByFileId.current[fileId]].filepath)
+        if(!children) return
+
+        observeMouseCoords.current = false
+
+
+        files[filesByFileId.current[fileId]].parentId = overFileId
+
+        //console.log(children)
+        //console.log(files[filesByFileId.current[pickedUpFileId]].filepath)
+        //console.log(overFileId)
+        //console.log(files[filesByFileId.current[overFileId]].filepath)
+        let new_file_path = `/${files[filesByFileId.current[fileId]].filename}`
+        if(overFileId in filesByFileId.current){
+          new_file_path = `${files[filesByFileId.current[overFileId]].filepath}/${files[filesByFileId.current[fileId]].filename}`
+        } else {
+          if(overFileId == `ROOT-${projectId}`){
+            new_file_path = `/${files[filesByFileId.current[fileId]].filename}`
+          } else {
+            const base_file_path = await getFilePath(overFileId, projectId)
+            new_file_path = `${base_file_path}/${files[filesByFileId.current[fileId]].filename}`
+          }
+
+        }
+
+
+
+        const fileIds = children.map((child) => child.fileId)
+        const filepaths = children.map((child) => new_file_path + child.filepath.slice(files[filesByFileId.current[fileId]].filepath.length))
+        const parentIds = children.map((child) => parentsToMove.includes(child.fileId) ? (overFileId ? overFileId : `ROOT-${projectId}`) : child.parentId)
+        //console.log(filepaths)
+        //`if(overFileId){
+        //`  console.log(files[filesByFileId.current[overFileId]].filepath)
+        //`} else {
+//`
+        //`}
+        const returnedValue = await batchUpdateFilePath(fileIds, projectId, parentIds, filepaths)
+        const poke = await pokeFile(parentsToMove[0], projectId, filepaths[0])
+      }
+
+
+      fetchFiles()
+//      for(let fileIndex of pickedUpFileGroup) {
+//        if(!projectId) return
+//        console.log("Here!")
+//        const children = await getFileChildren(projectId, files[fileIndex].filepath)
+//        console.log(children)
+//      }
       setPickedUpFileGroup(undefined)
 
     } else if(pickedUpFileId){
@@ -1224,17 +1280,28 @@ export default function FilePanel() {
       return
     }
     isLongPress.current = true
+
     timer.current = setTimeout(() => {
+      console.log("Herev")
+      console.log(isLongPress.current)
       if(isLongPress.current){
         setMouseCoords([e.clientX, e.clientY])
-        if(selectedFileGroup != undefined && (selectedFileGroup.length == 2 && (filesByFileId.current[currFileId] >= selectedFileGroup[0] && filesByFileId.current[currFileId] <= selectedFileGroup[1]) || (filesByFileId.current[currFileId] >= selectedFileGroup[1] && filesByFileId.current[currFileId] <= selectedFileGroup[0]))){
+        console.log(selectedFileGroup)
+
+        if(selectedFileGroup == undefined){
+          const currSelectedFileGroup = selectFile(e, filesByFileId.current[currFileId])
+          setSelectedFileGroup(currSelectedFileGroup)
+          setPickedUpFileGroup(currSelectedFileGroup)
+
+        } else {
+
           setPickedUpFileGroup(selectedFileGroup)
         }
-        else {
-          //recursiveCloseFolder(currFileId);
-          setPickedUpFileId(currFileId)
-        }
+        isLongPress.current = false
+        clearTimeout(timer.current)
+
       }}, 500)
+
   }
 
   //Recursively generates new 'path' values for all subdirectories of that which was placed
@@ -1272,6 +1339,7 @@ export default function FilePanel() {
   }
 
   function reorientView(index: number){
+    setSelectedFileGroup([])
     if(files[index].isDirectory){
       router.push(`/main_screen/?pid=${projectId}&id=${files[index].fileId}`, undefined)
       //setFiles(reorient_files_on_new_root([...files], files[index].fileId))
@@ -1280,6 +1348,7 @@ export default function FilePanel() {
         router.push(`/main_screen/?pid=${projectId}&id=${files[index].parentId}`, undefined)
       }
     }
+    setSearch(false)
   }
 
   function recursiveSelectFile(index: number){
@@ -1300,18 +1369,33 @@ export default function FilePanel() {
       if(to_append.length == 1){
         setSelectedFileGroup(to_append)
       } else {
-        setSelectedFileGroup([to_append[0], to_append[to_append.length-1]])
+        setSelectedFileGroup(to_append)
+      }
+
+      return to_append
+    }
+  }
+
+  function range(start:number, end:number): number[]{
+
+    if(start >= end) return []
+    return [start, ...range(start+1, end)]
+  }
+  function selectFileGroup(e: React.MouseEvent<HTMLButtonElement>, index: number){
+    if(!selectedFileGroup){
+      selectFile(e, index)
+    } else {
+      let selectedFileGroupToAppend = selectFile(e, index)
+      if(selectedFileGroupToAppend && !selectedFileGroup.includes(selectedFileGroupToAppend[0])){
+        if(selectedFileGroupToAppend[0] > selectedFileGroup[selectedFileGroup.length - 1]) {
+          setSelectedFileGroup([...selectedFileGroup, ...range(selectedFileGroup[selectedFileGroup.length - 1]+1, selectedFileGroupToAppend[0]), ...selectedFileGroupToAppend].sort((a,b)=>a>b?1:-1).filter((item,pos,array)=>  !pos || item != array[pos-1]))
+        } else {
+          setSelectedFileGroup([...selectedFileGroupToAppend, ...range(selectedFileGroupToAppend[selectedFileGroupToAppend.length - 1], selectedFileGroup[0]), ...selectedFileGroup].sort((a,b)=>a>b?1:-1).filter((item,pos,array)=>  !pos || item != array[pos-1]))
+        }
       }
 
 
-      //console.log(files[index])
-    }
-  }
-  function selectFileGroup(index: number){
-    if(!selectedFileGroup){
-      setSelectedFileGroup([index])
-    } else {
-      setSelectedFileGroup([...selectedFileGroup.filter((val, i) => i < 1), index])
+      //setSelectedFileGroup([...selectedFileGroup.filter((val, i) => i < 1), index])
     }
   }
   function placeHeldFile(){
@@ -1393,6 +1477,8 @@ export default function FilePanel() {
   // opens / closes a folder that is clicked
   async function openCloseFolder(openFileId: string) {
     setSelectedFileGroup(undefined)
+    isLongPress.current = false
+    clearTimeout(timer.current)
     if(search){
       return
     }
@@ -1453,11 +1539,14 @@ export default function FilePanel() {
 
 
   function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, location: string, userId: string | undefined, storagePath: Nullable<string> |undefined, filename: string |undefined){
+    console.log("Here!")
     if(e.target != e.currentTarget){
       return
     }
+
     //console.log("This was called")
     isLongPress.current = false;
+
     clearTimeout(timer.current);
     e.preventDefault();
     setContextMenu(true);
@@ -1476,6 +1565,7 @@ export default function FilePanel() {
   function getDepth(file: fileInfo){
     //console.log(file)
     const found_parent_id = activeParentIds.find(parent => parent.id === file.parentId)
+
     return found_parent_id? found_parent_id.depth : -1
   }
 
@@ -1491,7 +1581,7 @@ export default function FilePanel() {
     return files.find(f => f.fileId === contextMenuFileId);
   }, [files, contextMenuFileId]);
 
-  
+
   return (
     
       <>
@@ -1506,7 +1596,7 @@ export default function FilePanel() {
             $dragging={dragOverFileId == "ROOT-"+projectId}
         >
           {
-            filePathElement.length > 0 ?
+            filePathElement.length > 0 && !loading ?
             ( <>
                   <FilePathContainer>
                     {filePathElement.map((pathElement, i) => (
@@ -1517,7 +1607,7 @@ export default function FilePanel() {
                   </FilePathContainer>
                 <TopBarContainer>
                   <FloatingRecycleButton onClick={() => setShowRecycleBin(!showRecycleBin)} title="Recycle Bin">
-                    <div style={{justifyContent:"center"}}>{showRecycleBin ? <Image src={icon_binline} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/> : <Image src={icon_binsolid} alt="" layout="fill" objectFit='contain' objectFit='scale-down' objectPosition='center'/>}</div>
+                    <div style={{justifyContent:"center"}}>{showRecycleBin ? <Image src={icon_binline} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/> : <Image src={icon_binsolid} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/>}</div>
                   </FloatingRecycleButton>
                   <Input onKeyDown={(e) => handleSearch(e)} onChange = {(e) => e.target.value.length == 0 ? setSearch(false) : undefined}>
 
@@ -1539,20 +1629,20 @@ export default function FilePanel() {
                   files.map((file, index) => (
                       <File key={file.fileId}
                             $depth={getDepth(file)}
-                            $pickedUp={pickedUpFileId == file.fileId || (pickedUpFileGroup != undefined &&  (pickedUpFileGroup.length == 2 && (pickedUpFileGroup[0] <= pickedUpFileGroup[1] && pickedUpFileGroup[0] <= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] >= filesByFileId.current[file.fileId]) || (pickedUpFileGroup[0] > pickedUpFileGroup[1] && pickedUpFileGroup[0] >= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] <= filesByFileId.current[file.fileId])))}
+                            $pickedUp={pickedUpFileId == file.fileId || (pickedUpFileGroup != undefined && pickedUpFileGroup.includes(index))}
                             $mouseX={mouseCoords[0]}
                             $mouseY={mouseCoords[1]}
-                            $selected = {dragOverFileId == file.fileId || selectedFileGroup != undefined && ((selectedFileGroup.length == 1 && selectedFileGroup[0] == filesByFileId.current[file.fileId]) || (selectedFileGroup.length == 2 && (selectedFileGroup[0] <= selectedFileGroup[1] && selectedFileGroup[0] <= filesByFileId.current[file.fileId] && selectedFileGroup[1] >= filesByFileId.current[file.fileId]) || (selectedFileGroup[0] > selectedFileGroup[1] && selectedFileGroup[0] >= filesByFileId.current[file.fileId] && selectedFileGroup[1] <= filesByFileId.current[file.fileId])))}
-                            $indexDiff = {selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] < selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[0] : selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] > selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[1] : 0}
-                            onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : undefined}
-                            onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
-                            onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(e, filesByFileId.current[file.fileId])}
+                            $selected = {dragOverFileId == file.fileId || selectedFileGroup != undefined && selectedFileGroup.includes(index)}
+                            $indexDiff = {0}
+                            onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : false}
+                            onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : () => {isLongPress.current = false; clearTimeout(timer.current);}}
+                            onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(e, filesByFileId.current[file.fileId]) : selectFile(e, index)}
                             onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
                             onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
                             onDragLeave = {(e) => {handleDragOver(e, undefined)}}
                             onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ? handleFileDrag(e, projectId, userId, file.fileId, file.filepath) : undefined}}>
 
-                        <div style={{display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? <Image src={icon_folder} alt="" objectFit='contain' width='36'/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36'/>} <div style={{marginLeft: '1em'}}>{file.filename}
+                        <div style={{pointerEvents: "none", display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? <Image src={icon_folder} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>} <div style={{marginLeft: '1em', pointerEvents:"none"}}>{file.filename}
                         <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
                                               logicalId={file.logicalId} storageId={file.storageId}
                                               size={file.size} versionId={file.versionId} ownerId={file.ownerId}
@@ -1570,11 +1660,11 @@ export default function FilePanel() {
                             $pickedUp={pickedUpFileId == file.fileId || (pickedUpFileGroup != undefined && (pickedUpFileGroup.length == 2 && (pickedUpFileGroup[0] <= pickedUpFileGroup[1] && pickedUpFileGroup[0] <= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] >= filesByFileId.current[file.fileId]) || (pickedUpFileGroup[0] > pickedUpFileGroup[1] && pickedUpFileGroup[0] >= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] <= filesByFileId.current[file.fileId])))}
                             $mouseX={mouseCoords[0]}
                             $mouseY={mouseCoords[1]}
-                            $selected = {dragOverFileId == file.fileId || selectedFileGroup != undefined && ((selectedFileGroup.length == 1 && selectedFileGroup[0] == filesByFileId.current[file.fileId]) || (selectedFileGroup.length == 2 && selectedFileGroup[0] <= filesByFileId.current[file.fileId] && selectedFileGroup[1] >= filesByFileId.current[file.fileId]))}
+                            $selected = {dragOverFileId == file.fileId || selectedFileGroup != undefined && selectedFileGroup.includes(index)}
                             $indexDiff = {selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] < selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[0] : selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] > selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[1] : 0}
                             onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : undefined}
                             onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
-                            onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(filesByFileId.current[file.fileId]) : selectFile(e, filesByFileId.current[file.fileId])}
+                            onClick={(e: React.MouseEvent<HTMLButtonElement>) => e.detail == 2 ? reorientView(index) : undefined}
                             onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
                             onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
                             onDragLeave = {(e) => {handleDragOver(e, undefined)}}>
@@ -1667,7 +1757,7 @@ export default function FilePanel() {
 
                     {/* Versions block inserted directly here */}
                     {contextMenuVersionPopout && contextFile?.versions && (
-                        <ContextMenuPopout $index={contextMenuTagPopout ? 2 : 1}>
+                        <ContextMenuPopout $index={7.248}>
                           {[...contextFile.versions]
                             .sort((a, b) => new Date(a.updatedAt!).getTime() - new Date(b.updatedAt!).getTime())
                             .reverse()
@@ -2065,6 +2155,7 @@ const FilePathContainer = styled.div`
     padding: 15px;
       overflow-x: auto;
     white-space: nowrap;
+    background-color: white;
 `;
 const Input = styled.input`
   flex: 1;
@@ -2149,6 +2240,7 @@ const DismissButton = styled.button`
   }
 `;
 
+// @ts-ignore
 const FloatingRecycleButton = styled.button`
 
   width: 2rem;
