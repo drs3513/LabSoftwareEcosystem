@@ -42,6 +42,7 @@ import icon_sort3 from "/assets/icons/sort-low-to-high-outlined-rounded.svg";
 import icon_binsolid from "/assets/icons/trash-3-outlined-rounded.svg";
 import icon_binline from "/assets/icons/trash-3-solid-rounded.svg";
 import icon_folder from "/assets/icons/folder-1-outlined-rounded.svg";
+import icon_folderopen from "/assets/icons/folder-1-outlined-rounded-open.svg";
 
 import icon_filegeneric from "/assets/icons/file-outlined-rounded.svg";
 import icon_filecpp from "/assets/icons/file-icon-24x24-cpp.svg";
@@ -1642,7 +1643,7 @@ export default function FilePanel() {
                             onDragLeave = {(e) => {handleDragOver(e, undefined)}}
                             onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ? handleFileDrag(e, projectId, userId, file.fileId, file.filepath) : undefined}}>
 
-                        <div style={{pointerEvents: "none", display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? <Image src={icon_folder} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>} <div style={{marginLeft: '1em', pointerEvents:"none"}}>{file.filename}
+                        <div style={{pointerEvents: "none", display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? file.open ? <Image src={icon_folderopen} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>: <Image src={icon_folder} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>} <div style={{marginLeft: '1em', pointerEvents:"none"}}>{file.filename}
                         <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
                                               logicalId={file.logicalId} storageId={file.storageId}
                                               size={file.size} versionId={file.versionId} ownerId={file.ownerId}
