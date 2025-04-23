@@ -13,7 +13,7 @@ export function request(ctx) {
             expression: "fileId = :fileId",
             expressionValues: util.dynamodb.toMapValues({":fileId": ctx.arguments.fileId })
         },
-        index: "messagesByFileId"
+        index: "messagesByFileIdAndPagination"
         //operation: "Scan"
     };
 }
