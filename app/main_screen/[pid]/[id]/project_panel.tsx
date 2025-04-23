@@ -106,6 +106,7 @@ const Project = styled.div.attrs<{$selected: boolean}>(props => ({
   background-color: white;
   padding: 1rem;
   border-bottom: 1px solid #D7DADD;
+  overflow: hidden;
   cursor: pointer;
   &:hover {
     background-color: #365679;
