@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef, use } from "react";
 import { useGlobalState } from "../GlobalStateContext";
 import {
-  getMessagesForFile,
   createMessage,
   updateMessage,
   deleteMessage,
   searchMessages,
   getTagsForMessage,
-  updateMessageTags
+  updateMessageTags,
+  getMessagesByFileIdAndPagination
 } from "@/lib/message";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
@@ -30,11 +30,6 @@ interface Message {
   email?: string;
 }
 
-interface Tag {
-  tagId: string;
-  messageId?: string |null;
-  tagName: string
-}
 
 export default function ChatPanel() {
   const { projectId, fileId, userId} = useGlobalState();
@@ -54,74 +49,53 @@ export default function ChatPanel() {
   const [tagSearchTerm, setTagSearchTerm] = useState<Array<string>>([])
   const [authorSearchTerm, setAuthorSearchTerm] = useState<Array<string>>([])
 
+  //for getting the messages
+  const [nextToken, setNextToken] = useState<string | null>(null);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [hasPreviousPage, setHasPreviousPage] = useState(false);
 
 
 
-  const observeMessages = () => {
-    // if (!fileId) return;
+  
+  
+  async function fetchMessages() {
+    if (!fileId ) return;
 
-    const subscription = client.models.Message.observeQuery({
-      filter: { fileId: { eq: fileId } },
-    }).subscribe({
-      next: async (data) => {
-        if (data.items && Array.isArray(data.items)) {
-          const sortedMessages = data.items.sort(
-              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          );
-          const messagesWithEmails = await Promise.all(
-              sortedMessages.map(async (msg) => {
-                const user = await client.models.User.get({ userId: msg.userId });
-                if(!msg?.isDeleted){
-                  if(msg?.isUpdated){
-                    return {
-                      ...msg,
-                      email: user?.data?.username,
-                      edited: msg.isUpdated,
-                    };
-                  }
-                  else{
-                    return {
-                      ...msg,
-                      email: user?.data?.username,
-                    };
-                  }
-                }
-                else{
-                  return{
-                    ...msg,
-                    content: "",
-                    deleted: true,
-                  }
-                }
-              })
-          );
+    console.log("1Fetching next messages for fileId:", fileId, "nextToken:", nextToken || "null");
 
-          setMessages(messagesWithEmails);
-        }
-      },
-      error: (error) => {
-        console.error("Error observing messages:", error);
-      },
-    });
 
-    return () => {
-      if (subscription && typeof subscription.unsubscribe === "function") {
-        subscription.unsubscribe();
-      }
-    };
+  const response = await getMessagesByFileIdAndPagination(fileId, nextToken);
+
+  if(nextToken !== null){
+    setNextToken(null); // Reset nextToken 
+    setHasNextPage(false); // assume No more pages to fetch
   }
 
-  async function fetchMessages() {
-    if (!fileId) return;
-    console.log("Fetching messages for fileId:", fileId);
-    const fetchedMessages = await getMessagesForFile(fileId);
-    console.log("Fetched messages:", fetchedMessages);
-    if (fetchedMessages && fetchedMessages.length > 0) {
-      const sortedMessages = fetchedMessages.sort(
-          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      );
-      console.log("Sorted messages:", sortedMessages);
-      let temp_messages: Array<Message> = [];
+  if (!response || !response.data) {
+    console.log("No response or data found.");
+    setNextToken(null); // Reset nextToken
+    setHasNextPage(false); // No more pages to fetch
+    setLoading(false); // Stop loading
+    return;
+  }
+
+  // Ensure nextToken is a string or null
+  const newNextToken = response.nextToken || null;
+
+  // setNextToken(newNextToken);
+  // setHasNextPage(!!newNextToken);
+
+  // Process messages
+  const messages = response.data;
+  console.log("Fetched messages:", messages);
+
+  // Sort messages by createdAt timestamp
+  if (messages && messages.length > 0) {
+    const sortedMessages = messages.sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+
+    let temp_messages: Array<Message> = [];
       for (let msg of sortedMessages) {
         if (msg) {
           temp_messages = [
@@ -132,26 +106,47 @@ export default function ChatPanel() {
               userId: msg.userId,
               content: msg.content,
               createdAt: msg.createdAt,
-              edited: msg.isUpdated ?? false,
-              deleted: msg.isDeleted ?? false,
+              edited: msg.edited ?? false,
+              deleted: msg.deleted ?? false,
               email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown",
             },
           ];
         }
       }
-      setMessages(temp_messages);
-    }
-    setLoading(false);
+      // Append new messages to state
+      setMessages((prevMessages) => [...temp_messages, ...prevMessages ]);
+      //setMessages(temp_messages);
+      setLoading(false); // Stop loading
+  
   }
+    
+    //If there's a nextToken, update it and fetch more
+    if (response.nextToken) {
+      setNextToken(response.nextToken);
+      setHasNextPage(true);
+    } else {
+      console.log("No nextToken available, end of messages.");
+      setNextToken(null); // End of pagination
+    }
+  }
+
+  //fetching next messages when the user scrolls to the top of the chat
+  const handleScroll = async (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop } = e.currentTarget;
+    if (scrollTop === 0 && hasNextPage ) {
+      console.log("Fetching more messages...");
+      await fetchMessages();
+    }
+  };
 
   useEffect(() => {
 
     if (fileId) {
-      console.log("Fetching messages for fileId:", fileId);
+      console.log("2Fetching messages for fileId:", fileId);
+      setNextToken(null); // Reset nextToken when fileId changes
+      setMessages([]); // Clear messages when fileId changes
       fetchMessages();
-      const unsubscribe = observeMessages();
-      return () => unsubscribe();
-    }
+     }
   }, [fileId]);
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -384,8 +379,7 @@ export default function ChatPanel() {
     setSearchTerm([]);
     console.log("Search input cleared. Fetching original messages...");
     fetchMessages(); // Fetch the original messages
-    const unsubscribe = observeMessages();
-    return () => unsubscribe();
+    
   };
 
   // Function to handle search input changes
@@ -496,7 +490,7 @@ export default function ChatPanel() {
 
   return (
       //step 2: display the searching input to the top bar container and call the handleSearch function
-      <ChatContainer>
+      <ChatContainer onScroll={handleScroll}>
         <TopBarContainer>
           <SearchInputWrapper>
             <Input
@@ -512,7 +506,7 @@ export default function ChatPanel() {
           </SearchInputWrapper>
         </TopBarContainer>
 
-        <ChatMessagesWrapper>
+        <ChatMessagesWrapper >
           {messages.map((msg) => (
               <ChatMessage
                   key={msg.messageId}
