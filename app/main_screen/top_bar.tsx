@@ -124,29 +124,36 @@ const PanelContainer = styled.div.attrs<{$posX: number; $posY: number; $width: n
 const Header = styled.div`
     padding: 0.5rem;
     height: 3rem;
-    background-color: lightgray;
-    text-align: left;
+    color: black;
+    background-color: #AFC1D0;
+    text-align: center;
+    font-size: 16px;
+    font-weight: bold;
     -webkit-user-select: none;
     -ms-user-select: none;
     user-select: none;
 `;
 
 const CloseButton = styled.button`
-    margin-left: auto;
-    width: 30px;
-    height: 30px;
-    float: right;
-    border-radius: 15px;
-    border-style: solid;
-    border-color: gray;
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    background: none;
+    border: none;
+    font-size: 16px;
     cursor: pointer;
+    &:hover {
+        color: white;
+        transition: 0.2s;
+    }
 `;
 
 const Resize = styled.div`
     width: 24px;
     height: 24px;
+    position: fixed;
     right: 0;
-    margin-left: auto;
+    bottom: 0;
     stroke: black;
     stroke-width: 3;
     cursor: nwse-resize;
@@ -439,12 +446,12 @@ export default function TopBar() {
 
     function handleResize(e: React.DragEvent<HTMLDivElement>) {
       const newWidth = panelWidth - (whitelistPanelPos.posX + panelWidth - e.pageX);
-      if (newWidth > 400) {
+      if (newWidth > 200) {
         setPanelWidth(newWidth);
       }
 
       const newHeight = panelHeight - (whitelistPanelPos.posY + panelHeight - e.pageY);
-      if (newHeight > 400) {
+      if (newHeight > 200) {
         setPanelHeight(newHeight);
       }
     }
@@ -469,7 +476,7 @@ export default function TopBar() {
               close();
             }}
           >
-            X
+            ✖
           </CloseButton>
         </Header>
         <UserList>
