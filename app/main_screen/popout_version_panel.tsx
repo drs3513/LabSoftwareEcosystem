@@ -4,14 +4,14 @@ import type { Schema } from "@/amplify/data/resource";
 
 type FileVersion = Pick<
   Schema["File"]["type"],
-  "versionId" | "updatedAt"
+  "versionId" | "updatedAt" | "storageId"
 >;
 
 interface Props {
   fileId: string;
   fileName: string;
   logicalId: string;
-  filepath: string;
+  storageId: string;
   ownerId: string;
   projectId: string;
   versions: FileVersion[];
@@ -23,7 +23,7 @@ interface Props {
     versionId: string,
     logicalId: string,
     filename: string,
-    filepath: string,
+    storageId: string,
     ownerId: string,
     projectId: string
   ) => void;
@@ -32,7 +32,7 @@ interface Props {
 export default function VersionPanel({
   fileName,
   logicalId,
-  filepath,
+  storageId,
   ownerId,
   projectId,
   versions,
@@ -81,7 +81,7 @@ export default function VersionPanel({
                     version.versionId,
                     logicalId,
                     fileName,
-                    filepath,
+                    version.storageId ?? storageId,
                     ownerId,
                     projectId
                   )

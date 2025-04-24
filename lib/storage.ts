@@ -7,18 +7,17 @@ import JSZip from "jszip";
 
 export async function getFileVersions(key: string): Promise<string | null> {
   const maxRetries = 3;
-  let attempt = 0;
 
-  while (attempt < maxRetries) {
-    //console.log(`[INFO] Fetching file versions (Attempt ${attempt + 1}/${maxRetries})`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`[INFO] Fetching file versions (Attempt ${attempt}/${maxRetries})`);
+
+    const session = await fetchAuthSession();
+    if (!session?.credentials) {
+      console.warn("[WARN] Missing or invalid credentials.");
+      continue;
+    }
 
     try {
-      const session = await fetchAuthSession();
-
-      if (!session || !session.credentials) {
-        new Error("No valid credentials found");
-      }
-
       const response = await fetch("/api/s3-versions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -26,7 +25,8 @@ export async function getFileVersions(key: string): Promise<string | null> {
       });
 
       if (!response.ok) {
-        new Error(`API Error: ${response.status} ${response.statusText}`);
+        console.warn(`[WARN] Response failed: ${response.status} ${response.statusText}`);
+        continue;
       }
 
       const data = await response.json();
@@ -34,33 +34,34 @@ export async function getFileVersions(key: string): Promise<string | null> {
 
       if (versions.length === 0) {
         console.warn(`[WARN] No versions found for key: ${key}`);
-        new Error("No versions found");
+        continue;
       }
 
       versions.sort((a: any, b: any) =>
         new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
       );
 
-      //console.log(`[SUCCESS] Retrieved latest version for key: ${key}`);
-      return versions[0].versionId;
-
-    } catch (error: any) {
-      //console.error(`[ERROR] Attempt ${attempt + 1} failed:`, error.message || error);
-      attempt++;
-
-      if (attempt < maxRetries) {
-        const delay = Math.pow(2, attempt) * 100;
-        //console.log(`[INFO] Retrying in ${delay}ms...`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
+      const versionId = versions[0].versionId;
+      console.log(versions);
+      if (versionId) {
+        console.log(`[SUCCESS] Retrieved latest version: ${versionId}`);
+        return versionId;
       } else {
-        console.error("[FATAL] Max retries reached. Unable to fetch file versions.");
-        return null;
+        console.warn(`[WARN] Latest version entry missing versionId`);
       }
+    } catch (err) {
+      console.error(`[ERROR] Fetching version failed on attempt ${attempt}:`, err);
     }
+
+    const delay = Math.pow(2, attempt) * 100;
+    console.log(`[INFO] Retrying in ${delay}ms...`);
+    await new Promise(res => setTimeout(res, delay));
   }
 
+  console.error(`[FATAL] Could not retrieve versionId for key: ${key}`);
   return null;
 }
+
 
 
 // Upload file and return S3 key
@@ -73,6 +74,7 @@ export async function uploadFile(
   try {
     const key = `uploads/${userId}/${projectId}${filePath}`;
     const fileReader = new FileReader();
+    console.log("KEY: ", key);
 
     return new Promise((resolve, reject) => {
       fileReader.onload = async (event) => {
@@ -107,21 +109,6 @@ export async function uploadFile(
   }
 }
 
-//export async function getFileProperties(filePath: string, userId:string, projectId: string) {
-//  const key = `uploads/${userId}/${projectId}${filePath}`;
-//  try {
-//    const result = await getProperties({
-//      path: key,
-//      // Alternatively, path: ({ identityId }) => `album/${identityId}/1.jpg`
-//      options: {
-//        // Specify a target bucket using name assigned in Amplify Backend
-//        bucket: 'filestorage142024'
-//      }
-//    });
-//  } catch (error) {
-//    console.error('Error ', error);
-//  }
-//}
 
 export type ZipTask = {
   cancel: () => void;
@@ -188,17 +175,6 @@ export function startDownloadTask(fileKey: string, onProgress: (percent: number)
   });
 }
 
-
-
-//export async function downloadFileToMemory(fileKey: string): Promise<Blob> {
-//  try {
-//    const { body } = await (await downloadData({ path: fileKey })).result;
-//    return await body.blob();
-//  } catch (error) {
-//    console.error("Error downloading file to memory:", error);
-//    throw error;
-//  }
-//}
 
 export async function deleteFileFromStorage(fileKey: string): Promise<void> {
   try {

@@ -109,7 +109,6 @@ export async function processAndUploadFiles(
   let fileCount = 0;
   let processed = 0;
 
-  // 🔧 Join paths without double slashes
   function joinPaths(...parts: string[]) {
     return parts.join("/").replace(/\/+/g, "/").replace(/^\/?/, "/").replace(/\/$/, "");
   }
@@ -127,6 +126,7 @@ export async function processAndUploadFiles(
   }
 
   fileCount = countFiles(dict);
+  console.log(`[INIT] Total files to process: ${fileCount}`);
 
   async function recursivePrint(
     obj: Record<string, any>,
@@ -138,7 +138,7 @@ export async function processAndUploadFiles(
       if (uploadTaskRef?.current?.isCanceled) {
         console.warn("[CANCEL] Upload task was canceled mid-process.");
         await abortUpload(uploadTaskRef.current.uploadedFiles, projectId);
-        new Error("Upload canceled by user.");
+        throw new Error("Upload canceled by user.");
       }
 
       for (const [key, value] of Object.entries(obj)) {
@@ -146,6 +146,8 @@ export async function processAndUploadFiles(
 
         if (key !== "files") {
           const dirPath = joinPaths(currentFilePath, key);
+          console.log(`[DIR] Creating folder "${key}" at "${dirPath}"`);
+
           const newFile = await createFile({
             projectId,
             fileId: uuid,
@@ -165,9 +167,12 @@ export async function processAndUploadFiles(
 
           const nextParentId = newFile?.data?.fileId;
           if (!nextParentId) {
+            console.error("[ERROR] Failed to create directory entry in DB:", newFile);
             await abortUpload(uploadedFiles, projectId);
-            new Error("Failed to create directory");
+            throw new Error("Failed to create directory");
           }
+
+          console.log(`[SUCCESS] Directory created: ${key} (ID: ${nextParentId})`);
 
           uploadedFiles.push({ fileId: nextParentId });
           uploadTaskRef?.current?.uploadedFiles.push({ fileId: nextParentId });
@@ -179,48 +184,48 @@ export async function processAndUploadFiles(
             if (!(fileValue instanceof File)) continue;
 
             const filePath = joinPaths(currentFilePath, fileKey);
+            console.log(`[UPLOAD] Starting file upload: "${fileKey}" to path "${filePath}"`);
 
             try {
               const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, filePath);
+              console.log(`[STORAGE] Upload complete. S3 Key: "${storageKey}"`);
+
               let versionId: string | null = null;
-              let retries = 0;
-              while (!versionId && retries < 5) {
-                versionId = await getFileVersions(storageKey);
-                if (!versionId) {
-                  const delay = Math.pow(2, retries + 1) * 100;
-                  console.warn(`[RETRY] Waiting ${delay}ms for version info...`);
-                  await new Promise(res => setTimeout(res, delay));
-                }
-                retries++;
-              }
+              versionId = await getFileVersions(storageKey);
+
               if (!versionId) {
+                console.error("[ERROR] Could not fetch versionId after retries.");
                 await abortUpload(uploadedFiles, projectId);
-                new Error("Could not retrieve version ID after retry");
-              } else {
-                const newFile = await createFile({
-                  projectId,
-                  fileId: fileUuid,
-                  logicalId: fileUuid,
-                  filename: fileKey,
-                  isDirectory: false,
-                  filepath: `${currentFilePath}/${fileKey}`,
-                  parentId: currentParentId,
-                  storageId: storageKey,
-                  size: fileValue.size ?? 0,
-                  versionId,
-                  ownerId,
-                  isDeleted: 0,
-                  createdAt: now,
-                  updatedAt: now,
-                });
-                if(!newFile || !newFile.data || !newFile.data.fileId) {
-                  await abortUpload(uploadedFiles, projectId);
-                  new Error("DB record creation failed");
-                } else {
-                  uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
-                  uploadTaskRef?.current?.uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
-                }
+                throw new Error("Could not retrieve version ID");
               }
+
+              const newFile = await createFile({
+                projectId,
+                fileId: fileUuid,
+                logicalId: fileUuid,
+                filename: fileKey,
+                isDirectory: false,
+                filepath: `${currentFilePath}/${fileKey}`,
+                parentId: currentParentId,
+                storageId: storageKey,
+                size: fileValue.size ?? 0,
+                versionId,
+                ownerId,
+                isDeleted: 0,
+                createdAt: now,
+                updatedAt: now,
+              });
+
+              if (!newFile || !newFile.data || !newFile.data.fileId) {
+                console.error("[ERROR] Failed to create file entry in DB:", newFile);
+                await abortUpload(uploadedFiles, projectId);
+                throw new Error("DB record creation failed");
+              }
+
+              console.log(`[SUCCESS] File "${fileKey}" uploaded with version "${versionId}" (ID: ${newFile.data.fileId})`);
+
+              uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
+              uploadTaskRef?.current?.uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
 
               processed++;
               if (setProgress && fileCount > 0) {
@@ -229,12 +234,14 @@ export async function processAndUploadFiles(
               }
 
             } catch (error) {
+              console.error(`[FAIL] File "${fileKey}" failed to upload:`, error);
               await abortUpload(uploadedFiles, projectId);
             }
           }
         }
       }
     } catch (error) {
+      console.error("[FATAL] Upload process exception caught:", error);
       await abortUpload(uploadedFiles, projectId);
       throw error;
     }
@@ -243,9 +250,10 @@ export async function processAndUploadFiles(
   try {
     await recursivePrint(dict, 0, parentId || rootParentId, currentPath);
   } catch (e) {
-    console.warn("[FINAL] Upload process was aborted.");
+    console.warn("[FINAL] Upload process was aborted:", e);
   }
 }
+
 
 
 export async function Restorefile(fileId: string, versionId: string, projectId: string) {
@@ -605,6 +613,7 @@ export async function createFile({
     parentId,
     size,
     versionId,
+    storageId, 
     ownerId,
     isDeleted,
     createdAt,
