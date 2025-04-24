@@ -97,7 +97,7 @@ var sort_number = 0;
 
 type FileVersion = Pick<
   Schema["File"]["type"],
-  "fileId" | "logicalId" | "filename" | "filepath" | "parentId" | "storageId"|
+  "fileId" | "logicalId" | "filename" | "filepath" | "parentId" |
   "size" | "versionId" | "ownerId" | "projectId" | "createdAt" | "updatedAt"
 >;
 
@@ -411,7 +411,7 @@ export default function FilePanel() {
         new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
       );
       const latest = versions[0];
-      console.log(latest.storageId);
+  
       groupedFiles.push({
         fileId: latest.fileId,
         logicalId: latest.logicalId,
@@ -1016,10 +1016,10 @@ export default function FilePanel() {
       console.error("[ERROR] No files received.");
       return;
     }
-
+  
     const actualRoot = rootFilePath === "/" ? `ROOT-${projectId}` : rootFilePath;
     const currentViewPath = actualRoot.replace(/\/+$/, "");
-
+  
     const filePathMap = new Map<string, { fileId: string, logicalId: string }>();
     filesRef.current?.forEach(f => {
       const fullPath = `${f.filepath}`.replace(/\/+/g, "/");
@@ -1030,7 +1030,7 @@ export default function FilePanel() {
         });
       }
     });
-
+  
     const folderDict: Record<string, any> = {};
     uploadTask.current = {
       isCanceled: false,
@@ -1040,12 +1040,12 @@ export default function FilePanel() {
       },
     };
     setShowProgressPanel(true);
-
+  
     for (const file of files) {
       if (uploadTask.current.isCanceled) {
         break;
       }
-
+  
       const relativePath = file.webkitRelativePath || file.name;
       const parts = relativePath.split("/").filter(Boolean);
       const fileName = parts.pop()!;
@@ -1053,20 +1053,20 @@ export default function FilePanel() {
       let currentPath = actualRoot;
       let adjustedParts = [...parts];
 
-
+  
       // Rename top-level folder if needed
       if (adjustedParts.length > 0) {
         let baseName = adjustedParts[0];
         let testPath = `${currentPath}/${baseName}`.replace(/\/+/g, "/");
-
+  
         while (filePathMap.has(testPath)) {
           baseName += "-copy";
           testPath = `${currentPath}/${baseName}`.replace(/\/+/g, "/");
         }
-
+  
         adjustedParts[0] = baseName;
       }
-
+  
       // Traverse folders and build folderDict
       for (const folder of adjustedParts) {
         const testPath = `${currentPath}/${folder}`.replace(/\/+/g, "/");
@@ -1077,16 +1077,16 @@ export default function FilePanel() {
           currentPath = testPath;
         }
       }
-
+  
       const normalizedFullPath = `${currentPath}/${fileName}`.replace(/\/+/g, "/");
       const conflict = filePathMap.get(normalizedFullPath);
-
+  
       let decision: 'overwrite' | 'version' | 'cancel' = 'overwrite';
       if (conflict && !applyToAll) {
         decision = await showConflictModal(file.name);
         if (decision === "cancel") continue;
       }
-
+  
       if (decision === "overwrite" && conflict) {
         const { key: storageKey } = await uploadFile(file, ownerId, projectId, relativePath);
         const versionId = await waitForVersionId(storageKey);
@@ -1095,7 +1095,7 @@ export default function FilePanel() {
         }
         continue;
       }
-
+  
       if (decision === "version" && conflict) {
         await createNewVersion(file, conflict.logicalId, projectId, ownerId, parentId, relativePath);
         continue;
@@ -1106,7 +1106,7 @@ export default function FilePanel() {
     }
 
     uploadQueue.current?.push({ folderDict, ownerId, projectId, parentId });
-
+  
     await processAndUploadFiles(
       folderDict,
       projectId,
@@ -1128,7 +1128,7 @@ export default function FilePanel() {
     setUploadProgress(null);
     setShowProgressPanel(false);
   };
-
+  
 
   useEffect(() => {
     const updateCurrentParent = async () => {
@@ -1136,9 +1136,9 @@ export default function FilePanel() {
         setCurrentParent(null);
         return;
       }
-
+  
       const currentId = activeParentIds[activeParentIds.length - 1].id;
-
+  
       try {
         const { data: file } = await client.models.File.get({ fileId: currentId, projectId });
         if (file) {
@@ -1167,7 +1167,7 @@ export default function FilePanel() {
         setCurrentParent(null);
       }
     };
-
+  
     updateCurrentParent();
   }, [projectId, activeParentIds]);
   
@@ -1579,29 +1579,26 @@ export default function FilePanel() {
     versionId: string,
     logicalId: string,
     filename: string,
-    storageId: string,
+    filepath: string,
     ownerId: string,
     projectId: string
   ) => {
-    if (!storageId || !versionId) {
-      if(!storageId){
-        console.error("❌ Missing storageId");
-      }
-      else{
-        console.error("❌ Missing versionId");
-      }
-      
+    const path = `uploads/${ownerId}/${projectId}${filepath}`;
+  
+    if (!path || !versionId || !filepath) {
+      console.error("❌ Missing path, versionId, or filename");
       return;
     }
   
-    const downloadUrl = `/api/files?key=${encodeURIComponent(storageId)}&versionId=${encodeURIComponent(versionId)}`;
+    // Generate the URL to your redirecting API route
+    const downloadUrl = `/api/files?key=${encodeURIComponent(path)}&versionId=${encodeURIComponent(versionId)}`;
   
+    // Open in a new tab or force download via anchor
     const a = document.createElement("a");
     a.href = downloadUrl;
     a.download = filename;
     a.click();
   };
-  
 
   function handleCreateFolder() {
     if (!projectId || !userId) return;
@@ -1889,68 +1886,121 @@ export default function FilePanel() {
                       Versions
                     </ContextMenuItem>
                     <ContextMenuItem
-onClick={async () => {
-  const file = files.find(f => f.fileId === contextMenuFileId);
-  console.log("[DEBUG] Selected file:", file);
-  if (!file || !projectId) {
-    console.warn("[WARN] No file found or projectId missing:", { file, projectId });
-    return;
-  }
-
-  const ext = file.filename.split(".").pop()?.toLowerCase();
-  console.log("[DEBUG] File extension:", ext);
-
-  const isText = ["txt", "md", "log", "csv"].includes(ext!);
-  const isOfficeDoc = ["doc", "docx", "rtf", "dox", "word"].includes(ext!);
-  const isPDF = ext === "pdf";
-  const isImage = ["png", "jpg", "jpeg"].includes(ext!);
-
-  if (!isText && !isOfficeDoc && !isPDF && !isImage) {
-    console.warn("[WARN] Unsupported file type for preview.");
-    return;
-  }
-
-  const path = file.storageId as string;
-  const versionId = file.versionId;
-  console.log("[DEBUG] File path:", path);
-  console.log("[DEBUG] File versionId:", versionId);
-
-  try {
-    const cachedUrl = await fetchCachedUrl(path, versionId);
-    console.log("[DEBUG] Cached URL fetched:", cachedUrl);
-
-    const popup = window.open("", "_blank", "width=800,height=600");
-    if (!popup) {
-      alert("Popup blocked. Please allow popups for this site.");
-      return;
-    }
-
-    const previewContent = isPDF
-      ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
-      : isImage
-      ? `<img src="${cachedUrl}" alt="${file.filename}" />`
-      : isText
-      ? `<pre><code id="code-block">Loading...</code></pre>`
-      : `<p>Unsupported file type.</p>`;
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>...</head>
-      <body>
-        ...
-        ${previewContent}
-        ...
-      </body>
-      </html>`;
-
-    popup.document.write(html);
-    popup.document.close();
-  } catch (err) {
-    console.error("[ERROR] Preview failed:", err);
-  }
-}}
-
+                      onClick={async () => {
+                        const file = files.find(f => f.fileId === contextMenuFileId);
+                        if (!file || !projectId) return;
+                      
+                        const ext = file.filename.split(".").pop()?.toLowerCase();
+                        const isText = ["txt", "md", "log", "csv"].includes(ext!); // Removed "py"
+                        const isOfficeDoc = ["doc", "docx", "rtf", "dox", "word"].includes(ext!);
+                        const isPDF = ext === "pdf";
+                        const isImage = ["png", "jpg", "jpeg"].includes(ext!);
+                      
+                        if (!isText && !isOfficeDoc && !isPDF && !isImage) return;
+                      
+                        const path = file.storageId as string;
+                        const versionId = file.versionId;
+                      
+                        try {
+                          const cachedUrl = await fetchCachedUrl(path, versionId);
+                          const popup = window.open("", "_blank", "width=800,height=600");
+                      
+                          if (!popup) {
+                            alert("Popup blocked. Please allow popups for this site.");
+                            return;
+                          }
+                      
+                          const previewContent = isPDF
+                          ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
+                          : isImage
+                          ? `<img src="${cachedUrl}" alt="${file.filename}" />`
+                          : isText
+                          ? `<pre><code id="code-block">Loading...</code></pre>`
+                          : `<p>Unsupported file type.</p>`;
+                        
+                        const html = `
+                          <!DOCTYPE html>
+                          <html lang="en">
+                          <head>
+                            <title>Preview - ${file.filename}</title>
+                            <style>
+                              html, body {
+                                height: 100%;
+                                margin: 0;
+                                font-family: sans-serif;
+                                background: #f0f0f0;
+                              }
+                              .toolbar {
+                                width: 100%;
+                                background: #333;
+                                color: white;
+                                padding: 10px;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                box-sizing: border-box;
+                              }
+                              .toolbar a {
+                                color: white;
+                                text-decoration: none;
+                                padding: 8px 12px;
+                                background-color: #007bff;
+                                border-radius: 5px;
+                              }
+                              .preview {
+                                height: calc(100% - 50px); /* Leave space for toolbar */
+                                overflow: auto;
+                                display: block;
+                              }
+                              iframe, img {
+                                max-width: 90%;
+                                max-height: 90%;
+                                border: none;
+                                margin: auto;
+                              }
+                              pre {
+                                background: white;
+                                padding: 1rem;
+                                margin: 0;
+                                width: 100%;
+                                height: 100%;
+                                box-sizing: border-box;
+                                overflow: auto;
+                                white-space: pre-wrap;
+                                word-wrap: break-word;
+                              }
+                            </style>
+                          </head>
+                          <body>
+                            <div class="toolbar">
+                              <div>Previewing: ${file.filename}</div>
+                              <a href="${cachedUrl}" download="${file.filename}">Download</a>
+                            </div>
+                            <div class="preview">
+                              ${previewContent}
+                            </div>
+                            ${
+                              isText
+                                ? `<script>
+                                     fetch("${cachedUrl}")
+                                       .then(res => res.text())
+                                       .then(code => {
+                                         document.getElementById("code-block").textContent = code;
+                                       });
+                                   </script>`
+                                : ""
+                            }
+                          </body>
+                          </html>
+                        `;
+                        
+                      
+                          popup.document.write(html);
+                          popup.document.close();
+                        } catch (err) {
+                          console.error("Preview failed:", err);
+                        }
+                      }}  
                     >
                       Preview
                     </ContextMenuItem>
