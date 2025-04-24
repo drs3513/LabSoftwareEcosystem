@@ -19,7 +19,6 @@ import {
   waitForVersionId,
   createFolder,
   fetchCachedUrl,
-  getAllFilePathsUnder,
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
