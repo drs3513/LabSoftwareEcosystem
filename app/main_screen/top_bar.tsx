@@ -148,6 +148,21 @@ const CloseButton = styled.button`
     }
 `;
 
+const ActionButton = styled.button`
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  border-radius: 5px;
+  position: relative;
+  background-color: white;
+  &:hover {
+    cursor: pointer;
+    background-color: #365679;
+    color: white;
+    transition: 0.2s;
+  }
+`;
+
 const Resize = styled.div`
     width: 24px;
     height: 24px;
@@ -480,7 +495,6 @@ export default function TopBar() {
           </CloseButton>
         </Header>
         <UserList>
-          <Button onClick={handleWhitelistUser}>Add User</Button>
           {users.map((user) => (
             <UserItem
               key={user.userId}
@@ -493,6 +507,7 @@ export default function TopBar() {
             </UserItem>
           ))}
         </UserList>
+         <div style={{alignItems: "center"}}><ActionButton onClick={handleWhitelistUser}>Add User</ActionButton></div>
         <Resize
           draggable={true}
           onDragStart={(e) => {
@@ -535,16 +550,16 @@ export default function TopBar() {
         <PanelContainer $posX={posX} $posY={posY} $width={panelWidth} $height={panelHeight}>
             <Header draggable={true} onDragStart={(e) => handleStartDrag(e)} onDragEnd={(e) => handleEndDrag(e)}>
                 User Details
-                <CloseButton onClick={close}>X</CloseButton>
+                <CloseButton onClick={close}>✖</CloseButton>
             </Header>
             <div style={{ padding: "1rem" }}>
                 <p><strong>Username:</strong> {user.username}</p>
                 <p><strong>Email:</strong> {user.email}</p>
                 <p><strong>ID:</strong> {user.userId}</p>
                 <p><strong>Role for Project:</strong> {roleForProject || "Loading..."}</p>
-                <button onClick={handleMakeAdmin}>Make Admin</button>
-                <button onClick={handleRevokeAdmin}>Revoke Admin</button>
-                <button onClick={handleRemoveUser}>Remove User</button>
+                <ActionButton onClick={handleMakeAdmin}>Make Admin</ActionButton>
+                <ActionButton onClick={handleRevokeAdmin}>Revoke Admin</ActionButton>
+                <ActionButton onClick={handleRemoveUser}>Remove User</ActionButton>
             </div>
         </PanelContainer>
     );
