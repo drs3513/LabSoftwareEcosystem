@@ -688,12 +688,13 @@ const ChatMessagesWrapper = styled.div`
 
 const ChatMessage = styled.div<{$sender?: boolean}>`
   display: flex;
+  color: white;
   justify-content: ${(props) => (props.$sender ? "flex-end" : "flex-start")};
   margin-bottom: 10px;
 `;
 
 const Chat_Body = styled.div<{$sender?: boolean}>`
-  background-color: ${(props) => (props.$sender ? "cadetblue" : "tan")};
+  background-color: ${(props) => (props.$sender ? "#365679" : "#0b1320")};
   padding: 10px;
   border-radius: 10px;
   max-width: 60%;
@@ -715,7 +716,7 @@ const ChatSender = styled.div`
 
 const ChatTimeStamp = styled.div`
   font-size: 8pt;
-  color: red;
+  color: gray;
   margin-top: 2px;
 `;
 

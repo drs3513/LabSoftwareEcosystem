@@ -138,11 +138,7 @@ export default function TopBar() {
             </Dropdown>
           )}
         </Top_Bar_Item>
-
-
       </Top_Bar_Group>
-
-
 
       <SignOutButton onClick={signOut}><Image src={icon_signout} alt="" height="36" objectPosition='fill'></Image></SignOutButton>
     </Top_Bar>
