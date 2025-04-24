@@ -451,7 +451,7 @@ export default function FilePanel() {
         createdAt: latest.createdAt,
         updatedAt: latest.updatedAt,
         visible: true,
-        open: false,
+        open: activeParentIds.some((parent) => parent.id == latest.fileId),
         isDirectory: latest.isDirectory,
         versions,
       });
@@ -1143,7 +1143,6 @@ export default function FilePanel() {
 
 
 
-  //TODO Make this do something!
   async function onFilePlace(e: React.MouseEvent<HTMLButtonElement> | React.MouseEvent<HTMLDivElement>, overFileId: Nullable<string>, overFilePath: Nullable<string>) {
     isLongPress.current = false;
     clearTimeout(timer.current)

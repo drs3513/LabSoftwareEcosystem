@@ -117,7 +117,21 @@ const schema = a
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
       })
       .identifier(["messageId"]),
+      searchMessages: a
+          .query()
+          .arguments({
+              fileId: a.string(),
+              messageContents: a.string().array(),
+              tagNames: a.string().array()
+          })
+          .returns(a.ref("Message").array())
+          .handler(
+              a.handler.custom({
+                  dataSource: a.ref("Message"),
+                  entry: "./searchMessages.js"
 
+              })
+          ),
     /*
     // Tag model
     Tag: a

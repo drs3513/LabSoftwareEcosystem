@@ -81,20 +81,7 @@ const SignOutButton = styled.div`
   }
 `;
 
-const UserList = styled.div`
-  max-height: 300px;
-  overflow-y: auto;
-  border-top: 1px solid black;
-`;
 
-const UserItem = styled.div`
-  padding: 8px 10px;
-  border-bottom: 1px solid #eee;
-  &:hover {
-    background-color: lightgray;
-    cursor: pointer;
-  }
-`;
 
 const PanelContainer = styled.div.attrs<{$posX: number; $posY: number; $width: number; $height: number}>(props => ({
     style: {
@@ -422,133 +409,9 @@ export default function TopBar() {
     setShowOptions(false);
   };
 
-  function CreateWhitelistPanel({ close }: { close: () => void }) {
-    const [panelWidth, setPanelWidth] = useState(400);
-    const [panelHeight, setPanelHeight] = useState(400);
-    const initialXDiff = useRef(0);
-    const initialYDiff = useRef(0);
-    const initialResizeX = useRef(0);
-    const initialResizeY = useRef(0);
 
-    function handleStartDrag(e: React.DragEvent<HTMLDivElement>) {
-      const panel = e.currentTarget as HTMLDivElement;
-      const panelBoundingBox = panel.getBoundingClientRect();
-      initialXDiff.current = e.pageX - panelBoundingBox.x;
-      initialYDiff.current = e.pageY - panelBoundingBox.y;
-    }
 
-    function handleEndDrag(e: React.DragEvent<HTMLDivElement>) {
-      setWhitelistPanelPos({
-        posX: e.pageX - initialXDiff.current,
-        posY: e.pageY - initialYDiff.current,
-      });
-    }
 
-    function handleResize(e: React.DragEvent<HTMLDivElement>) {
-      const newWidth = panelWidth - (whitelistPanelPos.posX + panelWidth - e.pageX);
-      if (newWidth > 200) {
-        setPanelWidth(newWidth);
-      }
-
-      const newHeight = panelHeight - (whitelistPanelPos.posY + panelHeight - e.pageY);
-      if (newHeight > 200) {
-        setPanelHeight(newHeight);
-      }
-    }
-
-    return (
-      <PanelContainer
-        $posX={whitelistPanelPos.posX}
-        $posY={whitelistPanelPos.posY}
-        $width={panelWidth}
-        $height={panelHeight}
-      >
-        <Header
-          draggable={true}
-          onDragStart={(e) => handleStartDrag(e)}
-          onDragEnd={(e) => handleEndDrag(e)}
-          onClick={(e) => e.stopPropagation()} // Prevent header clicks from propagating
-        >
-          Whitelist Users
-          <CloseButton
-            onClick={(e) => {
-              e.stopPropagation(); // Prevent click from propagating to the header
-              close();
-            }}
-          >
-            ✖
-          </CloseButton>
-        </Header>
-        <UserList>
-          <Button onClick={handleWhitelistUser}>Add User</Button>
-          {users.map((user) => (
-            <UserItem
-              key={user.userId}
-              onClick={(e) => {
-                e.stopPropagation(); // Prevent the click from closing the panel
-                setSelectedUser(user);
-              }}
-            >
-              <strong>{user.username}</strong> ({user.email})
-            </UserItem>
-          ))}
-        </UserList>
-        <Resize
-          draggable={true}
-          onDragStart={(e) => {
-            initialResizeX.current = e.pageX;
-            initialResizeY.current = e.pageY;
-          }}
-          onDragEnd={(e) => {
-            handleResize(e);
-          }}
-        >
-          <svg viewBox={"0 0 24 24"}>
-            <path d={"M21 15L15 21M21 8L8 21"} stroke="black" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </Resize>
-      </PanelContainer>
-    );
-  }
-
-  function UserFloatingPanel({ user, roleForProject, close }: { user: { userId: string; username: string; email: string }; roleForProject: string | null; close: () => void }) {
-    const [posX, setPosX] = useState(200);
-    const [posY, setPosY] = useState(200);
-    const [panelWidth, setPanelWidth] = useState(300);
-    const [panelHeight, setPanelHeight] = useState(400);
-    const initialXDiff = useRef(0);
-    const initialYDiff = useRef(0);
-
-    function handleStartDrag(e: React.DragEvent<HTMLDivElement>) {
-        const panel = e.currentTarget as HTMLDivElement;
-        const panelBoundingBox = panel.getBoundingClientRect();
-        initialXDiff.current = e.pageX - panelBoundingBox.x;
-        initialYDiff.current = e.pageY - panelBoundingBox.y;
-    }
-
-    function handleEndDrag(e: React.DragEvent<HTMLDivElement>) {
-        setPosX(e.pageX - initialXDiff.current);
-        setPosY(e.pageY - initialYDiff.current);
-    }
-
-    return (
-        <PanelContainer $posX={posX} $posY={posY} $width={panelWidth} $height={panelHeight}>
-            <Header draggable={true} onDragStart={(e) => handleStartDrag(e)} onDragEnd={(e) => handleEndDrag(e)}>
-                User Details
-                <CloseButton onClick={close}>X</CloseButton>
-            </Header>
-            <div style={{ padding: "1rem" }}>
-                <p><strong>Username:</strong> {user.username}</p>
-                <p><strong>Email:</strong> {user.email}</p>
-                <p><strong>ID:</strong> {user.userId}</p>
-                <p><strong>Role for Project:</strong> {roleForProject || "Loading..."}</p>
-                <button onClick={handleMakeAdmin}>Make Admin</button>
-                <button onClick={handleRevokeAdmin}>Revoke Admin</button>
-                <button onClick={handleRemoveUser}>Remove User</button>
-            </div>
-        </PanelContainer>
-    );
-  }
 
   return (
     <Top_Bar ref={dropdownRef}>
@@ -564,22 +427,12 @@ export default function TopBar() {
 
         <Top_Bar_Item onClick={toggleWhitelist}>
           Whitelist
-          {showWhitelist && (
-            <CreateWhitelistPanel
-              close={toggleWhitelist}
-            />
-          )}
+
         </Top_Bar_Item>
 
       </Top_Bar_Group>
 
-      {selectedUser && (
-        <UserFloatingPanel
-          user={selectedUser}
-          roleForProject={userRoleForProject}
-          close={() => setSelectedUser(null)}
-        />
-      )}
+
 
       <SignOutButton onClick={handleSignOut}><Image src={icon_signout} alt="" height="36" objectPosition='fill'></Image></SignOutButton>
     </Top_Bar>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useGlobalState } from "@/app/GlobalStateContext";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
@@ -10,6 +10,7 @@ import { listProjectsForUser } from "@/lib/project";
 import { getUserRole, isUserWhitelistedForProject } from "@/lib/whitelist"
 import {boolean} from "zod";
 import {useRouter, useSearchParams} from 'next/navigation'
+import WhitelistPanel from '@/app/main_screen/popout_whitelist_user_panel'
 
 const client = generateClient<Schema>();
 
@@ -20,6 +21,10 @@ export default function ProjectPanel() {
   const { user } = useAuthenticator();
   const [projects, setProjects] = useState<Array<{ projectId: string; projectName: string }>>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [contextMenuProjectId, setContextMenuProjectId] = useState<string | undefined>(undefined);
+  const [displayedWhitelistPanels, setDisplayedWhitelistPanels] = useState<string[]>([])
+
+  const [contextMenuPosition, setContextMenuPosition] = useState<number[]>([0,0])
 
   useEffect(() => {
     if (!user?.signInDetails?.loginId) return;
@@ -120,30 +125,74 @@ export default function ProjectPanel() {
     return () => subscription.unsubscribe();
   };
 
+  function createContextMenu(e: React.MouseEvent<HTMLDivElement>, projectId: string) {
+    e.preventDefault()
+    setContextMenuProjectId(projectId)
+    setContextMenuPosition([e.pageX, e.pageY])
+
+  }
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      setContextMenuProjectId(undefined);
+      setContextMenuPosition([0,0])
+    };
+    document.addEventListener("click", handleClickOutside);
+    document.addEventListener("contextmenu", handleClickOutside);
+    return () => {
+      document.removeEventListener("click", handleClickOutside);
+      document.removeEventListener("contextmenu", handleClickOutside);
+    };
+  }, [contextMenuProjectId]);
+
   return (
-    <PanelContainer>
-      {loading ? (
-        <LoadingText>Loading projects...</LoadingText>
-      ) : projects.length > 0 ? (
-        projects.map((project) => (
-          <Project
-            key={project.projectId}
-            $selected={project.projectId === projectId}
-            onClick={async () => {
-              setProject(project.projectId);
-              if (!userId) return;
-              const usrrole = await getUserRole(project.projectId, userId);
-              console.log(usrrole);
-              setRole(usrrole);
-            }}
-          >
-    {project.projectName}
-          </Project>
-        ))
-      ) : (
-        <NoProjects>No projects available.</NoProjects>
-      )}
-    </PanelContainer>
+      <>
+      <PanelContainer>
+        {loading ? (
+          <LoadingText>Loading projects...</LoadingText>
+        ) : projects.length > 0 ? (
+          projects.map((project) => (
+                <Project
+                  key={project.projectId}
+                  $selected={project.projectId === projectId}
+                  onClick={async () => {
+                    setProject(project.projectId);
+                    if (!userId) return;
+                    const usrrole = await getUserRole(project.projectId, userId);
+                    console.log(usrrole);
+                    setRole(usrrole);
+                  }}
+                  onContextMenu = {(e) => createContextMenu(e, project.projectId)}
+                >
+                  {project.projectName}
+
+                </Project>
+              ))
+            ) : (
+              <NoProjects>No projects available.</NoProjects>
+            )}
+          </PanelContainer>
+
+        {displayedWhitelistPanels.map((projectId) => (
+        <WhitelistPanel key={projectId}
+                        projectId={projectId}
+                        displayed={true}
+                        close={() => setDisplayedWhitelistPanels(displayedWhitelistPanels.filter(id => id != projectId))}
+                        initialPosX = {50} initialPosY={50}/>
+        ))}
+        {contextMenuProjectId ?
+            <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+              <ContextMenu>
+                <ContextMenuItem onClick={() => setDisplayedWhitelistPanels([...displayedWhitelistPanels, contextMenuProjectId])}>
+                  Whitelist Users
+                </ContextMenuItem>
+              </ContextMenu>
+            </ContextMenuWrapper>
+            :
+            undefined
+        }
+
+  </>
   );
 }
 
@@ -186,4 +235,111 @@ const NoProjects = styled.div`
 const LoadingText = styled.div`
   color: gray;
   text-align: center;
+`;
+const ContextMenuExitButton = styled.button`
+  border: none;
+  font: inherit;
+  outline: inherit;
+  height: inherit;
+  position: absolute;
+  text-align: center;
+  
+  padding: .2rem .3rem;
+  top: 0;
+  right: 0;
+  visibility: hidden;
+  background-color: lightgray;
+
+  &:hover {
+    cursor: pointer;
+    background-color: gray !important;
+  }
+
+`;
+const ContextMenuItem = styled.div`
+  position: relative;
+  text-align: left;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-bottom-color: gray;
+  font-size: 14px;
+
+  &:hover {
+    transition: background-color 250ms linear;
+    background-color: darkgray;
+    
+  }
+  &:hover > ${ContextMenuExitButton}{
+    visibility: visible;
+    background-color: darkgray;
+    transition: background-color 250ms linear;
+  }
+
+  &:last-child {
+    border-bottom-style: none;
+  }
+
+  padding: 0.2rem 0.5rem 0.2rem 0.2rem;
+`
+
+const ContextMenuTagInput = styled.input`
+  background-color: lightgray;
+  border-width: 0;
+
+  margin: 0;
+  text-align: left;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-bottom-color: gray;
+  font-size: 14px;
+  width: 100%;
+  
+  &:hover {
+    transition: background-color 250ms linear;
+    background-color: darkgray;
+  }
+
+  &:last-child {
+    border-bottom-style: none;
+  }
+  &:focus {
+    outline: none;
+    background-color: darkgray;
+    
+  }
+  padding: 0.2rem 0.5rem 0.2rem 0.2rem;
+`
+
+const ContextMenu = styled.div`
+    
+    background-color: lightgray;
+    border-color: dimgray;
+    border-style: solid;
+    border-width: 1px;
+    display: flex;
+    flex-direction: column;
+    height: max-content;
+    max-height: 300px; /* Add this */
+    overflow-y: auto;   /* Add this */
+`;
+const ContextMenuPopout = styled.div<{$index: number}>`
+    margin-top: ${(props) => "calc(" + props.$index + "* calc(21px + 0.4rem) + 1px)"};
+    
+    background-color: lightgray;
+    border-color: dimgray;
+    border-style: solid;
+    border-width: 1px;
+    height: max-content;
+    width: min-content;
+    min-width: 150px;
+    
+`;
+
+const ContextMenuWrapper = styled.div<{$x: number, $y: number}>`
+    position: fixed;
+    z-index: 2;
+    left: ${(props) => props.$x}px;
+    top: ${(props) => props.$y}px;
+    display: flex;
+    flex-direction: row;
 `;

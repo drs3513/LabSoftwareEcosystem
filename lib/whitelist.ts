@@ -105,6 +105,30 @@ export async function getUserRole(projectId: string, userId: string): Promise<Ro
   }
 }
 
+export async function listUsersForProject(projectId: string) {
+  try {
+    const currentUsers =  await client.models.Whitelist.list({
+      filter: {
+        projectId: {eq: projectId}
+      }
+    })
+    if(!currentUsers) return []
+
+    const allUsers = await client.models.User.list()
+
+    console.log(allUsers.data)
+    console.log(currentUsers.data)
+    console.log(allUsers.data.filter(user => currentUsers.data.some(currentUser => user.userId === currentUser.userIds)))
+    return allUsers.data.filter(user => currentUsers.data.some(currentUser => user.userId === currentUser.userIds))
+
+
+  } catch (error) {
+    console.error("Error finding whitelistable users", error);
+    return false;
+  }
+
+}
+
 export async function listUsersBelowRole(projectId: string, role: Role) {
   try {
     // Slice the global roleHierarchy to the current role
@@ -166,3 +190,26 @@ export async function isUserWhitelistedForProject(userId: string, projectId: str
   }
 }
 
+export async function getWhitelistableUsers(projectId: string) {
+  try {
+    const currentUsers =  await client.models.Whitelist.list({
+      filter: {
+        projectId: {eq: projectId}
+      }
+    })
+    if(!currentUsers) return []
+
+    const allUsers = await client.models.User.list()
+
+    console.log(allUsers.data)
+    console.log(currentUsers.data)
+    console.log(allUsers.data.filter(user => currentUsers.data.some(currentUser => user.userId === currentUser.userIds)))
+    return allUsers.data.filter(user => !currentUsers.data.some(currentUser => user.userId === currentUser.userIds))
+
+
+  } catch (error) {
+    console.error("Error finding whitelistable users", error);
+    return false;
+  }
+
+}

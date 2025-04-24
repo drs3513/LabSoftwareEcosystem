@@ -108,7 +108,7 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
     async function handleHardDelete(fileId: string) {
         /*const confirmed = window.confirm("This will permanently delete this file and all versions. Continue?");
         if (!confirmed || !projectId) return;*/
-
+        if(!projectId) return
         try {
             await hardDeleteFile(fileId, projectId);
             fetchFiles();
