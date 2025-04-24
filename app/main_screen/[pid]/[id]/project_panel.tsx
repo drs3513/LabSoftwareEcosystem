@@ -51,6 +51,7 @@ export default function ProjectPanel() {
 
   async function handleDeleteProject(projectId: string) {
     try {
+      console.log("deleting project:", projectId);
       await hardDeleteProject(projectId);
       setProjects((prev) => prev.filter((p) => p.projectId !== projectId));
       if (projectId === contextMenu?.projectId) {
@@ -228,7 +229,7 @@ export default function ProjectPanel() {
                 <ContextMenuItem onClick={() => setDisplayedWhitelistPanels([...displayedWhitelistPanels, contextMenuProjectId])}>
                   Whitelist Users
                 </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleDeleteProject(contextMenu.projectId!)}>
+                <ContextMenuItem onClick={() => handleDeleteProject(contextMenuProjectId)}>
                   Delete Project
                 </ContextMenuItem>
               </ContextMenu>
