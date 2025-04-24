@@ -173,7 +173,7 @@ export async function listUsersInProject(projectId: string, inProject: boolean) 
 
     const allUsers = await client.models.User.list()
 
-    return allUsers.data.filter(user => !currentUsers.data.some(currentUser => inProject ? user.userId === currentUser.userIds : user.userId !== currentUser.userIds))
+    return allUsers.data.filter(user => inProject ? currentUsers.data.some(currentUser => user.userId === currentUser.userIds) : !currentUsers.data.some(currentUser => user.userId === currentUser.userIds))
 
 
   } catch (error) {
