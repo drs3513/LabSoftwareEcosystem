@@ -555,21 +555,21 @@ export default function TopBar() {
       <Top_Bar_Group>
         <Top_Bar_Item onClick={toggleOptions}>
           Options
-          {showOptions && (
-            <Dropdown>
-              <DropdownItem onClick={handleCreateProject}>Create Project</DropdownItem>
-            </Dropdown>
-          )}
         </Top_Bar_Item>
+        {showOptions && (
+          <Dropdown>
+            <DropdownItem onClick={handleCreateProject}>Create Project</DropdownItem>
+          </Dropdown>
+        )}
 
         <Top_Bar_Item onClick={toggleWhitelist}>
           Whitelist
-          {showWhitelist && (
-            <CreateWhitelistPanel
-              close={toggleWhitelist}
-            />
-          )}
         </Top_Bar_Item>
+        {showWhitelist && (
+          <CreateWhitelistPanel
+            close={toggleWhitelist}
+          />
+        )}
 
       </Top_Bar_Group>
 
