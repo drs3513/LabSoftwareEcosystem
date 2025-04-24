@@ -6,7 +6,7 @@ import JSZip from "jszip";
 //const s3Client = new S3Client({ region: "us-east-1" });
 
 export async function getFileVersions(key: string): Promise<string | null> {
-  const maxRetries = 1;
+  const maxRetries = 3;
   let attempt = 0;
 
   while (attempt < maxRetries) {
@@ -45,7 +45,7 @@ export async function getFileVersions(key: string): Promise<string | null> {
       return versions[0].versionId;
 
     } catch (error: any) {
-      console.error(`[ERROR] Attempt ${attempt + 1} failed:`, error.message || error);
+      //console.error(`[ERROR] Attempt ${attempt + 1} failed:`, error.message || error);
       attempt++;
 
       if (attempt < maxRetries) {
@@ -77,6 +77,7 @@ export async function uploadFile(
     return new Promise((resolve, reject) => {
       fileReader.onload = async (event) => {
         try {
+          console.log(event)
           // Upload the file
           uploadData({
             data: event.target?.result as ArrayBuffer,
@@ -144,7 +145,7 @@ export async function downloadFolderAsZip(
       const { body } = await downloadData({
         key: file.storageId,
       }).result;
-
+      console.log(body)
       const blob = await body.blob();
 
       // Add to zip under the desired directory structure

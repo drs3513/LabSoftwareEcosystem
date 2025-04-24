@@ -391,23 +391,20 @@ export async function deleteFileFromDB(fileId: string, projectId: string): Promi
 export async function listFilesForProjectAndParentIds(projectId: string, parentIds: string[]){
 
   try {
-    const response = await client.models.File.list({
-      filter: {
-        and: [
-          { projectId: { eq: projectId } },
-          {isDeleted: {eq: 0}},
-          {
-            or: parentIds.map(parentId => ({
-              parentId: { eq: parentId }
-            }))
-          }
-        ]
-      },
+    const pid2 = parentIds[0]
 
-    });
-    const files = response.data
+
+    const response = await Promise.all(
+        parentIds.map((pid) =>
+            client.models.File.listByProjectIdAndParentId({
+              projectId,
+              parentId: {eq: pid}
+            })
+    ))
+    let files = response.flatMap(result => result.data)
+
+
     if(!files) return [];
-
     return files;
 
   } catch (error) {
@@ -468,10 +465,8 @@ export async function createTag(id: string, projectId: string | undefined, currT
 
 export async function searchFiles(projectId: string, fileNames: string[], tagNames: string[]){
   try {
-    console.log(fileNames)
-    console.log(tagNames)
+
     const foundFiles = await client.queries.searchFiles({projectId: projectId, fileNames: fileNames, tagNames: tagNames})
-    console.log(foundFiles)
     return foundFiles.data
   } catch (error){
     console.error("Error searching for files:", error)
@@ -480,7 +475,7 @@ export async function searchFiles(projectId: string, fileNames: string[], tagNam
 //recursively calls itself to receive a path of parent fileIds from a given fileId, going all the way to root
 //TODO Dangerous?
 //TODO SLOW
-export async function getFileIdPath(fileId: string, projectId: string): Promise<Nullable<string>[] | undefined>{
+export async function getFileIdPath(fileId: string, projectId: string): Promise<{id: string, filepath: string}[] | undefined>{
   try{
     const file = await client.models.File.get({
       fileId,
@@ -490,14 +485,14 @@ export async function getFileIdPath(fileId: string, projectId: string): Promise<
       selectionSet: ["fileId", "parentId", "filename", "filepath"]
     })
 
-    if(!file || !file.data || !file.data.parentId) return [`ROOT-${projectId}`]
+    if(!file || !file.data || !file.data.parentId) return [{id: `ROOT-${projectId}`, filepath: ""}]
     console.log(file.data.filename)
     if(file.data.parentId == `ROOT-${projectId}`){
-      return [file.data.parentId]
+      return [{id: file.data.parentId, filepath: ""}]
     } else {
       let path_remaining = await getFileIdPath(file.data.parentId, projectId)
-      if(!path_remaining) path_remaining = [`ROOT-${projectId}`]
-      return[...path_remaining, file.data.parentId]
+      if(!path_remaining) path_remaining = [{id: `ROOT-${projectId}`, filepath: ""}]
+      return[...path_remaining, {id: file.data.parentId, filepath: file.data.filepath}]
     }
   } catch (error){
     console.error(`Error getting parentId for fileId ${fileId} and projectId ${projectId} :`, error)

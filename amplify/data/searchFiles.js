@@ -14,7 +14,7 @@ export function request(ctx) {
             expression: "projectId = :projectId",
             expressionValues: util.dynamodb.toMapValues({":projectId": ctx.arguments.projectId})
         },
-        index: "filesByProjectId"
+        index: "byProject"
     };
 }
 

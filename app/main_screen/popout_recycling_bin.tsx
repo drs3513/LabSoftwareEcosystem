@@ -127,7 +127,7 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
         >
             <Header draggable={true} onDragStart={(e) => handleStartDrag(e)}
                     onDragEnd={(e) => handleEndDrag(e)}>
-                {`${projectName} Recycle Bin`}
+                {`Recycling Bin | Project : ${projectName} `}
                 <CloseButton onClick={close}>
                     ✖
                 </CloseButton>

@@ -115,7 +115,6 @@ export default function TopBar() {
       return;
     }
     alert("Project created successfully!");
-    window.location.reload(); // temporary solution to refresh the page
   }
 
 

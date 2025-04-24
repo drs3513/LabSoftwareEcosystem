@@ -62,6 +62,7 @@ const schema = a
         index("logicalId").sortKeys(["versionId"]).name("Version"), //Secondary index
         index("projectId").name("byProject"),
         index("projectId").sortKeys(["isDeleted"]),
+        index("projectId").sortKeys(["parentId"]).name("byProjectIdAndParentId").queryField("listByProjectIdAndParentId"),
         index("projectId").sortKeys(["filepath"])
       ]),
 
@@ -80,7 +81,19 @@ const schema = a
               entry: "./batchUpdateFile.js"
           })
       ),
-
+    batchGetFile: a
+        .query()
+        .arguments({
+            projectId: a.string(),
+            rootIds: a.string().array()
+        })
+        .returns(a.ref("File").array())
+        .handler(
+            a.handler.custom({
+                dataSource: a.ref("File"),
+                entry: "./getFilesByRootId.js"
+            })
+        ),
   searchFiles: a
       .query()
       .arguments({
@@ -112,14 +125,12 @@ const schema = a
         isDeleted: a.boolean().default(false),
         tags: a.string().array(), // <- CHANGE
         file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
-        
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
       })
       .identifier(["messageId"])
         .secondaryIndexes((index) => [
             index("fileId").sortKeys(["createdAt"]).name("messagesByFileId"),
-        ])
-      ,
+        ]),
       searchMessages: a
           .query()
           .arguments({

@@ -676,7 +676,7 @@ const ChatContainer = styled.div`
   width: 100%;
   height: 100%;
   overflow-y: auto;
-  padding: 1rem;
+
 `;
 
 const ChatMessagesWrapper = styled.div`
@@ -738,6 +738,7 @@ const Input = styled.input`
   flex: 1;
   height: 2rem;
   padding: 0.5rem;
+  margin: 1rem;
   border: 1px solid #ccc;
   border-radius: 5px;
 `;
