@@ -1,5 +1,4 @@
-import {type ClientSchema, a, defineData, defineFunction} from "@aws-amplify/backend";
-import { ApiKey } from "aws-cdk-lib/aws-apigateway";
+import {type ClientSchema, a, defineData} from "@aws-amplify/backend";
 
 
 const schema = a
@@ -116,7 +115,11 @@ const schema = a
         
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
       })
-      .identifier(["messageId"]),
+      .identifier(["messageId"])
+        .secondaryIndexes((index) => [
+            index("fileId").sortKeys(["createdAt"]).name("messagesByFileId"),
+        ])
+      ,
       searchMessages: a
           .query()
           .arguments({
