@@ -14,7 +14,6 @@ import type { Schema } from "@/amplify/data/resource";
 import {Nullable} from "@aws-amplify/data-schema";
 import styled from "styled-components";
 import { SqlServerEngineVersion } from "aws-cdk-lib/aws-rds";
-import {Nullable} from "@aws-amplify/data-schema";
 import {deleteTag} from "@/lib/file";
 import {useRouter, useSearchParams} from 'next/navigation'
 
