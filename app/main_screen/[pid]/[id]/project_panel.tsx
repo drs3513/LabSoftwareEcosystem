@@ -9,6 +9,7 @@ import {useAuthenticator} from "@aws-amplify/ui-react";
 import {listProjectsForUser} from "@/lib/project";
 import {getUserRole, isUserWhitelistedForProject} from "@/lib/whitelist"
 import {useRouter, useSearchParams} from 'next/navigation'
+import { hardDeleteProject } from "@/lib/project";
 import WhitelistPanel from '@/app/main_screen/popout_whitelist_user_panel'
 
 const client = generateClient<Schema>();
@@ -20,6 +21,49 @@ export default function ProjectPanel() {
   const { user } = useAuthenticator();
   const [projects, setProjects] = useState<Array<{ projectId: string; projectName: string }>>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    projectId: string | null;
+  }>({
+    visible: false,
+    x: 0,
+    y: 0,
+    projectId: null,
+  });
+  
+  function handleRightClick(event: React.MouseEvent, projectId: string) {
+    event.preventDefault();
+    setContextMenu({
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      projectId,
+    });
+  }
+
+  useEffect(() => {
+    const hideMenu = () => setContextMenu({ visible: false, x: 0, y: 0, projectId: null });
+    window.addEventListener("click", hideMenu);
+    return () => window.removeEventListener("click", hideMenu);
+  }, []);
+
+  async function handleDeleteProject(projectId: string) {
+    try {
+      await hardDeleteProject(projectId);
+      setProjects((prev) => prev.filter((p) => p.projectId !== projectId));
+      if (projectId === contextMenu?.projectId) {
+        setProjectId(null);
+        router.push("/");
+      }      
+    } catch (err) {
+      console.error("Failed to delete project:", err);
+    } finally {
+      setContextMenu({ visible: false, x: 0, y: 0, projectId: null });
+    }
+  }
+  
   const [contextMenuProjectId, setContextMenuProjectId] = useState<string | undefined>(undefined);
   const [displayedWhitelistPanels, setDisplayedWhitelistPanels] = useState<string[]>([])
 
@@ -183,6 +227,9 @@ export default function ProjectPanel() {
               <ContextMenu>
                 <ContextMenuItem onClick={() => setDisplayedWhitelistPanels([...displayedWhitelistPanels, contextMenuProjectId])}>
                   Whitelist Users
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleDeleteProject(contextMenu.projectId!)}>
+                  Delete Project
                 </ContextMenuItem>
               </ContextMenu>
             </ContextMenuWrapper>

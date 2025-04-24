@@ -222,31 +222,6 @@ export async function processAndUploadFiles(
                 }
               }
 
-              const newFile = await createFile({
-                projectId,
-                fileId: fileUuid,
-                logicalId: fileUuid,
-                filename: fileKey,
-                isDirectory: false,
-                filepath: filePath,
-                parentId: currentParentId,
-                storageId: storageKey,
-                size: fileValue.size ?? 0,
-                versionId,
-                ownerId,
-                isDeleted: 0,
-                createdAt: now,
-                updatedAt: now,
-              });
-
-              if (!newFile?.data?.fileId) {
-                await abortUpload(uploadedFiles, projectId);
-                throw new Error("DB record creation failed");
-              }
-
-              uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
-              uploadTaskRef?.current?.uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
-
               processed++;
               if (setProgress && fileCount > 0) {
                 const percent = (processed / fileCount) * 100;
@@ -355,9 +330,9 @@ export async function abortUpload(
 
 
 
-// export async function deleteFileFromDB(fileId: string, projectId: string): Promise<void> {
-//   await client.models.File.delete({fileId, projectId});
-// }
+ export async function deleteFileFromDB(fileId: string, projectId: string): Promise<void> {
+   await client.models.File.delete({fileId, projectId});
+}
 
 
 //PD : I updated this function to use 'filter' attribute

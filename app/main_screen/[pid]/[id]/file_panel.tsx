@@ -1219,7 +1219,7 @@ export default function FilePanel() {
 
 
 
-  async function onFilePlace(e: React.MouseEvent<HTMLButtonElement> | React.MouseEvent<HTMLDivElement>, overFileId: Nullable<string>) {
+  async function onFilePlace(e: React.MouseEvent<HTMLElement>, overFileId: Nullable<string>) {
     isLongPress.current = false;
     clearTimeout(timer.current)
     if(search){

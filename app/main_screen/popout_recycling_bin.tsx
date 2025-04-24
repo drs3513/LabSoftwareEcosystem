@@ -1,7 +1,7 @@
 import styled from "styled-components";
 import React, {useRef, useState, useEffect} from "react";
 import { useGlobalState } from "../GlobalStateContext";
-import {getFilesByProjectIdAndIsDeleted, hardDeleteFile, restoreFile} from "@/lib/file";
+import {getFilesByProjectIdAndIsDeleted, hardDeleteFile, Restorefile} from "@/lib/file";
 import { formatBytes } from "@/app/main_screen/[pid]/[id]/file_panel";
 
 interface props {
@@ -102,7 +102,7 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
     }, [projectId]);
 
     async function handleRestore(fileId: string, versionId: string) {
-        await restoreFile(fileId, versionId, projectId as string);
+        await Restorefile(fileId, versionId, projectId as string);
     }
 
     async function handleHardDelete(fileId: string) {
@@ -133,23 +133,30 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
                 </CloseButton>
             </Header>
             <FileContainer>
-            {
-                files.map((file, i) => (
-                    <FileLite key={i} onClick = {() => {/*console.log(file)*/}}>
-                        {file.filename}
-
-                            <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
-                                                size={file.size} versionId={file.versionId} ownerId={file.ownerId}
-                                                projectId={file.projectId} createdAt={file.createdAt}
-                                                updatedAt={file.updatedAt}
-                                                isDirectory={file.isDirectory}></FileContext>
+            {files.length > 0 ? (
+                        files.map((file, i) => (
+                            <FileLite key={i} onClick={() => {/* optional click handler */}}>
+                            {file.filename}
+                            <br />
+                            <FileContext
+                                fileId={file.fileId}
+                                filename={file.filename}
+                                filepath={file.filepath}
+                                size={file.size}
+                                versionId={file.versionId}
+                                ownerId={file.ownerId}
+                                projectId={file.projectId}
+                                createdAt={file.createdAt}
+                                updatedAt={file.updatedAt}
+                                isDirectory={file.isDirectory}
+                            />
                             <button onClick={() => handleRestore(file.fileId, file.versionId)}>Restore</button>
                             <button onClick={() => handleHardDelete(file.fileId)}>Delete Permanently</button>
-                        </FileLite>
-                            )
-                    )
-                    ) : <NoFiles>No files!</NoFiles>
-                }
+                            </FileLite>
+                        ))
+                        ) : (
+                        <NoFiles>No files!</NoFiles>
+                        )}
             </FileContainer>
             <Resize draggable={true} onDragStart={(e) => {initialResizeX.current = e.pageX; initialResizeY.current = e.pageY; draggingFloatingWindow.current = true}} onDragEnd = {(e) => {handleResize(e)}}>
                 <svg viewBox={"0 0 24 24"}>
