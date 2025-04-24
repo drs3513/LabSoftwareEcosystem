@@ -24,8 +24,8 @@ interface Message {
   userId: string;
   content: string;
   createdAt: string;
-  edited?: boolean;
-  deleted?: boolean;
+  edited: Nullable<boolean> | undefined;
+  deleted: Nullable<boolean> | undefined;
   email?: string;
 }
 
@@ -47,11 +47,12 @@ export default function ChatPanel() {
   //const [loading, setLoading] = useState(false)
   const [tagSearchTerm, setTagSearchTerm] = useState<Array<string>>([])
   const [authorSearchTerm, setAuthorSearchTerm] = useState<Array<string>>([])
-
+  const [search, setSearch] = useState<boolean>(false)
   //for getting the messages
   const [nextToken, setNextToken] = useState<string | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [hasPreviousPage, setHasPreviousPage] = useState(false);
+  const [refreshSearch, setRefreshSearch] = useState(false);
   const routerSearchParams = useSearchParams()
 
   useEffect(() => {
@@ -77,7 +78,8 @@ export default function ChatPanel() {
 
 
   const response = await getMessagesByFileIdAndPagination(fileId, nextToken);
-
+  console.log(response)
+  console.log("FETCHING REG")
   if(nextToken !== null){
     setNextToken(null); // Reset nextToken 
     setHasNextPage(false); // assume No more pages to fetch
@@ -99,36 +101,40 @@ export default function ChatPanel() {
 
   // Process messages
   const messages = response.data;
+  console.log(messages)
+    console.log("Woah")
   ////console.log("Fetched messages:", messages);
-
   // Sort messages by createdAt timestamp
   if (messages && messages.length > 0) {
     const sortedMessages = messages.sort(
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
-
+    console.log(sortedMessages)
+    console.log("a")
     let temp_messages: Array<Message> = [];
-      for (let msg of sortedMessages) {
-        if (msg) {
-          temp_messages = [
-            ...temp_messages,
-            {
-              messageId: msg.messageId,
-              fileId: msg.fileId,
-              userId: msg.userId,
-              content: msg.content,
-              createdAt: msg.createdAt,
-              edited: msg.edited ?? false,
-              deleted: msg.deleted ?? false,
-              email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown",
-            },
-          ];
-        }
+    for (let msg of sortedMessages) {
+      console.log(msg)
+      if (msg) {
+        temp_messages = [...temp_messages,
+          {
+            messageId: msg.messageId,
+            fileId: msg.fileId,
+            userId: msg.userId,
+            content: msg.content,
+            createdAt: msg.createdAt,
+            edited: msg.isUpdated,
+            deleted: msg.isDeleted,
+            email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown",
+          },
+        ];
       }
-      // Append new messages to state
-      setMessages((prevMessages) => [...temp_messages, ...prevMessages ]);
-      //setMessages(temp_messages);
-      setLoading(false); // Stop loading
+    }
+    console.log(temp_messages)
+    console.log("^^")
+    // Append new messages to state
+    setMessages([...temp_messages]);
+    //setMessages(temp_messages);
+    setLoading(false); // Stop loading
   
   }
     
@@ -147,9 +153,28 @@ export default function ChatPanel() {
     const { scrollTop } = e.currentTarget;
     if (scrollTop === 0 && hasNextPage ) {
       ////console.log("Fetching more messages...");
-      await fetchMessages();
+      //await fetchMessages();
     }
   };
+
+  const observeMessages = () => {
+    const subscription = client.models.Message.observeQuery({
+      filter: {
+        fileId: {eq: fileId},
+      },
+    }).subscribe({
+
+      next: async ({items}) => {
+        await fetchMessages()
+      },
+      error: (error) => {
+        console.error("[ERROR] Error observing files:", error);
+      },
+    });
+
+    return () => subscription.unsubscribe();
+  };
+
 
   useEffect(() => {
 
@@ -158,7 +183,12 @@ export default function ChatPanel() {
       setNextToken(null); // Reset nextToken when fileId changes
       setMessages([]); // Clear messages when fileId changes
       fetchMessages();
-     }
+      const unsubscribe = observeMessages();
+      return () => unsubscribe();
+
+    }
+
+
   }, [fileId]);
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -182,8 +212,8 @@ export default function ChatPanel() {
               userId: msg.userId,
               content: msg.content,
               createdAt: msg.createdAt,
-              edited: msg.isUpdated ?? false,
-              deleted: msg.isDeleted ?? false,
+              edited: msg.isUpdated,
+              deleted: msg.isDeleted,
               email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown"
             }] }}
       setMessages(temp_messages);
@@ -193,19 +223,23 @@ export default function ChatPanel() {
   }
 
   useEffect(() => {
-    const hasSearchTerms =
-        searchTerm.length > 0 ||
-        tagSearchTerm.length > 0 ||
-        authorSearchTerm.length > 0;
-
-    if (hasSearchTerms) {
+    console.log("ACK SEARCH")
+    if (search) {
       //console.log("Searching...");
       fetchMessagesWithSearch();
     } else {
       //console.log("Fetching old messages when input is empty");
       fetchMessages(); // restore full messages when no filters
     }
-  }, [searchTerm, tagSearchTerm, authorSearchTerm]);
+  }, [search]);
+
+  useEffect(() => {
+    if(search && refreshSearch) {
+      fetchMessagesWithSearch()
+      setRefreshSearch(false)
+    }
+
+  }, [refreshSearch])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -346,19 +380,26 @@ export default function ChatPanel() {
     setTagSearchTerm([]);
     setAuthorSearchTerm([]);
     setSearchTerm([]);
+    setSearch(false);
     //console.log("Search input cleared. Fetching original messages...");
-    fetchMessages(); // Fetch the original messages
-    
+
   };
 
   // Function to handle search input changes
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if(e.target.value.length == 0){
+      setSearch(false)
+    } else {
+      setSearch(true)
+    }
     setSearchInput(e.target.value);
+
   };
 
   //Step 3: create a function to handleSearch for searching messages
 
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    console.log(e.key)
     if (e.key === "Enter") {
       if (searchInput.trim() === "") {
         handleClearSearch(); // Clear search if input is empty
@@ -393,6 +434,8 @@ export default function ChatPanel() {
       setTagSearchTerm(temp_tag_set);
       setAuthorSearchTerm(temp_author_set);
       setSearchTerm(temp_name_set);
+      setSearch(true)
+      setRefreshSearch(true)
       //console.log("Search terms:", temp_name_set);
     }
   };
@@ -469,7 +512,7 @@ export default function ChatPanel() {
                 onKeyDown={handleSearch}
                 placeholder="Search messages..."
             />
-            {searchInput && (
+            {search && (
                 <ClearButton onClick={handleClearSearch}>X</ClearButton>
             )}
           </SearchInputWrapper>
