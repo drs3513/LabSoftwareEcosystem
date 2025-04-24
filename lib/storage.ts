@@ -10,7 +10,7 @@ export async function getFileVersions(key: string): Promise<string | null> {
   let attempt = 0;
 
   while (attempt < maxRetries) {
-    console.log(`[INFO] Fetching file versions (Attempt ${attempt + 1}/${maxRetries})`);
+    //console.log(`[INFO] Fetching file versions (Attempt ${attempt + 1}/${maxRetries})`);
 
     try {
       const session = await fetchAuthSession();
@@ -41,7 +41,7 @@ export async function getFileVersions(key: string): Promise<string | null> {
         new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
       );
 
-      console.log(`[SUCCESS] Retrieved latest version for key: ${key}`);
+      //console.log(`[SUCCESS] Retrieved latest version for key: ${key}`);
       return versions[0].versionId;
 
     } catch (error: any) {
@@ -50,7 +50,7 @@ export async function getFileVersions(key: string): Promise<string | null> {
 
       if (attempt < maxRetries) {
         const delay = Math.pow(2, attempt) * 100;
-        console.log(`[INFO] Retrying in ${delay}ms...`);
+        //console.log(`[INFO] Retrying in ${delay}ms...`);
         await new Promise((resolve) => setTimeout(resolve, delay));
       } else {
         console.error("[FATAL] Max retries reached. Unable to fetch file versions.");
@@ -143,7 +143,7 @@ export async function downloadFolderAsZip(
 
     try {
       const { body } = await downloadData({
-        key: file.storageId,
+        path: file.storageId,
       }).result;
       console.log(body)
       const blob = await body.blob();
@@ -170,19 +170,6 @@ export async function downloadFolderAsZip(
   a.click();
   URL.revokeObjectURL(url);
 }
-
-
-//const getDownloadLink = async (filePath: string): Promise<string | null> => {
-//  try {
-//    const linkToStorageFile = await getUrl({ path: filePath });
-//    console.log('Signed URL:', linkToStorageFile.url);
-//    console.log('Expires at:', linkToStorageFile.expiresAt);
-//    return linkToStorageFile.url.toString();
-//  } catch (error) {
-//    console.error('[ERROR] Failed to generate signed URL:', error);
-//    return null;
-//  }
-//};
 
 export function startDownloadTask(fileKey: string, onProgress: (percent: number) => void) {
   return downloadData({
@@ -216,7 +203,7 @@ export function startDownloadTask(fileKey: string, onProgress: (percent: number)
 export async function deleteFileFromStorage(fileKey: string): Promise<void> {
   try {
     await remove({ path: fileKey });
-    console.log(`File deleted: ${fileKey}`);
+    //console.log(`File deleted: ${fileKey}`);
   } catch (error) {
     console.error("Error deleting file:", error);
     throw error;

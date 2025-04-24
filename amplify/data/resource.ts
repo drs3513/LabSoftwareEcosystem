@@ -128,43 +128,42 @@ const schema = a
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
       })
       .identifier(["messageId"])
-        .secondaryIndexes((index) => [
-            index("fileId").sortKeys(["createdAt"]).name("messagesByFileId"),
-        ]),
-      searchMessages: a
-          .query()
-          .arguments({
-              fileId: a.string(),
-              messageContents: a.string().array(),
-              tagNames: a.string().array()
-          })
-          .returns(a.ref("Message").array())
-          .handler(
-              a.handler.custom({
-                  dataSource: a.ref("Message"),
-                  entry: "./searchMessages.js"
+      .secondaryIndexes((index) => [
+        index("fileId").sortKeys(["createdAt"]).name("messagesByFileIdAndPagination"), // Secondary index for querying messages by fileId
+      ]),
 
-              })
-          ),
-    /*
-    // Tag model
-    Tag: a
-      .model({
-        tagId: a.id().required(),
-        tagType: a.enum(["file", "message"]), // Enum for Tag type
-        fileId: a.id(), // Foreign key linking to File or Message
-        projectId: a.id(),
-        messageId: a.id(),
-        tagName: a.string().required(),
-        createdAt: a.datetime().required(),
 
-        // Relationships
-        file: a.belongsTo("File", ["fileId","projectId"]),
-        message: a.belongsTo("Message", "messageId"),})
-    .identifier(["tagId"]),
-      
-    // Whitelist model
-    */
+    
+    searchMessages: a
+        .query()
+        .arguments({
+            fileId: a.string(),
+            messageContents: a.string().array(),
+            tagNames: a.string().array()
+        })
+        .returns(a.ref("Message").array())
+        .handler(
+            a.handler.custom({
+                dataSource: a.ref("Message"),
+                entry: "./searchMessages.js"
+            })
+        ),
+  
+  getMessagesByFileId: a
+  .query()
+  .arguments({
+    fileId: a.string(),
+    nextToken: a.string(),
+    limit: a.integer(),
+  })
+  .returns(a.json())
+  .handler(
+    a.handler.custom({
+      dataSource: a.ref("Message"),
+      entry: "./getMessagesByFileId.js",
+    })
+  ),
+
   // Whitelist model
   Whitelist: a
   .model({
@@ -185,6 +184,7 @@ const schema = a
   allow.authenticated(),
 ]);
 export type Schema = ClientSchema<typeof schema>;
+
 
 export const data = defineData({
   schema,

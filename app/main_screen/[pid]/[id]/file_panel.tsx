@@ -16,7 +16,8 @@ import {
   updatefile,
   createNewVersion,
   waitForVersionId,
-  createFolder
+  createFolder,
+  fetchCachedUrl,
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
@@ -27,6 +28,7 @@ import {useRouter, useSearchParams} from "next/navigation"
 import {getProjectName} from "@/lib/project";
 import Link from "next/link";
 import ConflictModal from '../../conflictModal';
+import VersionPanel from "@/app/main_screen/popout_version_panel";
 import { isUserWhitelistedForProject } from '@/lib/whitelist';
 
 //SVG imports
@@ -151,6 +153,8 @@ export default function FilePanel() {
 
   const projectName = useRef<string | undefined>(undefined)
 
+  const [currentParent, setCurrentParent] = useState<fileInfo | null>(null);
+
   const [filePathElement, setFilePathElement] = useState<{fileName: string | undefined, href: string, fileId: string, filepath: string}[]>([])
 
   const [activeParentIds, setActiveParentIds] = useState<activeParent[]>([])
@@ -177,6 +181,10 @@ export default function FilePanel() {
 
 
   const [contextMenuVersionPopout, setContextMenuVersionPopout] = useState(false);
+  const [showVersionPanel, setShowVersionPanel] = useState(false);
+  const [versionPanelData, setVersionPanelData] = useState<fileInfo | null>(null);
+  
+  
 
   const [files, setFiles] = useState<Array<fileInfo>>([]);
   const filesRef = useRef(files)
@@ -196,6 +204,7 @@ export default function FilePanel() {
 
   const [search, setSearch] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [pickedUpFileId, setPickedUpFileId] = useState<string | undefined>(undefined)
   const [pickedUpFileGroup, setPickedUpFileGroup] = useState<number[] | undefined>(undefined)
 
   const [selectedFileGroup, setSelectedFileGroup] = useState<number[] | undefined>(undefined)
@@ -280,7 +289,7 @@ export default function FilePanel() {
   //sorts files to be displayed by the user
   function sort_files_with_path(files: Array<fileInfo>, sortStyle: string = "alphanumeric"){
     if (activeParentIds.length === 0) {
-      console.log("Active Parent IDs are empty. Returning files without sorting.");
+      //console.log("Active Parent IDs are empty. Returning files without sorting.");
       return files;
     }
     //console.log(files)
@@ -295,10 +304,10 @@ export default function FilePanel() {
 
     //concatenates files together in the same order as the parent
     function concatenateFiles(curr_parent: string, files_by_parentId: any, file_list: any) {
-      //console.log(curr_parent)
+      ////console.log(curr_parent)
 
       for (let i = 0; i < files_by_parentId[curr_parent].length; i++) {
-        //console.log(files_by_parentId[curr_parent][i])
+        ////console.log(files_by_parentId[curr_parent][i])
         file_list.push(files_by_parentId[curr_parent][i])
         if (files_by_parentId[curr_parent][i].fileId in files_by_parentId) {
           file_list = concatenateFiles(files_by_parentId[curr_parent][i].fileId, files_by_parentId, file_list)
@@ -348,7 +357,7 @@ export default function FilePanel() {
 
       sorted_files[key] = values
     }
-    if (activeParentIds[0].id in sorted_files) {
+    if (activeParentIds.length > 0 && activeParentIds[0].id in sorted_files) {
       files = concatenateFiles(activeParentIds[0].id, sorted_files, []);
     }
 
@@ -440,8 +449,6 @@ export default function FilePanel() {
   }, [activeParentIds, search]);
 
   useEffect(() => {
-
-
     setLoading(true);
     const proj_id = routerSearchParams.get("pid");
     const root_id = routerSearchParams.get("id");
@@ -492,6 +499,29 @@ export default function FilePanel() {
     const activeFilePath = await getFilePath(root_id, proj_id)
     console.log(activeFilePath)
     projectName.current = await getProjectName(proj_id)
+
+    const { data: file } = await client.models.File.get({ fileId: root_id, projectId: proj_id });
+
+    if (file) {
+      setCurrentParent({
+        fileId: file.fileId,
+        filename: file.filename,
+        filepath: file.filepath,
+        logicalId: file.logicalId,
+        storageId: file.storageId,
+        parentId: file.parentId,
+        size: file.size,
+        versionId: file.versionId,
+        ownerId: file.ownerId,
+        projectId: file.projectId,
+        createdAt: file.createdAt,
+        updatedAt: file.updatedAt,
+        visible: true,
+        open: false,
+        isDirectory: file.isDirectory,
+      });      
+    }
+
     if(activeFilePath) {
       await createFileIdMapping(root_id, proj_id, activeFilePath, projectName.current)
 
@@ -741,6 +771,8 @@ export default function FilePanel() {
   const handleDownloadCurrentView = async () => {
     if (!projectId) return;
   
+    console.log("[DEBUG] Files in current view:", filesRef.current);
+  
     const task: ZipTask = {
       isCanceled: false,
       cancel() {
@@ -748,24 +780,41 @@ export default function FilePanel() {
       },
     };
   
-    const fileList: { path: string; filename: string }[] = [];
+    const rootLogicalId = rootParentId?.replace("ROOT-", "") || "";
   
-    for (const file of filesRef.current) {
-      if (!file.storageId || file.isDirectory) continue;
+    let fileList: { filepath: string; storageId: string }[] = [];
   
-      fileList.push({
-        path: file.storageId,
-        filename: file.filepath.startsWith("/") ? file.filepath.slice(1) : file.filepath, // Preserve structure
-      });
+    try {
+      const allChildren = await getFileChildren(projectId, rootLogicalId);
+      fileList = (allChildren || [])
+        .filter(f => !f.isDirectory && f.storageId && f.filepath)
+        .map(f => ({
+          filepath: f.filepath.startsWith("/") ? f.filepath.slice(1) : f.filepath,
+          storageId: f.storageId!,
+        }));
+  
+      // Merge in case anything else is in filesRef (optional)
+      for (const file of filesRef.current) {
+        if (!file.storageId || file.isDirectory) continue;
+  
+        fileList.push({
+          filepath: file.filepath.startsWith("/") ? file.filepath.slice(1) : file.filepath,
+          storageId: file.storageId,
+        });
+      }
+  
+      if (fileList.length === 0) {
+        console.warn("No downloadable files in current view.");
+        return;
+      }
+      const rootName = filePathElement.length > 0
+      ? filePathElement[filePathElement.length - 1].fileName?.replace("/", "") || "project-files"
+      : projectName.current || "project-files";
+      await downloadFolderAsZip(rootName, fileList, task);
+    } catch (err) {
+      console.error("Download error:", err);
     }
   
-    if (fileList.length === 0) {
-      console.warn("No downloadable files in current view.");
-      return;
-    }
-  
-    const rootName = projectName.current || "project-files";
-    await downloadFolderAsZip(rootName, fileList as [], task);
   };
   
   const handleDownloadSelected = async () => {
@@ -931,116 +980,144 @@ export default function FilePanel() {
     await handleCreateFile(directories.length > 0, projectId, ownerId, parentId, files, rootFilePath);
   };
 
-
-
+  
   /** Processes files and uploads them */
-  const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId: string, parentId: string, files: File[], rootFilePath: string) => {
+  const handleCreateFile = async (
+    isDirectory: boolean,
+    projectId: string,
+    ownerId: string,
+    parentId: string,
+    files: File[],
+    rootFilePath: string
+  ) => {
     let globalDecision: 'overwrite' | 'version' | 'cancel' | null = null;
     let applyToAll = false;
 
     const showConflictModal = (filename: string) => {
       return new Promise<'overwrite' | 'version' | 'cancel'>(resolve => {
-
         const cleanup = () => {
-          setDisplayConflictModel(false)
-          conflictModalData.current = undefined
+          setDisplayConflictModel(false);
+          conflictModalData.current = undefined;
         };
-
         const handleResolve = (choice: typeof globalDecision, all: boolean) => {
           if (all) {
             globalDecision = choice;
             applyToAll = true;
           }
           cleanup();
-          if(!choice){
-            resolve("cancel")
-            return
-          }
-          resolve(choice);
+          resolve(choice ?? "cancel");
         };
-
-        conflictModalData.current = {
-          fileName: filename,
-          onResolve: handleResolve
-        }
-
-        setDisplayConflictModel(true)
+        conflictModalData.current = { fileName: filename, onResolve: handleResolve };
+        setDisplayConflictModel(true);
       });
     };
-
+  
     if (!files || files.length === 0) {
       console.error("[ERROR] No files received.");
       return;
     }
-
+  
+    const actualRoot = rootFilePath === "/" ? `ROOT-${projectId}` : rootFilePath;
+    const currentViewPath = actualRoot.replace(/\/+$/, "");
+  
+    const filePathMap = new Map<string, { fileId: string, logicalId: string }>();
+    filesRef.current?.forEach(f => {
+      const fullPath = `${f.filepath}`.replace(/\/+/g, "/");
+      if (fullPath.startsWith(currentViewPath + "/") || fullPath === currentViewPath) {
+        filePathMap.set(fullPath, {
+          fileId: f.fileId,
+          logicalId: f.logicalId,
+        });
+      }
+    });
+  
+    const folderDict: Record<string, any> = {};
     uploadTask.current = {
       isCanceled: false,
       uploadedFiles: [],
       cancel: () => {
         uploadTask.current!.isCanceled = true;
-      }
+      },
     };
-
-    const folderDict: Record<string, any> = {};
-    setShowProgressPanel(true)
+    setShowProgressPanel(true);
+  
     for (const file of files) {
-      if (uploadTask.current.isCanceled) break;
+      if (uploadTask.current.isCanceled) {
+        break;
+      }
+  
+      const relativePath = file.webkitRelativePath || file.name;
+      const parts = relativePath.split("/").filter(Boolean);
+      const fileName = parts.pop()!;
+      let currentDict = folderDict;
+      let currentPath = actualRoot;
+      let adjustedParts = [...parts];
 
-      const fullPath = file.webkitRelativePath || file.name;
-      const pathParts = fullPath.split("/");
-      const fileName = pathParts.pop()!;
-      const filePath = `${rootFilePath.replace(/\/$/, "")}/${fullPath}`.replace(/\/+/g, "/");
-
-
-      const conflict = filesRef.current.find(
-          f => f.filepath === filePath && f.projectId === projectId
-      );
-
+  
+      // Rename top-level folder if needed
+      if (adjustedParts.length > 0) {
+        let baseName = adjustedParts[0];
+        let testPath = `${currentPath}/${baseName}`.replace(/\/+/g, "/");
+  
+        while (filePathMap.has(testPath)) {
+          baseName += "-copy";
+          testPath = `${currentPath}/${baseName}`.replace(/\/+/g, "/");
+        }
+  
+        adjustedParts[0] = baseName;
+      }
+  
+      // Traverse folders and build folderDict
+      for (const folder of adjustedParts) {
+        const testPath = `${currentPath}/${folder}`.replace(/\/+/g, "/");
+        if (!filePathMap.has(testPath)) {
+          if (!currentDict[folder]) currentDict[folder] = { files: {} };
+          currentDict = currentDict[folder];
+        } else {
+          currentPath = testPath;
+        }
+      }
+  
+      const normalizedFullPath = `${currentPath}/${fileName}`.replace(/\/+/g, "/");
+      const conflict = filePathMap.get(normalizedFullPath);
+  
       let decision: 'overwrite' | 'version' | 'cancel' = 'overwrite';
-
       if (conflict && !applyToAll) {
         decision = await showConflictModal(file.name);
-        if (decision === 'cancel') continue;
+        if (decision === "cancel") continue;
       }
-
-      if (decision ==='overwrite' && conflict) {
-        const { key: storageKey } = await uploadFile(file, ownerId, projectId, filePath);
-        waitForVersionId(storageKey).then((versionId) => {
-          return updatefile(conflict.fileId, projectId, versionId as string);
-        });
-        
+  
+      if (decision === "overwrite" && conflict) {
+        const { key: storageKey } = await uploadFile(file, ownerId, projectId, relativePath);
+        const versionId = await waitForVersionId(storageKey);
+        if (versionId) {
+          await updatefile(conflict.fileId, projectId, versionId);
+        }
+        continue;
       }
-
-      let actualName = fileName;
-      if (decision === 'version') {
-        try {
-                await createNewVersion(file, conflict?.logicalId as string, projectId, ownerId, parentId, filePath);
-              } catch (error) {
-                console.error("[VERSION ERROR] Failed to create version for:", file.name, error);
-              }
-              continue;
+  
+      if (decision === "version" && conflict) {
+        await createNewVersion(file, conflict.logicalId, projectId, ownerId, parentId, relativePath);
+        continue;
       }
-
-      // Place the file into the shared folderDict
-      let current = folderDict;
-      for (const part of pathParts) {
-        if (!current[part]) current[part] = { files: {} };
-        current = current[part];
-      }
-
-      if (!current.files) current.files = {};
-      current.files[actualName] = file;
+  
+      if (!currentDict.files) currentDict.files = {};
+      currentDict.files[fileName] = file;
     }
-    uploadQueue.current?.push({
-      folderDict,
-      ownerId,
-      projectId,
-      parentId,
-    });
-    await processAndUploadFiles(folderDict, projectId, ownerId, parentId, rootFilePath, uploadTask,
-        (percent: number) => setUploadProgress(percent));
 
-    // After upload finishes, remove from queue and reset progress
+    uploadQueue.current?.push({ folderDict, ownerId, projectId, parentId });
+  
+    await processAndUploadFiles(
+      folderDict,
+      projectId,
+      ownerId,
+      parentId,
+      rootFilePath,
+      uploadTask,
+      (percent: number) => {
+        setUploadProgress(percent);
+      }
+    );
     uploadQueue.current?.shift();
     setCompletedUploads((prev) => [...prev, 0]);
 
@@ -1049,10 +1126,51 @@ export default function FilePanel() {
       setCompletedUploads((prev) => prev.slice(1));
     }, 3000); // Keeps the completed upload visible for 3 seconds
     setUploadProgress(null);
-    setShowProgressPanel(false)
+    setShowProgressPanel(false);
   };
+  
 
-
+  useEffect(() => {
+    const updateCurrentParent = async () => {
+      if (!projectId || activeParentIds.length === 0) {
+        setCurrentParent(null);
+        return;
+      }
+  
+      const currentId = activeParentIds[activeParentIds.length - 1].id;
+  
+      try {
+        const { data: file } = await client.models.File.get({ fileId: currentId, projectId });
+        if (file) {
+          setCurrentParent({
+            fileId: file.fileId,
+            filename: file.filename,
+            filepath: file.filepath,
+            logicalId: file.logicalId,
+            storageId: file.storageId,
+            parentId: file.parentId,
+            size: file.size,
+            versionId: file.versionId,
+            ownerId: file.ownerId,
+            projectId: file.projectId,
+            createdAt: file.createdAt,
+            updatedAt: file.updatedAt,
+            visible: true,
+            open: false,
+            isDirectory: file.isDirectory ?? true,
+          });
+        } else {
+          setCurrentParent(null);
+        }
+      } catch (err) {
+        console.error("[ERROR] Failed to fetch current parent:", err);
+        setCurrentParent(null);
+      }
+    };
+  
+    updateCurrentParent();
+  }, [projectId, activeParentIds]);
+  
 
   //const cancelUpload = () => {
   //  if (uploadTask.current) {
@@ -1102,15 +1220,12 @@ export default function FilePanel() {
 
 
 
-  async function onFilePlace(e: React.MouseEvent<HTMLButtonElement> | React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLAnchorElement>, overFileId: Nullable<string>) {
-
-
+  async function onFilePlace(e: React.MouseEvent<HTMLElement>, overFileId: Nullable<string>) {
     isLongPress.current = false;
     clearTimeout(timer.current)
     if(search){
       return
     }
-
     if(e.target != e.currentTarget){
       return
     }
@@ -1118,14 +1233,10 @@ export default function FilePanel() {
     if(!overFileId) return
     observeMouseCoords.current = false
 
+    console.log(overFileId)
 
     clearTimeout(timer.current);
     //console.log(pickedUpFileGroup)
-
-    if(overFileId in filesByFileId.current && !files[filesByFileId.current[overFileId]].isDirectory){
-      overFileId = files[filesByFileId.current[overFileId]].parentId
-    }
-
     if(pickedUpFileGroup != undefined){
 
       observeMouseCoords.current = false
@@ -1141,7 +1252,6 @@ export default function FilePanel() {
 
       for(let fileId of parentsToMove){
         const children = await getFileChildren(projectId, files[filesByFileId.current[fileId]].filepath)
-        console.log(children)
         if(!children) return
 
         observeMouseCoords.current = false
@@ -1190,7 +1300,54 @@ export default function FilePanel() {
 //      }
 
       setPickedUpFileGroup(undefined)
+
+    } else if(pickedUpFileId){
+
+
+      const children = await getFileChildren(projectId, files[filesByFileId.current[pickedUpFileId]].filepath)
+      if(!children) return
+
+      observeMouseCoords.current = false
+
+
+      files[filesByFileId.current[pickedUpFileId]].parentId = overFileId
+
+      //console.log(children)
+      //console.log(files[filesByFileId.current[pickedUpFileId]].filepath)
+      //console.log(overFileId)
+      //console.log(files[filesByFileId.current[overFileId]].filepath)
+      let new_file_path = `/${files[filesByFileId.current[pickedUpFileId]].filename}`
+      if(overFileId in filesByFileId.current){
+        new_file_path = `${files[filesByFileId.current[overFileId]].filepath}/${files[filesByFileId.current[pickedUpFileId]].filename}`
+      } else {
+        if(overFileId == `ROOT-${projectId}`){
+          new_file_path = `/${files[filesByFileId.current[pickedUpFileId]].filename}`
+        } else {
+          const base_file_path = await getFilePath(overFileId, projectId)
+          new_file_path = `${base_file_path}/${files[filesByFileId.current[pickedUpFileId]].filename}`
+        }
+
+      }
+
+
+
+      const fileIds = children.map((child) => child.fileId)
+      const filepaths = children.map((child) => new_file_path + child.filepath.slice(files[filesByFileId.current[pickedUpFileId]].filepath.length))
+      const parentIds = children.map((child) => child.fileId == pickedUpFileId ? (overFileId ? overFileId : `ROOT-${projectId}`) : child.parentId)
+      //console.log(filepaths)
+      //`if(overFileId){
+      //`  console.log(files[filesByFileId.current[overFileId]].filepath)
+      //`} else {
+//`
+      //`}
+      await batchUpdateFilePath(fileIds, projectId, parentIds, filepaths)
+      fetchFiles()
+      await pokeFile(fileIds[0], projectId, filepaths[0])
+      setPickedUpFileId(undefined)
+
+      //console.log(returnedValue)
     }
+    observeMouseCoords.current = true
   }
 
   //If the user holds down left-click on a file / folder, all subdirectories are closed, and
@@ -1454,9 +1611,7 @@ export default function FilePanel() {
     const fullPath = `${parentPath}/${name}`.replace(/\/+/g, "/");
   
     createFolder(projectId, name, userId, parentId, fullPath);
-  }
-  
-
+  }  
 
 
   function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, location: string, userId: string | undefined, storagePath: Nullable<string> |undefined, filename: string |undefined){
@@ -1483,7 +1638,7 @@ export default function FilePanel() {
 
 
   function getDepth(file: fileInfo){
-    //console.log(file)
+    ////console.log(file)
     const found_parent_id = activeParentIds.find(parent => parent.id === file.parentId)
 
     return found_parent_id? found_parent_id.depth : -1
@@ -1501,6 +1656,13 @@ export default function FilePanel() {
     return files.find(f => f.fileId === contextMenuFileId);
   }, [files, contextMenuFileId]);
 
+  useEffect(() => {
+    if (contextMenuVersionPopout && contextFile) {
+      setShowVersionPanel(true);
+      setVersionPanelData(contextFile);
+    }
+  }, [contextMenuVersionPopout, contextFile]);
+  
   function handleShowRecycleBin(e: React.MouseEvent<HTMLButtonElement>){
     setMouseCoords([e.clientX, e.clientY])
     if(activeRecyclingBins.some(bin => bin.projectId === projectId)){
@@ -1521,7 +1683,19 @@ export default function FilePanel() {
             onMouseUp={(e) => onFilePlace(e, rootParentId)}
             onMouseMove = {(e) => {pickedUpFileGroup && observeMouseCoords.current ? setMouseCoords([e.clientX, e.clientY]) : undefined}}
             onClick = {(e) => e.target == e.currentTarget ? setSelectedFileGroup(undefined) : undefined}
-            onDrop = {(e) => {projectId && userId ? handleFileDrag(e, projectId, userId, "ROOT-"+projectId, "") : undefined}}
+            onDrop={(e) => {
+             if (!projectId || !userId || activeParentIds.length === 0) return;
+            
+              const currentParentId =
+              activeParentIds.length > 0
+                ? activeParentIds[activeParentIds.length - 1].id
+                : `ROOT-${projectId}`;
+            
+                const currentPath = currentParent?.filepath ?? "/";
+                
+            
+              handleFileDrag(e, projectId, userId, currentParentId, currentPath);
+            }}            
             onDragOver = {(e) => {handleDragOver(e, "ROOT-"+projectId)}}
             onDragLeave = {(e) => {handleDragOver(e, undefined)}}
             $dragging={dragOverFileId == "ROOT-"+projectId}
@@ -1681,13 +1855,13 @@ export default function FilePanel() {
 
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
-                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);setContextMenuVersionPopout(false)}}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);}}>
                       Rename
                     </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true);setContextMenuVersionPopout(false)}}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true);}}>
                       Tags
                     </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);setContextMenuVersionPopout(false)}}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);}}>
                       Properties
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
@@ -1704,52 +1878,133 @@ export default function FilePanel() {
                     </ContextMenuItem>
                     <ContextMenuItem
                       style={{ fontWeight: "bold", cursor: "default" }}
-                      onMouseOver={() => {
+                      onClick={() => {
                         setContextMenuVersionPopout(true);
                         setContextMenuTagPopout(false); // optionally close tags
                       }}
                     >
                       Versions
                     </ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={async () => {
+                        const file = files.find(f => f.fileId === contextMenuFileId);
+                        if (!file || !projectId) return;
+                      
+                        const ext = file.filename.split(".").pop()?.toLowerCase();
+                        const isText = ["txt", "md", "log", "csv"].includes(ext!); // Removed "py"
+                        const isOfficeDoc = ["doc", "docx", "rtf", "dox", "word"].includes(ext!);
+                        const isPDF = ext === "pdf";
+                        const isImage = ["png", "jpg", "jpeg"].includes(ext!);
+                      
+                        if (!isText && !isOfficeDoc && !isPDF && !isImage) return;
+                      
+                        const path = file.storageId as string;
+                        const versionId = file.versionId;
+                      
+                        try {
+                          const cachedUrl = await fetchCachedUrl(path, versionId);
+                          const popup = window.open("", "_blank", "width=800,height=600");
+                      
+                          if (!popup) {
+                            alert("Popup blocked. Please allow popups for this site.");
+                            return;
+                          }
+                      
+                          const previewContent = isPDF
+                          ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
+                          : isImage
+                          ? `<img src="${cachedUrl}" alt="${file.filename}" />`
+                          : isText
+                          ? `<pre><code id="code-block">Loading...</code></pre>`
+                          : `<p>Unsupported file type.</p>`;
+                        
+                        const html = `
+                          <!DOCTYPE html>
+                          <html lang="en">
+                          <head>
+                            <title>Preview - ${file.filename}</title>
+                            <style>
+                              html, body {
+                                height: 100%;
+                                margin: 0;
+                                font-family: sans-serif;
+                                background: #f0f0f0;
+                              }
+                              .toolbar {
+                                width: 100%;
+                                background: #333;
+                                color: white;
+                                padding: 10px;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                box-sizing: border-box;
+                              }
+                              .toolbar a {
+                                color: white;
+                                text-decoration: none;
+                                padding: 8px 12px;
+                                background-color: #007bff;
+                                border-radius: 5px;
+                              }
+                              .preview {
+                                height: calc(100% - 50px); /* Leave space for toolbar */
+                                overflow: auto;
+                                display: block;
+                              }
+                              iframe, img {
+                                max-width: 90%;
+                                max-height: 90%;
+                                border: none;
+                                margin: auto;
+                              }
+                              pre {
+                                background: white;
+                                padding: 1rem;
+                                margin: 0;
+                                width: 100%;
+                                height: 100%;
+                                box-sizing: border-box;
+                                overflow: auto;
+                                white-space: pre-wrap;
+                                word-wrap: break-word;
+                              }
+                            </style>
+                          </head>
+                          <body>
+                            <div class="toolbar">
+                              <div>Previewing: ${file.filename}</div>
+                              <a href="${cachedUrl}" download="${file.filename}">Download</a>
+                            </div>
+                            <div class="preview">
+                              ${previewContent}
+                            </div>
+                            ${
+                              isText
+                                ? `<script>
+                                     fetch("${cachedUrl}")
+                                       .then(res => res.text())
+                                       .then(code => {
+                                         document.getElementById("code-block").textContent = code;
+                                       });
+                                   </script>`
+                                : ""
+                            }
+                          </body>
+                          </html>
+                        `;
+                        
+                      
+                          popup.document.write(html);
+                          popup.document.close();
+                        } catch (err) {
+                          console.error("Preview failed:", err);
+                        }
+                      }}  
+                    >
+                      Preview
+                    </ContextMenuItem>
                     </ContextMenu>
-
-                    {/* Versions block inserted directly here */}
-                    {contextMenuVersionPopout && contextFile?.versions && (
-                        <ContextMenuPopout $index={7.248}>
-                          {[...contextFile.versions]
-                            .sort((a, b) => new Date(a.updatedAt!).getTime() - new Date(b.updatedAt!).getTime())
-                            .reverse()
-                            .map((version, idx, arr) => {
-                              const versionNumber = `v${arr.length - idx}`;
-                              const isCurrent = version.versionId === contextFile.versionId;
-                              const dateStr = new Date(version.updatedAt!).toLocaleString();
-
-                              return (
-                                <ContextMenuItem
-                                  key={`${version.versionId}-${idx}`}
-                                  style={{
-                                    fontSize: "12px",
-                                    paddingLeft: "1.5rem",
-                                    color: isCurrent ? "#000" : "#555",
-                                    fontWeight: isCurrent ? "bold" : "normal"
-                                  }}
-                                  onClick={() =>
-                                    handleDownloadVersion(
-                                      version.versionId,
-                                      contextFile.logicalId,
-                                      contextFile.filename,
-                                      contextFile.filepath,
-                                      contextFile.ownerId,
-                                      contextFile.projectId
-                                    )
-                                  }
-                                >
-                                  {versionNumber} – {dateStr}
-                                </ContextMenuItem>
-                              );
-                            })}
-                        </ContextMenuPopout>
-                      )}
                   {contextMenuTagPopout ?
                       <ContextMenuPopout $index={1}>
                         {contextMenuTags || contextMenuTags === null ?
@@ -1764,14 +2019,17 @@ export default function FilePanel() {
                                               X
                                             </ContextMenuExitButton>
                                           </ContextMenuItem>
+                    
                                       )) : <></>}
+
                             </>
                             : <ContextMenuItem>Loading...</ContextMenuItem>
                         }
+
                       </ContextMenuPopout>
+                      
                       : <></>
                   }
-                  
                 </ContextMenuWrapper>
             ) : contextMenu && contextMenuType=="fileFolder" ? (
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
@@ -1850,6 +2108,28 @@ export default function FilePanel() {
     {displayConflictModal && conflictModalData.current && (
         <ConflictModal filename={conflictModalData.current.fileName} onResolve={conflictModalData.current.onResolve} />
     )}
+    {showVersionPanel && versionPanelData && (
+          <VersionPanel
+            fileId={versionPanelData.fileId}
+            fileName={versionPanelData.filename}
+            logicalId={versionPanelData.logicalId}
+            filepath={versionPanelData.filepath}
+            ownerId={versionPanelData.ownerId}
+            projectId={versionPanelData.projectId}
+            versions={versionPanelData.versions ?? []}
+            currentVersionId={versionPanelData.versionId}
+            initialX={contextMenuPosition[0]}
+            initialY={contextMenuPosition[1]}
+            close={() => {
+              setShowVersionPanel(false);
+              setVersionPanelData(null);
+              setContextMenuVersionPopout(false);
+            }}
+            onDownloadVersion={handleDownloadVersion}
+          />
+        )}
+
+
   </>
   );
 
@@ -1989,7 +2269,7 @@ const ContextMenuPopout = styled.div<{$index: number}>`
 
 const ContextMenuWrapper = styled.div<{$x: number, $y: number}>`
     position: fixed;
-    z-index: 2;
+    z-index: 9999;
     left: ${(props) => props.$x}px;
     top: ${(props) => props.$y}px;
     display: flex;
