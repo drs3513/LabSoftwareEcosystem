@@ -241,12 +241,12 @@ export default function WhitelistPanel(props: props) {
                 role.current = await getUserRole(props.projectId, userId);
             }
             if (!role.current) {
-                console.log("User " + userId + " does not have a role for project " + props.projectId);
+                //console.log("User " + userId + " does not have a role for project " + props.projectId);
                 return;
             }
             const response = await listUsersInProject(props.projectId, true);
             if (response) {
-                console.log("Fetched users:", response);
+                //console.log("Fetched users:", response);
                 setUsers(response.map(obj => ({userId: obj.userId, email: obj.email, username: obj.username})));
             }
         } catch (error) {
@@ -305,9 +305,9 @@ export default function WhitelistPanel(props: props) {
             return
         }
 
-        console.log("Here")
+        //console.log("Here")
         const usersFound = await listUsersInProject(props.projectId, false)
-        console.log(usersFound)
+        //console.log(usersFound)
         if(!usersFound) return
         setPotentialUsers(usersFound.map(user => ({userId: user.userId, username: user.username, email: user.email})))
     }

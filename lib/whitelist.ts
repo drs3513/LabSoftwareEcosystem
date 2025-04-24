@@ -19,7 +19,7 @@ export async function whitelistUser(projectId: string, userId: string, role: Rol
   try {
     const currentUser = (await fetchUserAttributes());
     if (!currentUser.email) {
-      console.log("Current user email not found.");
+      //console.log("Current user email not found.");
       return null;
     }
     const now = new Date().toISOString();
@@ -32,10 +32,10 @@ export async function whitelistUser(projectId: string, userId: string, role: Rol
       createdBy: currentUser.email,
       role: role,
     });
-    console.log(response);
+    //console.log(response);
     return response;
   } catch (error) {
-    console.log("Error whitelisting user:", error);
+    //console.log("Error whitelisting user:", error);
     return null;
   }
 }
@@ -57,7 +57,7 @@ export async function removeWhitelistedUser(projectId: string, userId: string, c
     await client.models.Whitelist.delete({ whitelistId });
     return true;
   } catch (error) {
-    //console.log("Error removing whitelisted user:", error);
+    ////console.log("Error removing whitelisted user:", error);
     return false;
   }
 }
@@ -70,7 +70,7 @@ export async function revokeUserAdmin(projectId: string, userId: string) {
       role: "USER",
     });
   } catch (e) {
-    //console.log(e);
+    ////console.log(e);
   }
 }
 
@@ -86,7 +86,7 @@ export async function elevateUserToAdmin(projectId: string, userId: string) {
       role: "ADMIN",
     });
   } catch (e) {
-    //console.log(e);
+    ////console.log(e);
   }
 }
 
@@ -97,7 +97,7 @@ export async function getUserRole(projectId: string, userId: string): Promise<Ro
     const response = await client.models.Whitelist.get({ whitelistId });
     return (response.data?.role as Role) || Role.NONE;
   } catch (error) {
-    //console.log("Error getting user role:", error);
+    ////console.log("Error getting user role:", error);
     return Role.NONE;
   }
 }

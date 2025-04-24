@@ -40,7 +40,7 @@ export default function ChatPanel() {
   const [tags, setTags] = useState<Array<Nullable<string>>>([]);
   const [contextMenuTagPopout, setContextMenuTagPopout] = useState(false);
   const [contextMenuMessageId, setContextMenuMessageId] = useState<string | null>(null);
-
+  const [loading, setLoading] = useState(false);
   //for searching messages
   const [searchInput, setSearchInput] = useState(""); // State for search input
   const [searchTerm, setSearchTerm] = useState<Array<string>>([])
@@ -73,7 +73,7 @@ export default function ChatPanel() {
   async function fetchMessages() {
     if (!fileId ) return;
 
-    console.log("1Fetching next messages for fileId:", fileId, "nextToken:", nextToken || "null");
+    //console.log("1Fetching next messages for fileId:", fileId, "nextToken:", nextToken || "null");
 
 
   const response = await getMessagesByFileIdAndPagination(fileId, nextToken);
@@ -84,7 +84,7 @@ export default function ChatPanel() {
   }
 
   if (!response || !response.data) {
-    console.log("No response or data found.");
+    ////console.log("No response or data found.");
     setNextToken(null); // Reset nextToken
     setHasNextPage(false); // No more pages to fetch
     setLoading(false); // Stop loading
@@ -99,7 +99,7 @@ export default function ChatPanel() {
 
   // Process messages
   const messages = response.data;
-  console.log("Fetched messages:", messages);
+  ////console.log("Fetched messages:", messages);
 
   // Sort messages by createdAt timestamp
   if (messages && messages.length > 0) {
@@ -137,7 +137,7 @@ export default function ChatPanel() {
       setNextToken(response.nextToken);
       setHasNextPage(true);
     } else {
-      console.log("No nextToken available, end of messages.");
+      ////console.log("No nextToken available, end of messages.");
       setNextToken(null); // End of pagination
     }
   }
@@ -146,7 +146,7 @@ export default function ChatPanel() {
   const handleScroll = async (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop } = e.currentTarget;
     if (scrollTop === 0 && hasNextPage ) {
-      console.log("Fetching more messages...");
+      ////console.log("Fetching more messages...");
       await fetchMessages();
     }
   };
@@ -154,7 +154,7 @@ export default function ChatPanel() {
   useEffect(() => {
 
     if (fileId) {
-      console.log("2Fetching messages for fileId:", fileId);
+      ////console.log("2Fetching messages for fileId:", fileId);
       setNextToken(null); // Reset nextToken when fileId changes
       setMessages([]); // Clear messages when fileId changes
       fetchMessages();
@@ -168,9 +168,9 @@ export default function ChatPanel() {
   async function fetchMessagesWithSearch() {
     //setLoading(true)
     if (!fileId ) return;
-    console.log("Fetching messages with search term:", searchTerm, "tagSearchTerm:", tagSearchTerm, "authorSearchTerm:", authorSearchTerm);
+    //console.log("Fetching messages with search term:", searchTerm, "tagSearchTerm:", tagSearchTerm, "authorSearchTerm:", authorSearchTerm);
     const searchedMessages = await searchMessages(fileId, searchTerm, tagSearchTerm);
-    console.log("Fetched messages:", searchedMessages);
+    //console.log("Fetched messages:", searchedMessages);
     if(searchedMessages && searchedMessages.length > 0){
       let temp_messages: Array<Message> = []
       for(let msg of searchedMessages){
@@ -199,10 +199,10 @@ export default function ChatPanel() {
         authorSearchTerm.length > 0;
 
     if (hasSearchTerms) {
-      console.log("Searching...");
+      //console.log("Searching...");
       fetchMessagesWithSearch();
     } else {
-      console.log("Fetching old messages when input is empty");
+      //console.log("Fetching old messages when input is empty");
       fetchMessages(); // restore full messages when no filters
     }
   }, [searchTerm, tagSearchTerm, authorSearchTerm]);
@@ -235,18 +235,18 @@ export default function ChatPanel() {
 
   const handleSendMessage = async () => {
     if (!input.trim()) {
-      console.log("Message input is empty. Aborting send.");
+      //console.log("Message input is empty. Aborting send.");
       return;
     }
     if (!fileId || !userId || !projectId) {
       console.error("Missing required fields:", { fileId, userId, projectId });
       return;
     }
-    console.log("Sending message with the following data:");
-    console.log("fileId:", fileId);
-    console.log("userId:", userId);
-    console.log("projectId:", projectId);
-    console.log("content:", input.trim());
+    //console.log("Sending message with the following data:");
+    //console.log("fileId:", fileId);
+    //console.log("userId:", userId);
+    //console.log("projectId:", projectId);
+    //console.log("content:", input.trim());
   
     try {
       const response = await createMessage(fileId, userId, input.trim(), projectId as string);
@@ -263,7 +263,7 @@ export default function ChatPanel() {
         return;
       }
   
-      console.log("Successfully sent message:", newMessage);
+      //console.log("Successfully sent message:", newMessage);
   
       setMessages((prevMessages) => [...prevMessages, newMessage]);
       setInput("");
@@ -346,7 +346,7 @@ export default function ChatPanel() {
     setTagSearchTerm([]);
     setAuthorSearchTerm([]);
     setSearchTerm([]);
-    console.log("Search input cleared. Fetching original messages...");
+    //console.log("Search input cleared. Fetching original messages...");
     fetchMessages(); // Fetch the original messages
     
   };
@@ -393,22 +393,22 @@ export default function ChatPanel() {
       setTagSearchTerm(temp_tag_set);
       setAuthorSearchTerm(temp_author_set);
       setSearchTerm(temp_name_set);
-      console.log("Search terms:", temp_name_set);
+      //console.log("Search terms:", temp_name_set);
     }
   };
 
   //fetching the tags for the message
   async function fetchTagsForMessage() {
     if( !contextMenuMessageId) {
-      console.log("No context menu message ID available. Aborting fetch.");
+      //console.log("No context menu message ID available. Aborting fetch.");
       setTags([]);
       return [];
     }
-    console.log("Fetching tags for message ID:", contextMenuMessageId);
+    //console.log("Fetching tags for message ID:", contextMenuMessageId);
     // Fetch tags for the current message
     const messageTags = await getTagsForMessage(contextMenuMessageId);
     setTags(messageTags)
-    console.log(tags)
+    //console.log(tags)
   }
 
   const observeTags = () => {
@@ -417,7 +417,7 @@ export default function ChatPanel() {
       selectionSet: ["tags"]
     }).subscribe({
       next: async({items}) => {
-        console.log("Called!", items.length, "tags fetched for message ID:", contextMenuMessageId);
+        //console.log("Called!", items.length, "tags fetched for message ID:", contextMenuMessageId);
         if(items.length === 0 || !items[0].tags){
           setTags([])
           return []
@@ -434,7 +434,7 @@ export default function ChatPanel() {
 
   useEffect(() => {
     if(contextMenuMessageId) {
-      console.log("Context menu message ID changed, fetching tags...");
+      //console.log("Context menu message ID changed, fetching tags...");
       fetchTagsForMessage()
       const unsubscribe = observeTags()
       return () => unsubscribe();
@@ -686,13 +686,12 @@ const ChatMessagesWrapper = styled.div`
 
 const ChatMessage = styled.div<{$sender?: boolean}>`
   display: flex;
-  color: white;
   justify-content: ${(props) => (props.$sender ? "flex-end" : "flex-start")};
   margin-bottom: 10px;
 `;
 
 const Chat_Body = styled.div<{$sender?: boolean}>`
-  background-color: ${(props) => (props.$sender ? "#365679" : "#0b1320")};
+  background-color: ${(props) => (props.$sender ? "cadetblue" : "tan")};
   padding: 10px;
   border-radius: 10px;
   max-width: 60%;
@@ -714,7 +713,7 @@ const ChatSender = styled.div`
 
 const ChatTimeStamp = styled.div`
   font-size: 8pt;
-  color: gray;
+  color: red;
   margin-top: 2px;
 `;
 

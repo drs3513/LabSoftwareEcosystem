@@ -497,7 +497,7 @@ export default function FilePanel() {
 
   async function fetchRootInfo(root_id: string, proj_id: string){
     const activeFilePath = await getFilePath(root_id, proj_id)
-    console.log(activeFilePath)
+    //console.log(activeFilePath)
     projectName.current = await getProjectName(proj_id)
 
     const { data: file } = await client.models.File.get({ fileId: root_id, projectId: proj_id });
@@ -540,9 +540,9 @@ export default function FilePanel() {
     const filePathEnd = await getFilePath(root_id, proj_id)
     if(!filePathEnd) return
     fileIdPath.push({id: root_id, filepath: filePathEnd})
-    console.log(fileIdPath)
-    console.log([projectName, ...activeFilePath.split("/").splice(1)])
-    console.log(activeFilePath)
+    //console.log(fileIdPath)
+    //console.log([projectName, ...activeFilePath.split("/").splice(1)])
+    //console.log(activeFilePath)
     setFilePathElement([projectName, ...activeFilePath.split("/").splice(1)].map((fileName, i) => ({fileName: `${fileName}/`, href: `/main_screen?pid=${proj_id}&id=${fileIdPath[i].id}`, fileId: fileIdPath[i].id, filepath: fileIdPath[i].filepath})))
     setLoading(false)
     return
@@ -771,7 +771,7 @@ export default function FilePanel() {
   const handleDownloadCurrentView = async () => {
     if (!projectId) return;
   
-    console.log("[DEBUG] Files in current view:", filesRef.current);
+    //console.log("[DEBUG] Files in current view:", filesRef.current);
   
     const task: ZipTask = {
       isCanceled: false,
@@ -875,7 +875,7 @@ export default function FilePanel() {
       console.error("[ERROR] webkitGetAsEntry not supported in this browser.");
       return;
     }
-    console.log(event)
+    //console.log(event)
     const items: {
       index: number;
       item: DataTransferItem;
@@ -909,7 +909,7 @@ export default function FilePanel() {
     const directories: string[] = [];
 
     const readEntry = async (entry: any, path = ""): Promise<void> => {
-      console.log(entry)
+      //console.log(entry)
       if (entry.isFile) {
         await new Promise<void>((resolve, reject) => {
           entry.file((file: File) => {
@@ -1233,10 +1233,10 @@ export default function FilePanel() {
     if(!overFileId) return
     observeMouseCoords.current = false
 
-    console.log(overFileId)
+    //console.log(overFileId)
 
     clearTimeout(timer.current);
-    //console.log(pickedUpFileGroup)
+    ////console.log(pickedUpFileGroup)
     if(pickedUpFileGroup != undefined){
 
       observeMouseCoords.current = false
@@ -1355,7 +1355,7 @@ export default function FilePanel() {
     if(search){
       return
     }
-    console.log(files[filesByFileId.current[currFileId]].filename)
+    //console.log(files[filesByFileId.current[currFileId]].filename)
     isLongPress.current = true
     clearTimeout(timer.current)
     timer.current = setTimeout(() => {
@@ -1420,7 +1420,7 @@ export default function FilePanel() {
   }
 
   function selectFile(e: React.MouseEvent<HTMLButtonElement>, index: number){
-    console.log(files[index])
+    //console.log(files[index])
     clearTimeout(timer.current)
     isLongPress.current = false
     if(e.detail == 2){
@@ -1615,7 +1615,7 @@ export default function FilePanel() {
 
 
   function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, location: string, userId: string | undefined, storagePath: Nullable<string> |undefined, filename: string |undefined){
-    console.log("Here!")
+    //console.log("Here!")
     if(e.target != e.currentTarget){
       return
     }

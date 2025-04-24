@@ -77,7 +77,7 @@ export async function uploadFile(
     return new Promise((resolve, reject) => {
       fileReader.onload = async (event) => {
         try {
-          console.log(event)
+          //console.log(event)
           // Upload the file
           uploadData({
             data: event.target?.result as ArrayBuffer,
@@ -145,7 +145,7 @@ export async function downloadFolderAsZip(
       const { body } = await downloadData({
         path: file.storageId,
       }).result;
-      console.log(body)
+      //console.log(body)
       const blob = await body.blob();
 
       // Add to zip under the desired directory structure

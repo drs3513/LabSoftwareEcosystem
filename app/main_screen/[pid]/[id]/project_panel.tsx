@@ -132,21 +132,21 @@ export default function ProjectPanel() {
     }).subscribe({
       next: async () => {
         try {
-          console.log("next")
+          //console.log("next")
           const userProjects = await listProjectsForUser(userId);
-          console.log("User projects:", userProjects);
+          //console.log("User projects:", userProjects);
           if (Array.isArray(userProjects)) {
-            console.log("hi")
+            //console.log("hi")
             setProjects(userProjects);
 
             // Redirect user if they are removed from the current project
             
             const isWhitelisted = await isUserWhitelistedForProject(userId, projectId!);
-            console.log("Is user whitelisted:", isWhitelisted);
-            console.log("Project ID:", projectId);
-            console.log("User ID:", userId);
+            //console.log("Is user whitelisted:", isWhitelisted);
+            //console.log("Project ID:", projectId);
+            //console.log("User ID:", userId);
             if (!isWhitelisted) {
-              console.log("rerouting the user to the main page!");
+              //console.log("rerouting the user to the main page!");
               setProjectId("");
               setFileId("");
               setRole("NONE");
@@ -201,7 +201,7 @@ export default function ProjectPanel() {
                     setProject(project.projectId);
                     if (!userId) return;
                     const usrrole = await getUserRole(project.projectId, userId);
-                    console.log(usrrole);
+                    //console.log(usrrole);
                     setRole(usrrole);
                   }}
                   onContextMenu = {(e) => createContextMenu(e, project.projectId)}

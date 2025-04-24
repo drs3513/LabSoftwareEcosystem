@@ -30,7 +30,7 @@ export async function createUserFromCognito() {
 
 export async function getUsers() {
   const user_list = await client.models.User.list();
-  console.log(user_list);
+  //console.log(user_list);
   return user_list;
 }
 

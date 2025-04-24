@@ -58,7 +58,7 @@ export async function createNewVersion(
   const versionId = await waitForVersionId(storageKey);
   if(!versionId) return
   const newFileId = crypto.randomUUID();
-  console.log("Creating the versioned file");
+  //console.log("Creating the versioned file");
   if(!parentId){
     parentId = `ROOT-${projectId}`;
   }
@@ -276,7 +276,7 @@ export async function hardDeleteFile(fileId: string, projectId: string) {
     // Step 2: Delete from S3
     if (file?.data?.storageId) {
       await deleteFileFromStorage(file?.data?.storageId);
-      //console.log(`[HARD DELETE] Deleted from storage: ${file?.data?.storageId}`);
+      ////console.log(`[HARD DELETE] Deleted from storage: ${file?.data?.storageId}`);
     }
 
 //     // Step 3: Delete from database
@@ -287,7 +287,7 @@ export async function hardDeleteFile(fileId: string, projectId: string) {
        });
     }
 
-    //console.log(`[HARD DELETE] Deleted DB record: ${file?.data?.fileId}`);
+    ////console.log(`[HARD DELETE] Deleted DB record: ${file?.data?.fileId}`);
   } catch (error) {
     console.error("[HARD DELETE ERROR]", error);
     alert("An error occurred while hard deleting the file.");
@@ -313,12 +313,12 @@ export async function abortUpload(
     try {
       if (storageKey) {
         await deleteFileFromStorage(storageKey);
-        //console.log(`[ABORT] Deleted storage: ${storageKey}`);
+        ////console.log(`[ABORT] Deleted storage: ${storageKey}`);
       }
 
       if (fileId) {
         await deleteFileFromDB(fileId, projectId);
-        //console.log(`[ABORT] Deleted DB record: ${fileId}`);
+        ////console.log(`[ABORT] Deleted DB record: ${fileId}`);
       }
     } catch (err) {
       console.error(`[ABORT] Failed to delete ${storageKey ?? fileId}`, err);
@@ -377,7 +377,7 @@ export async function listFilesForProjectAndParentIds(projectId: string, parentI
 
 export async function deleteTag(id: string, projectId: string | undefined, name: string, currTags: Nullable<string>[] | null | undefined) {
   try {
-    //console.log("Here!")
+    ////console.log("Here!")
     if (!projectId) return
 
     if(!currTags) return
