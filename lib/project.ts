@@ -108,4 +108,5 @@ export async function hardDeleteProject(projectId:string){
   for (const file of files.data){
       await hardDeleteFile(file.fileId, projectId);
   }
+  await client.models.Project.delete({projectId});
 }
