@@ -3,6 +3,7 @@ import type { Schema } from "@/amplify/data/resource";
 import {deleteFileFromStorage, getFileVersions, uploadFile} from "./storage";
 import {Nullable} from "@aws-amplify/data-schema";
 import React from "react";
+import { hardDeleteMessageforFiles } from "./message";
 const client = generateClient<Schema>();
 
 
@@ -274,7 +275,8 @@ export async function Restorefile(fileId: string, versionId: string, projectId: 
 
 export async function hardDeleteFile(fileId: string, projectId: string) {
   try {
-    /*await client.mutations.deleteMessagesByFileId({
+    const messagedelete = hardDeleteMessageforFiles(fileId);
+    /*await client.mutations.deleteMessagesB)yFileId({
       fileId
     });  */  
     // Step 1: Get the file by ID
@@ -300,7 +302,6 @@ export async function hardDeleteFile(fileId: string, projectId: string) {
     }
 
     //console.log(`[HARD DELETE] Deleted DB record: ${file?.data?.fileId}`);
-    alert("File permanently deleted.");
   } catch (error) {
     console.error("[HARD DELETE ERROR]", error);
     alert("An error occurred while hard deleting the file.");

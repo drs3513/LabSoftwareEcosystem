@@ -1,5 +1,6 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
+import { hardDeleteFile } from "./file";
 
 const client = generateClient<Schema>();
 console.log(client)
@@ -99,5 +100,12 @@ export async function deleteProject(projectId: string) {
   } catch (error) {
     console.error("Error deleting project:", error);
     throw error;
+  }
+}
+
+export async function hardDeleteProject(projectId:string){
+  const files = await client.models.File.listFileByProjectId({projectId});
+  for (const file of files.data){
+      await hardDeleteFile(file.fileId, projectId);
   }
 }

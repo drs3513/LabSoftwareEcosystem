@@ -8,6 +8,7 @@ import styled from "styled-components";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import {boolean} from "zod";
 import {useRouter, useSearchParams} from 'next/navigation'
+import { hardDeleteProject } from "@/lib/project";
 
 const client = generateClient<Schema>();
 
@@ -19,6 +20,49 @@ export default function ProjectPanel() {
   const { user } = useAuthenticator();
   const [projects, setProjects] = useState<Array<{ projectId: string; projectName: string }>>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    projectId: string | null;
+  }>({
+    visible: false,
+    x: 0,
+    y: 0,
+    projectId: null,
+  });
+  
+  function handleRightClick(event: React.MouseEvent, projectId: string) {
+    event.preventDefault();
+    setContextMenu({
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      projectId,
+    });
+  }
+
+  useEffect(() => {
+    const hideMenu = () => setContextMenu({ visible: false, x: 0, y: 0, projectId: null });
+    window.addEventListener("click", hideMenu);
+    return () => window.removeEventListener("click", hideMenu);
+  }, []);
+
+  async function handleDeleteProject(projectId: string) {
+    try {
+      await hardDeleteProject(projectId);
+      setProjects((prev) => prev.filter((p) => p.projectId !== projectId));
+      if (projectId === localProjectId) {
+        setProjectId(undefined);
+        router.push("/");
+      }
+    } catch (err) {
+      console.error("Failed to delete project:", err);
+    } finally {
+      setContextMenu({ visible: false, x: 0, y: 0, projectId: null });
+    }
+  }
+  
 
   useEffect(() => {
     if (!user?.signInDetails?.loginId) return;
@@ -76,13 +120,26 @@ export default function ProjectPanel() {
         <LoadingText>Loading projects...</LoadingText>
       ) : projects.length > 0 ? (
         projects.map((project) => (
-          <Project key={project.projectId} onClick={() => setProject(project.projectId)} $selected={localProjectId == project.projectId}>
+          <Project
+            key={project.projectId}
+            onClick={() => setProject(project.projectId)}
+            onContextMenu={(e) => handleRightClick(e, project.projectId)}
+            $selected={localProjectId == project.projectId}
+          >
             📁 {project.projectName}
           </Project>
         ))
       ) : (
         <NoProjects>No projects available.</NoProjects>
       )}
+      {contextMenu.visible && contextMenu.projectId && (
+        <ContextMenu style={{ top: contextMenu.y, left: contextMenu.x }}>
+          <ContextMenuItem onClick={() => handleDeleteProject(contextMenu.projectId!)}>
+            🗑️ Delete Project
+          </ContextMenuItem>
+        </ContextMenu>
+      )}
+
     </PanelContainer>
   );
 }
@@ -123,4 +180,21 @@ const NoProjects = styled.div`
 const LoadingText = styled.div`
   color: gray;
   text-align: center;
+`;
+const ContextMenu = styled.div`
+  position: fixed;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  z-index: 1000;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+`;
+
+const ContextMenuItem = styled.div`
+  padding: 8px 12px;
+  cursor: pointer;
+  &:hover {
+    background: lightcoral;
+    color: white;
+  }
 `;

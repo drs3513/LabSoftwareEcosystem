@@ -1,7 +1,6 @@
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import {Nullable} from "@aws-amplify/data-schema";
-import { lightningCssTransform } from "next/dist/build/swc/generated-native";
 
 const client = generateClient<Schema>();
 
@@ -64,7 +63,7 @@ interface PaginatedMessages {
 //       nextToken: nextToken,
 //       limit: 10,
 //     });
-//     console.log("Messages by fileId and pagination:", results);
+//     //console.log("Messages by fileId and pagination:", results);
 //     return results as PaginatedMessages;
 
 //   }catch (error) {
@@ -83,7 +82,7 @@ export async function getMessagesByFileIdAndPagination(
       nextToken,
       limit: 10,
     });
-    console.log("Full Results from getMessagesByFileId:", results);
+    //console.log("Full Results from getMessagesByFileId:", results);
     
     
     if (!results || !results.data || typeof results.data !== "string") {
@@ -101,19 +100,19 @@ export async function getMessagesByFileIdAndPagination(
       return { data: [], nextToken: null };
     }
 
-    console.log("Parsed results:", parsedResults);
+    //console.log("Parsed results:", parsedResults);
 
     // Ensure parsedResults.items exists and is an array
     if (!parsedResults.items || !Array.isArray(parsedResults.items)) {
       console.error("Error: parsedResults.items is not a valid array.");
       return { data: [], nextToken: null };
     }
-    console.log("Parsed results items:", parsedResults.items);
+    //console.log("Parsed results items:", parsedResults.items);
     const messages: Message[] = parsedResults.items;
-    console.log("Messages by fileId and pagination:", messages);
+    //console.log("Messages by fileId and pagination:", messages);
 
     const newToken: string | null = parsedResults.nextToken;
-    console.log("Next token:", newToken);
+    //console.log("Next token:", newToken);
     return {
       data: messages,
       nextToken: newToken,
@@ -126,13 +125,13 @@ export async function getMessagesByFileIdAndPagination(
 //searchMessages
 export async function searchMessages(fileId: string, messageContents: string[], tagNames: string[], usernames: string[]) {
   try{
-    console.log("Searching messages with fileId:", fileId, "messageContents:", messageContents, "tagsName:", tagNames);
+    //console.log("Searching messages with fileId:", fileId, "messageContents:", messageContents, "tagsName:", tagNames);
     const foundMessages = await client.queries.searchMessages({
       fileId: fileId,
       messageContents: messageContents,
       tagNames: tagNames,
     });
-    console.log("Found messages:", foundMessages);
+    //console.log("Found messages:", foundMessages);
     return foundMessages.data;
   }catch (error) {
     console.error("Error searching messages:", error);
@@ -191,4 +190,28 @@ export async function deleteMessage(messageId: string, userId: string) {
   } catch (error) {
     console.error("Error deleting message:", error);
   }
+}
+
+
+export async function hardDeleteMessageforFiles(fileId: string) {
+  try {
+    let nextToken: string | undefined = undefined;
+
+      const { data } = await client.models.Message.list({
+        filter: {
+          fileId: { eq: fileId },
+        },
+      });
+
+      for (const message of data) {
+        if (message?.messageId) {
+          await client.models.Message.delete({ messageId: message.messageId });
+        }
+      }
+    return true;
+    
+  } catch (error) {
+    console.error("Error removing messages for fileId:", fileId, error);
+    return false
+  };
 }
