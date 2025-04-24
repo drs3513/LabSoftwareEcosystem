@@ -1,7 +1,6 @@
-import { generateClient } from "aws-amplify/data";
-import type { Schema } from "@/amplify/data/resource";
-import { getUsers } from "@/lib/user";
-import { fetchUserAttributes } from "aws-amplify/auth";
+import {generateClient} from "aws-amplify/data";
+import type {Schema} from "@/amplify/data/resource";
+import {fetchUserAttributes} from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
@@ -22,7 +21,7 @@ export async function whitelistUser(projectId: string, userId: string, role: Rol
     if (!currentUser.email) {
       console.log("Current user email not found.");
       return null;
-    };
+    }
     const now = new Date().toISOString();
     const whitelistId = `${projectId}-${userId}`;
     const response = await client.models.Whitelist.create({
@@ -66,11 +65,10 @@ export async function removeWhitelistedUser(projectId: string, userId: string, c
 export async function revokeUserAdmin(projectId: string, userId: string) {
   const whitelistId = `${projectId}-${userId}`;
   try {
-    const response = await client.models.Whitelist.update({
+    return await client.models.Whitelist.update({
       whitelistId: whitelistId,
       role: "USER",
     });
-    return response;
   } catch (e) {
     //console.log(e);
   }
@@ -83,11 +81,10 @@ export async function elevateUserToAdmin(projectId: string, userId: string) {
   }
   const whitelistId = `${projectId}-${userId}`;
   try {
-    const response = await client.models.Whitelist.update({
+    return await client.models.Whitelist.update({
       whitelistId: whitelistId,
       role: "ADMIN",
     });
-    return response;
   } catch (e) {
     //console.log(e);
   }
@@ -105,92 +102,67 @@ export async function getUserRole(projectId: string, userId: string): Promise<Ro
   }
 }
 
-export async function listUsersForProject(projectId: string) {
-  try {
-    const currentUsers =  await client.models.Whitelist.list({
-      filter: {
-        projectId: {eq: projectId}
-      }
-    })
-    if(!currentUsers) return []
 
-    const allUsers = await client.models.User.list()
-
-    console.log(allUsers.data)
-    console.log(currentUsers.data)
-    console.log(allUsers.data.filter(user => currentUsers.data.some(currentUser => user.userId === currentUser.userIds)))
-    return allUsers.data.filter(user => currentUsers.data.some(currentUser => user.userId === currentUser.userIds))
-
-
-  } catch (error) {
-    console.error("Error finding whitelistable users", error);
-    return false;
-  }
-
-}
-
-export async function listUsersBelowRole(projectId: string, role: Role) {
-  try {
-    // Slice the global roleHierarchy to the current role
-    if (!roleHierarchy.includes(role)) {
-      console.error("Invalid role provided.");
-      return [];
-    }
-    if (role === Role.NONE) {
-      console.error("Role is NONE, no users to list.");
-      return [];
-    }
-    const slicedHierarchy = roleHierarchy.slice(0, roleHierarchy.indexOf(role));
-
-    // Fetch whitelist entries for project where role is below the current role
-    const whitelistResponse = await client.models.Whitelist.list({
-      filter: {
-        projectId: { eq: projectId },
-        or: slicedHierarchy.map((r) => ({
-          role: { eq: r },
-        })),
-      },
-    });
-
-    const whitelistEntries = whitelistResponse.data;
-    if (!whitelistEntries || whitelistEntries.length === 0) {
-      return [];
-    }
-
-    // Get userIds from whitelist entries
-    const userIds = whitelistEntries.map(entry => entry.userIds).filter(Boolean);
-    // Find users with those userIds
-    const userResponse = await client.models.User.list({
-      filter: {
-        or: userIds.map(id => ({ userId: { eq: id } }))
-      }
-    });
-
-    return userResponse.data ?? [];
-
-  } catch (error) {
-    console.error("Error listing users:", error);
-    return [];
-  }
-}
-
+//export async function listUsersBelowRole(projectId: string, role: Role) {
+//  try {
+//    // Slice the global roleHierarchy to the current role
+//    if (!roleHierarchy.includes(role)) {
+//      console.error("Invalid role provided.");
+//      return [];
+//    }
+//    if (role === Role.NONE) {
+//      console.error("Role is NONE, no users to list.");
+//      return [];
+//    }
+//    const slicedHierarchy = roleHierarchy.slice(0, roleHierarchy.indexOf(role));
+//
+//    // Fetch whitelist entries for project where role is below the current role
+//    const whitelistResponse = await client.models.Whitelist.list({
+//      filter: {
+//        projectId: { eq: projectId },
+//        or: slicedHierarchy.map((r) => ({
+//          role: { eq: r },
+//        })),
+//      },
+//    });
+//
+//    const whitelistEntries = whitelistResponse.data;
+//    if (!whitelistEntries || whitelistEntries.length === 0) {
+//      return [];
+//    }
+//
+//    // Get userIds from whitelist entries
+//    const userIds = whitelistEntries.map(entry => entry.userIds).filter(Boolean);
+//    // Find users with those userIds
+//    const userResponse = await client.models.User.list({
+//      filter: {
+//        or: userIds.map(id => ({ userId: { eq: id } }))
+//      }
+//    });
+//
+//    return userResponse.data ?? [];
+//
+//  } catch (error) {
+//    console.error("Error listing users:", error);
+//    return [];
+//  }
+//}
+//
 export async function isUserWhitelistedForProject(userId: string, projectId: string): Promise<boolean> {
   try {
     const whitelistId = `${projectId}-${userId}`;
     const response = await client.models.Whitelist.get({ whitelistId });
 
-    if (response.data) {
-      return true; // User is whitelisted
-    }
+    return !!response.data;
 
-    return false;
+
   } catch (error) {
     console.error("Error checking if user is whitelisted:", error);
     return false;
   }
 }
 
-export async function getWhitelistableUsers(projectId: string) {
+export async function listUsersInProject(projectId: string, inProject: boolean) {
   try {
     const currentUsers =  await client.models.Whitelist.list({
       filter: {
@@ -201,10 +173,7 @@ export async function getWhitelistableUsers(projectId: string) {
 
     const allUsers = await client.models.User.list()
 
-    console.log(allUsers.data)
-    console.log(currentUsers.data)
-    console.log(allUsers.data.filter(user => currentUsers.data.some(currentUser => user.userId === currentUser.userIds)))
-    return allUsers.data.filter(user => !currentUsers.data.some(currentUser => user.userId === currentUser.userIds))
+    return allUsers.data.filter(user => !currentUsers.data.some(currentUser => inProject ? user.userId === currentUser.userIds : user.userId !== currentUser.userIds))
 
 
   } catch (error) {

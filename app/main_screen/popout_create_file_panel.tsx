@@ -13,7 +13,7 @@ interface props {
     close: () => void;
 }
 
-export default function CreateFilePanel({ initialPosX, initialPosY, parentFileId, parentFilePath, isDirectory, inputFile, dragFile, close }: props) {
+export default function CreateFilePanel({ initialPosX, initialPosY, parentFileId, isDirectory, inputFile, dragFile, close }: props) {
     if (initialPosX + 400 > document.documentElement.offsetWidth) {
         initialPosX = document.documentElement.offsetWidth - 400;
     }
@@ -29,7 +29,6 @@ export default function CreateFilePanel({ initialPosX, initialPosY, parentFileId
     const initialYDiff = useRef(0);
     const initialResizeX = useRef(0);
     const initialResizeY = useRef(0);
-    const fileName = useRef("");
     const {projectId, userId} = useGlobalState();
     const [dragging, setDragging] = useState(false);
     
@@ -283,12 +282,3 @@ const InputSmall = styled.input`
     border: 2px solid #ccc;
     border-radius: 5px;
 `
-const Input = styled.input`
-    
-  width: 80%;
-  margin: 1rem auto;
-  height: 3rem;
-  padding: 0.5rem;
-  border: 2px solid #ccc;
-  border-radius: 5px;
-`;

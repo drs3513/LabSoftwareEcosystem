@@ -1,20 +1,14 @@
 import React, {useEffect, useRef, useState} from "react";
-import {Button, UseAuthenticator} from "@aws-amplify/ui-react";
+import {Button} from "@aws-amplify/ui-react";
 import styled from "styled-components";
-import {formatBytes} from "@/app/main_screen/[pid]/[id]/file_panel";
 import {useGlobalState} from "@/app/GlobalStateContext";
 import {
     elevateUserToAdmin,
     getUserRole,
-    getWhitelistableUsers,
-    isUserWhitelistedForProject,
-    listUsersBelowRole,
-    listUsersForProject, removeWhitelistedUser, revokeUserAdmin,
+    listUsersInProject, removeWhitelistedUser, revokeUserAdmin,
 
     whitelistUser
 } from "@/lib/whitelist";
-import {getUserIdFromEmail} from "@/lib/user";
-import { useAuthenticator } from "@aws-amplify/ui-react";
 import {generateClient} from "aws-amplify/api";
 import type {Schema} from "@/amplify/data/resource";
 enum Role {
@@ -250,7 +244,7 @@ export default function WhitelistPanel(props: props) {
                 console.log("User " + userId + " does not have a role for project " + props.projectId);
                 return;
             }
-            const response = await listUsersForProject(props.projectId);
+            const response = await listUsersInProject(props.projectId, true);
             if (response) {
                 console.log("Fetched users:", response);
                 setUsers(response.map(obj => ({userId: obj.userId, email: obj.email, username: obj.username})));
@@ -268,7 +262,7 @@ export default function WhitelistPanel(props: props) {
         }).subscribe({
 
             next: async () => {
-                fetchUsers()
+                await fetchUsers()
             },
             error: (error) => {
                 console.error("[ERROR] Error observing users:", error);
@@ -312,7 +306,7 @@ export default function WhitelistPanel(props: props) {
         }
 
         console.log("Here")
-        const usersFound = await getWhitelistableUsers(props.projectId)
+        const usersFound = await listUsersInProject(props.projectId, false)
         console.log(usersFound)
         if(!usersFound) return
         setPotentialUsers(usersFound.map(user => ({userId: user.userId, username: user.username, email: user.email})))
@@ -335,10 +329,8 @@ export default function WhitelistPanel(props: props) {
         if(role.current == Role.ADMIN){
             return contextMenuUserRole == Role.USER || contextMenuUserRole == Role.NONE
         }
-        if(role.current == Role.HEAD){
-            return true
-        }
-        return false
+        return role.current == Role.HEAD;
+
 
     }
 
@@ -355,7 +347,7 @@ export default function WhitelistPanel(props: props) {
         return "None?"
     }
     useEffect(() => {
-        const handleClickOutside = (e: MouseEvent) => {
+        const handleClickOutside = () => {
             setContextMenuUser(undefined);
             setContextMenuUserRole(undefined)
             setContextMenuPosition([0,0])
@@ -630,36 +622,8 @@ const Dropdown = styled.div`
     font-weight: normal;
 `;
 
-const DropdownItem = styled.div`
-  padding: 10px;
-  text-align: left;
-  border-bottom: 1px solid #ddd;
-  &:hover {
-    background-color: lightgray;
-    cursor: pointer;
-  }
-`;
 
-const ContextMenuExitButton = styled.button`
-  border: none;
-  font: inherit;
-  outline: inherit;
-  height: inherit;
-  position: absolute;
-  text-align: center;
-  
-  padding: .2rem .3rem;
-  top: 0;
-  right: 0;
-  visibility: hidden;
-  background-color: lightgray;
 
-  &:hover {
-    cursor: pointer;
-    background-color: gray !important;
-  }
-
-`;
 const ContextMenuItem = styled.div`
   position: relative;
   text-align: left;
@@ -673,11 +637,6 @@ const ContextMenuItem = styled.div`
     background-color: darkgray;
     
   }
-  &:hover > ${ContextMenuExitButton}{
-    visibility: visible;
-    background-color: darkgray;
-    transition: background-color 250ms linear;
-  }
 
   &:last-child {
     border-bottom-style: none;
@@ -686,33 +645,6 @@ const ContextMenuItem = styled.div`
   padding: 0.2rem 0.5rem 0.2rem 0.2rem;
 `
 
-const ContextMenuTagInput = styled.input`
-  background-color: lightgray;
-  border-width: 0;
-
-  margin: 0;
-  text-align: left;
-  border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-bottom-color: gray;
-  font-size: 14px;
-  width: 100%;
-  
-  &:hover {
-    transition: background-color 250ms linear;
-    background-color: darkgray;
-  }
-
-  &:last-child {
-    border-bottom-style: none;
-  }
-  &:focus {
-    outline: none;
-    background-color: darkgray;
-    
-  }
-  padding: 0.2rem 0.5rem 0.2rem 0.2rem;
-`
 
 const ContextMenu = styled.div`
     
@@ -725,18 +657,6 @@ const ContextMenu = styled.div`
     height: max-content;
     max-height: 300px; /* Add this */
     overflow-y: auto;   /* Add this */
-`;
-const ContextMenuPopout = styled.div<{$index: number}>`
-    margin-top: ${(props) => "calc(" + props.$index + "* calc(21px + 0.4rem) + 1px)"};
-    
-    background-color: lightgray;
-    border-color: dimgray;
-    border-style: solid;
-    border-width: 1px;
-    height: max-content;
-    width: min-content;
-    min-width: 150px;
-    
 `;
 
 const ContextMenuWrapper = styled.div<{$x: number, $y: number}>`

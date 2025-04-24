@@ -103,21 +103,21 @@ export default function PanelManager() {
   return (
     <Holder onMouseMove={(e) => resizePanels(e)} onMouseUp={resizeEnd}>
       {/* Left Panel - Project Panel */}
-      <Panel type={1} backgroundcolor="black" width={`calc(${left_panel_width} - ${border_width / 2}${border_width_type})`}>
+      <Panel type={1} backgroundColor="black" width={`calc(${left_panel_width} - ${border_width / 2}${border_width_type})`}>
       </Panel>
 
       {/* Left-Middle Border */}
       <Border $width={border_width.toString()} $width_type={border_width_type} onMouseDown={resizeLeftStart} />
 
       {/* Middle Panel - File Panel */}
-      <Panel type={2} backgroundcolor="black" width={`calc(${middle_panel_width} - ${border_width}${border_width_type})`}>
+      <Panel type={2} backgroundColor="black" width={`calc(${middle_panel_width} - ${border_width}${border_width_type})`}>
       </Panel>
 
       {/* Middle-Right Border */}
       <Border $width={border_width.toString()} $width_type={border_width_type} onMouseDown={resizeRightStart} />
 
       {/* Right Panel - Chat Panel */}
-      <Panel type={3} backgroundcolor="white" width={`calc(${right_panel_width} - ${border_width / 2}${border_width_type})`}>
+      <Panel type={3} backgroundColor="white" width={`calc(${right_panel_width} - ${border_width / 2}${border_width_type})`}>
 
       </Panel>
     </Holder>

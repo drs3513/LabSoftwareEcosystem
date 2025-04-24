@@ -11,14 +11,13 @@ export async function createProject(userId: string, projectName: string) {
     const projectId = `${uuid}`;
     const now = new Date().toISOString();
 
-    const newProject = await client.models.Project.create({
+    return await client.models.Project.create({
       projectId,
       userId,
       projectName,
       isDeleted: false,
       createdAt: now,
     });
-    return newProject;
   } catch (error) {
     console.error("Error creating project:", error);
     throw error;
@@ -26,15 +25,7 @@ export async function createProject(userId: string, projectName: string) {
 }
 
 
-export async function listAllProjects() {
-  try {
-    const response = await client.models.Project.list();
-    return response.data ?? [];
-  } catch (error) {
-    console.error("Error fetching projects:", error);
-    return [];
-  }
-}
+
 
 
 export async function listProjectsForUser(userId: string) {
@@ -63,15 +54,6 @@ export async function listProjectsForUser(userId: string) {
 
 
 
-export async function listFilesForProject(projectId: string) {
-  try {
-    const response = await client.models.File.list();
-    return response.data.filter((file) => file.projectId === projectId);
-  } catch (error) {
-    console.error("Error fetching files for project:", error);
-    return [];
-  }
-}
 
 export async function getProjectName(projectId: string){
   try {
@@ -85,19 +67,18 @@ export async function getProjectName(projectId: string){
   }
 }
 
-export async function updateProject(projectId: string, updates: Partial<Schema["Project"]["type"]>) {
-  try {
-    const updatedProject = await client.models.Project.update({
-      projectId,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    });
-    return updatedProject;
-  } catch (error) {
-    console.error("Error updating project:", error);
-    throw error;
-  }
-}
+//export async function updateProject(projectId: string, updates: Partial<Schema["Project"]["type"]>) {
+//  try {
+//    return await client.models.Project.update({
+//      projectId,
+//      ...updates,
+//      updatedAt: new Date().toISOString(),
+//    });
+//  } catch (error) {
+//    console.error("Error updating project:", error);
+//    throw error;
+//  }
+//}
 
 
 export async function deleteProject(projectId: string) {

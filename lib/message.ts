@@ -11,7 +11,7 @@ export async function createMessage(fileId: string, userId: string, content: str
     const messageId = `${uuid}`;
     const now = new Date().toISOString();
 
-    const newMessage = await client.models.Message.create({
+    return await client.models.Message.create({
       messageId,
       projectId,
       fileId,
@@ -20,7 +20,6 @@ export async function createMessage(fileId: string, userId: string, content: str
       createdAt: now,
       updatedAt: now,
     });
-    return newMessage;
   } catch (error) {
     console.error("Error creating message:", error);
   }
@@ -40,7 +39,7 @@ export async function getMessagesForFile(fileId: string) {
 }
 
 //searchMessages
-export async function searchMessages(fileId: string, messageContents: string[], tagNames: string[], usernames: string[]) {
+export async function searchMessages(fileId: string, messageContents: string[], tagNames: string[]) {
   try{
     console.log("Searching messages with fileId:", fileId, "messageContents:", messageContents, "tagsName:", tagNames);
     const foundMessages = await client.queries.searchMessages({
@@ -55,17 +54,16 @@ export async function searchMessages(fileId: string, messageContents: string[], 
   }
 }
 
-export async function updateMessage(messageId: string, content: string, userId: string) {
+export async function updateMessage(messageId: string, content: string) {
   try {
     const now = new Date().toISOString();
 
-    const updatedMessage = await client.models.Message.update({
+    return await client.models.Message.update({
       messageId,
       content,
       updatedAt: now,
       isUpdated: true,
     });
-    return updatedMessage;
   } catch (error) {
     console.error("Error updating message:", error);
   }
@@ -73,12 +71,11 @@ export async function updateMessage(messageId: string, content: string, userId: 
 
 export async function updateMessageTags(messageId: string, tags: Nullable<string>[]){
   try {
-    const updatedMessage = await client.models.Message.update({
+    return await client.models.Message.update({
       messageId,
       tags: tags
     })
 
-    return updatedMessage
   } catch (error) {
     console.error("Error updating message:", error)
   }
@@ -101,7 +98,7 @@ export async function getTagsForMessage (messageId: string) {
 }
 
 
-export async function deleteMessage(messageId: string, userId: string) {
+export async function deleteMessage(messageId: string) {
   try {
     await client.models.Message.update({ messageId, isDeleted: true, });
   } catch (error) {

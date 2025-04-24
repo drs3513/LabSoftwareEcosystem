@@ -3,7 +3,6 @@ import TopBar from "./top_bar"
 import styled from 'styled-components'
 import PanelManager from "./panel_manager"
 import NotificationView from "./notification_view"
-import {ReactElement} from "react";
 
 const Body = styled.div`
     display: flex;

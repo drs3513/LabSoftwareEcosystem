@@ -1,14 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useGlobalState } from "@/app/GlobalStateContext";
-import { generateClient } from "aws-amplify/data";
-import type { Schema } from "@/amplify/data/resource";
+import React, {useEffect, useState} from "react";
+import {useGlobalState} from "@/app/GlobalStateContext";
+import {generateClient} from "aws-amplify/data";
+import type {Schema} from "@/amplify/data/resource";
 import styled from "styled-components";
-import { useAuthenticator } from "@aws-amplify/ui-react";
-import { listProjectsForUser } from "@/lib/project";
-import { getUserRole, isUserWhitelistedForProject } from "@/lib/whitelist"
-import {boolean} from "zod";
+import {useAuthenticator} from "@aws-amplify/ui-react";
+import {listProjectsForUser} from "@/lib/project";
+import {getUserRole, isUserWhitelistedForProject} from "@/lib/whitelist"
 import {useRouter, useSearchParams} from 'next/navigation'
 import WhitelistPanel from '@/app/main_screen/popout_whitelist_user_panel'
 
@@ -65,8 +64,7 @@ export default function ProjectPanel() {
 
   useEffect(() => {
     const startObserving = async () => {
-      const unsubscribe = await observeProjects();
-      return unsubscribe;
+      return await observeProjects();
     };
 
     const unsubscribePromise = startObserving();
@@ -88,7 +86,7 @@ export default function ProjectPanel() {
     const subscription = client.models.Whitelist.observeQuery({
       filter: { userIds: { eq: userId } },
     }).subscribe({
-      next: async (response) => {
+      next: async () => {
         try {
           console.log("next")
           const userProjects = await listProjectsForUser(userId);
@@ -133,7 +131,7 @@ export default function ProjectPanel() {
   }
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = () => {
       setContextMenuProjectId(undefined);
       setContextMenuPosition([0,0])
     };
@@ -282,33 +280,6 @@ const ContextMenuItem = styled.div`
   padding: 0.2rem 0.5rem 0.2rem 0.2rem;
 `
 
-const ContextMenuTagInput = styled.input`
-  background-color: lightgray;
-  border-width: 0;
-
-  margin: 0;
-  text-align: left;
-  border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-bottom-color: gray;
-  font-size: 14px;
-  width: 100%;
-  
-  &:hover {
-    transition: background-color 250ms linear;
-    background-color: darkgray;
-  }
-
-  &:last-child {
-    border-bottom-style: none;
-  }
-  &:focus {
-    outline: none;
-    background-color: darkgray;
-    
-  }
-  padding: 0.2rem 0.5rem 0.2rem 0.2rem;
-`
 
 const ContextMenu = styled.div`
     
@@ -322,18 +293,7 @@ const ContextMenu = styled.div`
     max-height: 300px; /* Add this */
     overflow-y: auto;   /* Add this */
 `;
-const ContextMenuPopout = styled.div<{$index: number}>`
-    margin-top: ${(props) => "calc(" + props.$index + "* calc(21px + 0.4rem) + 1px)"};
-    
-    background-color: lightgray;
-    border-color: dimgray;
-    border-style: solid;
-    border-width: 1px;
-    height: max-content;
-    width: min-content;
-    min-width: 150px;
-    
-`;
+
 
 const ContextMenuWrapper = styled.div<{$x: number, $y: number}>`
     position: fixed;

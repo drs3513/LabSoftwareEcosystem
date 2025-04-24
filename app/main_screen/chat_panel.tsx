@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, use } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useGlobalState } from "../GlobalStateContext";
 import {
   getMessagesForFile,
@@ -13,9 +13,8 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import {Nullable} from "@aws-amplify/data-schema";
 import styled from "styled-components";
-import { SqlServerEngineVersion } from "aws-cdk-lib/aws-rds";
-import {deleteTag} from "@/lib/file";
-import {useRouter, useSearchParams} from 'next/navigation'
+
+import {useSearchParams} from 'next/navigation'
 
 const client = generateClient<Schema>();
 
@@ -30,11 +29,7 @@ interface Message {
   email?: string;
 }
 
-interface Tag {
-  tagId: string;
-  messageId?: string |null;
-  tagName: string
-}
+
 
 export default function ChatPanel() {
   const { projectId, fileId, userId} = useGlobalState();
@@ -50,14 +45,14 @@ export default function ChatPanel() {
   //for searching messages
   const [searchInput, setSearchInput] = useState(""); // State for search input
   const [searchTerm, setSearchTerm] = useState<Array<string>>([])
-  const [loading, setLoading] = useState(false)
+  //const [loading, setLoading] = useState(false)
   const [tagSearchTerm, setTagSearchTerm] = useState<Array<string>>([])
   const [authorSearchTerm, setAuthorSearchTerm] = useState<Array<string>>([])
 
   const routerSearchParams = useSearchParams()
 
   useEffect(() => {
-      setLoading(true);
+      //setLoading(true);
       const proj_id = routerSearchParams.get("pid");
       if (!proj_id || !userId) {
         setMessages([]);
@@ -65,7 +60,7 @@ export default function ChatPanel() {
         setTagSearchTerm([]);
         setAuthorSearchTerm([]);
         setInput("");
-        setLoading(false);
+        //setLoading(false);
         return;
       }
     }, [routerSearchParams, userId]);
@@ -154,7 +149,7 @@ export default function ChatPanel() {
       }
       setMessages(temp_messages);
     }
-    setLoading(false);
+    //setLoading(false);
   }
 
   useEffect(() => {
@@ -172,10 +167,10 @@ export default function ChatPanel() {
 
 //fetching messages when found the search term
   async function fetchMessagesWithSearch() {
-    setLoading(true)
+    //setLoading(true)
     if (!fileId ) return;
     console.log("Fetching messages with search term:", searchTerm, "tagSearchTerm:", tagSearchTerm, "authorSearchTerm:", authorSearchTerm);
-    const searchedMessages = await searchMessages(fileId, searchTerm, tagSearchTerm, authorSearchTerm);
+    const searchedMessages = await searchMessages(fileId, searchTerm, tagSearchTerm);
     console.log("Fetched messages:", searchedMessages);
     if(searchedMessages && searchedMessages.length > 0){
       let temp_messages: Array<Message> = []
@@ -193,7 +188,7 @@ export default function ChatPanel() {
               email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown"
             }] }}
       setMessages(temp_messages);
-      setLoading(false);
+      //setLoading(false);
       return temp_messages
     }
   }
@@ -259,7 +254,7 @@ export default function ChatPanel() {
   
   
       if (!response) {
-        throw new Error("createMessage returned undefined");
+        new Error("createMessage returned undefined");
       }
   
       const newMessage = response?.data ?? response;
@@ -293,7 +288,7 @@ export default function ChatPanel() {
     const newContent = prompt("Enter new message content:");
     if (newContent) {
       try {
-        await updateMessage(messageId, newContent, userId!);
+        await updateMessage(messageId, newContent);
         setMessages((prevMessages) =>
             prevMessages.map((msg) =>
                 msg.messageId === messageId ? { ...msg, content: newContent, edited: true } : msg
@@ -308,11 +303,11 @@ export default function ChatPanel() {
 
   const handleDeleteMessage = async (messageId: string, messageuserId: string)=> {
     if(messageuserId != userId){
-      alert("You do not have acces to this message");
+      alert("You do not have access to this message");
       return;
     }
     try {
-      await deleteMessage(messageId, userId as string);
+      await deleteMessage(messageId);
       setMessages((prevMessages) =>
           prevMessages.map((msg) =>
               msg.messageId === messageId ? { ...msg, content: "", deleted: true } : msg

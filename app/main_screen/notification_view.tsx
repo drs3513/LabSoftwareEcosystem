@@ -3,8 +3,8 @@ import {useNotificationState} from "@/app/NotificationStateContext";
 import React from "react";
 export default function NotificationView() {
     const { activeNotifications, removeNotification,
-    uploadQueue, uploadTask, uploadProgress, setUploadProgress, downloadProgressMap, setDownloadProgressMap,
-    completedUploads, setCompletedUploads, showProgressPanel, setShowProgressPanel} = useNotificationState();
+    uploadQueue, uploadProgress,
+    completedUploads, showProgressPanel, setShowProgressPanel} = useNotificationState();
 
 
 
@@ -145,7 +145,7 @@ const ProgressPanel = styled.div`
   overflow-y: auto;
   background: white;
   border: 1px solid #ccc;
-  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   padding: 1rem;
   border-radius: 8px;
   z-index: 999;

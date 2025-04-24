@@ -1,19 +1,17 @@
 
 import '@aws-amplify/ui-react/styles.css';
-import React, {ChangeEvent, Component, ElementType, useEffect, useMemo, useRef, useState} from "react";
+import React, { useEffect, useMemo, useRef, useState} from "react";
 import { useGlobalState } from "@/app/GlobalStateContext";
 import { useNotificationState } from "@/app/NotificationStateContext";
 import {
-  listFilesForProject,
   listFilesForProjectAndParentIds,
   searchFiles,
-  updateFileLocation,
   createTag,
   deleteTag,
   getTags,
   getFilePath,
   getFileIdPath,
-  processAndUploadFiles, deleteFile, Restorefile, hardDeleteFile,
+  processAndUploadFiles, deleteFile,
   getFileChildren, batchUpdateFilePath, pokeFile,
   updatefile,
   createNewVersion,
@@ -25,11 +23,9 @@ import {Nullable} from "@aws-amplify/data-schema";
 import { generateClient } from "aws-amplify/api";
 import { startDownloadTask, downloadFolderAsZip, uploadFile, ZipTask } from "@/lib/storage";
 import type { Schema } from "@/amplify/data/resource";
-import CreateFilePanel from "../../popout_create_file_panel"
 import {useRouter, useSearchParams} from "next/navigation"
 import {getProjectName} from "@/lib/project";
 import Link from "next/link";
-import {JSX} from "react/jsx-runtime";
 import ConflictModal from '../../conflictModal';
 import { isUserWhitelistedForProject } from '@/lib/whitelist';
 
@@ -63,29 +59,11 @@ import icon_filexml from "/assets/icons/file-icon-24x24-xml.svg";
 import icon_filezip from "/assets/icons/file-icon-24x24-zip.svg";
 
 
-import IntrinsicElements = JSX.IntrinsicElements;
 import {isCancelError} from "aws-amplify/storage";
 import RecycleBinPanel from "@/app/main_screen/popout_recycling_bin";
 
 
 const client = generateClient<Schema>();
-
-// TODO add routing support for currently viewed message window
-// TODO remove 'list' requests wherever possible. I think with relational querying, I can make file display use a 'Get' request instead of a 'List' request
-// TODO Make sure file drag-and-drop works as expected
-// TODO This means that I need the following features : group-select drag&drop, drag&drop to file path elements at the top of window
-
-// TODO Make sure updates works as expected (dependent on TODO above)
-//I don't quite remember what this one means ^^
-function compare_two_numbers(num_1: number, num_2: number) {
-  if(num_1 < num_2){
-    return -1
-  } else if(num_1 > num_2){
-    return 1
-  } else {
-    return 0
-  }
-}
 
 function compare_file_date(file_1: any, file_2: any){
   let date_1 = new Date(file_1.updatedAt)
@@ -152,12 +130,12 @@ export default function FilePanel() {
 
   const {userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId, heldKeys, setHeldKeys, draggingFloatingWindow} = useGlobalState();
 
-  const {uploadQueue, uploadTask, uploadProgress, setUploadProgress,
-    downloadProgressMap, setDownloadProgressMap, completedUploads, setCompletedUploads,
-  showProgressPanel, setShowProgressPanel} = useNotificationState();
+  const {uploadQueue, uploadTask, setUploadProgress,
+    setDownloadProgressMap, setCompletedUploads,
+  setShowProgressPanel} = useNotificationState();
 
 
-  const folderDownloadTask = useRef<{ isCanceled: boolean; cancel: () => void } | null>(null);
+  //const folderDownloadTask = useRef<{ isCanceled: boolean; cancel: () => void } | null>(null);
 
   //const uploadQueue = useRef<Array<{
   //  folderDict: Record<string, any>,
@@ -196,7 +174,6 @@ export default function FilePanel() {
 
   const [contextMenuTags, setContextMenuTags] = useState< Nullable<string>[] | null | undefined>(undefined)
 
-  const [contextMenuUser, setContextMenuUser] = useState<string | undefined>(undefined);
 
   const [contextMenuVersionPopout, setContextMenuVersionPopout] = useState(false);
 
@@ -223,13 +200,11 @@ export default function FilePanel() {
 
   const [selectedFileGroup, setSelectedFileGroup] = useState<number[] | undefined>(undefined)
 
-  const [cutFileId, setCutFileId] = useState<fileInfo | undefined>(undefined)
 
   const timer = useRef(setTimeout(() => {}, 500));
 
   const isLongPress  = useRef(false);
 
-  const [createFilePanelUp, setCreateFilePanelUp] = useState(false);
 
   const [displayConflictModal, setDisplayConflictModel] = useState(false);
 
@@ -237,22 +212,15 @@ export default function FilePanel() {
 
   const createFilePanelInitX = useRef(0);
   const createFilePanelInitY = useRef(0);
-  const createFileOrFolder = useRef("File");
 
   const shiftKey = useRef(false)
-
-  //const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  //const [downloadProgressMap, setDownloadProgressMap] = useState<Record<string, number>>({});
-  //const [completedUploads, setCompletedUploads] = useState<number[]>([]);
-  //const [showProgressPanel, setShowProgressPanel] = useState(true);
-
 
   const [showRecycleBin, setShowRecycleBin] = useState(false);
 
   const [dragOverFileId, setDragOverFileId] = useState<string | undefined>(undefined);
 
   function return_file_icon(fileName: string){
-    var extension = fileName.split('.').pop()
+    const extension = fileName.split('.').pop()
     switch(extension) {
       case 'cpp': {
         return icon_filecpp;
@@ -311,7 +279,6 @@ export default function FilePanel() {
 
 
   //sorts files to be displayed by the user
-  //TODO allow toggle of sort mode through setting 'sort' state
   function sort_files_with_path(files: Array<fileInfo>, sortStyle: string = "alphanumeric"){
     if (activeParentIds.length === 0) {
       console.log("Active Parent IDs are empty. Returning files without sorting.");
@@ -341,7 +308,7 @@ export default function FilePanel() {
       return file_list
     }
 
-    //put each file into its own 'bucket', which designates which parentId it belongs to, allows for seperate sorting
+    //put each file into its own 'bucket', which designates which parentId it belongs to, allows for separate sorting
     //within subdirectories
     filesByParentId.current = {}
 
@@ -623,7 +590,7 @@ export default function FilePanel() {
     setLoading(true);
     if (!projectId) return;
     //console.log("Here")
-    const projectFiles = await searchFiles(projectId, searchTerm, tagSearchTerm, authorSearchTerm)
+    const projectFiles = await searchFiles(projectId, searchTerm, tagSearchTerm)
     //builds array of files with extra information for display
     //Extra information :
     //'visible' : designates if a file is current visible,
@@ -890,15 +857,15 @@ export default function FilePanel() {
 
       items.push({ index, item, entry, file });
 
-      const entryType = entry
-          ? entry.isDirectory
-              ? "directory"
-              : entry.isFile
-                  ? "file"
-                  : "unknown"
-          : "null";
+      //const entryType = entry
+      //    ? entry.isDirectory
+      //        ? "directory"
+      //        : entry.isFile
+      //            ? "file"
+      //            : "unknown"
+      //    : "null";
 
-      const name = file?.name || "(no fallback file)";
+      //const name = file?.name || "(no fallback file)";
     });
 
     const files: File[] = [];
@@ -954,7 +921,7 @@ export default function FilePanel() {
         continue;
       }
 
-      const entryType = entry.isDirectory ? "directory" : entry.isFile ? "file" : "unknown";
+      //const entryType = entry.isDirectory ? "directory" : entry.isFile ? "file" : "unknown";
 
       try {
         await readEntry(entry);
@@ -973,7 +940,7 @@ export default function FilePanel() {
       return;
     }
 
-    handleCreateFile(directories.length > 0, projectId, ownerId, parentId, files, rootFilePath);
+    await handleCreateFile(directories.length > 0, projectId, ownerId, parentId, files, rootFilePath);
   };
 
 
@@ -1035,7 +1002,7 @@ export default function FilePanel() {
       const pathParts = fullPath.split("/");
       const fileName = pathParts.pop()!;
       const filePath = `${rootFilePath.replace(/\/$/, "")}/${fullPath}`.replace(/\/+/g, "/");
-      ;
+
 
       const conflict = filesRef.current.find(
           f => f.filepath === filePath && f.projectId === projectId
@@ -1052,7 +1019,7 @@ export default function FilePanel() {
         const { key: storageKey } = await uploadFile(file, ownerId, projectId, filePath);
         waitForVersionId(storageKey).then((versionId) => {
           return updatefile(conflict.fileId, projectId, versionId as string);
-        });;
+        });
         
       }
 
@@ -1100,12 +1067,12 @@ export default function FilePanel() {
 
 
 
-  const cancelUpload = () => {
-    if (uploadTask.current) {
-      uploadTask.current.cancel();
-      console.warn("[CANCEL] Upload cancel requested.");
-    }
-  };
+  //const cancelUpload = () => {
+  //  if (uploadTask.current) {
+  //    uploadTask.current.cancel();
+  //    console.warn("[CANCEL] Upload cancel requested.");
+  //  }
+  //};
   async function recursiveDeleteFolder(fileId: string) {
     if (!fileId || !projectId) return;
 
@@ -1148,7 +1115,7 @@ export default function FilePanel() {
 
 
 
-  async function onFilePlace(e: React.MouseEvent<HTMLButtonElement> | React.MouseEvent<HTMLDivElement>, overFileId: Nullable<string>, overFilePath: Nullable<string>) {
+  async function onFilePlace(e: React.MouseEvent<HTMLButtonElement> | React.MouseEvent<HTMLDivElement>, overFileId: Nullable<string>) {
     isLongPress.current = false;
     clearTimeout(timer.current)
     if(search){
@@ -1215,18 +1182,18 @@ export default function FilePanel() {
         //`} else {
 //`
         //`}
-        const returnedValue = await batchUpdateFilePath(fileIds, projectId, parentIds, filepaths)
-        const poke = await pokeFile(parentsToMove[0], projectId, filepaths[0])
+        await batchUpdateFilePath(fileIds, projectId, parentIds, filepaths)
+        await pokeFile(parentsToMove[0], projectId, filepaths[0])
       }
 
-
-      fetchFiles()
+      await fetchFiles()
 //      for(let fileIndex of pickedUpFileGroup) {
 //        if(!projectId) return
 //        console.log("Here!")
 //        const children = await getFileChildren(projectId, files[fileIndex].filepath)
 //        console.log(children)
 //      }
+
       setPickedUpFileGroup(undefined)
 
     } else if(pickedUpFileId){
@@ -1268,9 +1235,9 @@ export default function FilePanel() {
       //`} else {
 //`
       //`}
-      const returnedValue = await batchUpdateFilePath(fileIds, projectId, parentIds, filepaths)
+      await batchUpdateFilePath(fileIds, projectId, parentIds, filepaths)
       fetchFiles()
-      const poke = await pokeFile(fileIds[0], projectId, filepaths[0])
+      await pokeFile(fileIds[0], projectId, filepaths[0])
       setPickedUpFileId(undefined)
 
       //console.log(returnedValue)
@@ -1309,38 +1276,20 @@ export default function FilePanel() {
   }
 
   //Recursively generates new 'path' values for all subdirectories of that which was placed
-  function recursiveGeneratePaths(currFileId: Nullable<string>, pathAppend: string) {
-    let newPathAppend: string = pathAppend
-
-    if (currFileId && projectId) {
-      files[filesByFileId.current[currFileId]].filepath = pathAppend + files[filesByFileId.current[currFileId]].filename
-      updateFileLocation(currFileId, pathAppend + files[filesByFileId.current[currFileId]].filename, files[filesByFileId.current[currFileId]].parentId, projectId)
-      newPathAppend = pathAppend + files[filesByFileId.current[currFileId]].filename + "/"
-      if (currFileId in filesByParentId.current) {
-        for (let i of filesByParentId.current[currFileId]) {
-          recursiveGeneratePaths(files[i].fileId, newPathAppend)
-        }
-      }
-    }
-  }
-
-  function reorient_files_on_new_root(temp_files: Array<fileInfo>, root_id: string){
-    return temp_files.map(file => ({
-          fileId: file.fileId,
-          filename: file.filename,
-          filepath: file.filepath,
-          parentId: file.parentId,
-          size: file.size,
-          versionId: file.versionId,
-          ownerId: file.ownerId,
-          projectId: file.projectId,
-          createdAt: file.createdAt,
-          updatedAt: file.updatedAt,
-          visible: file.parentId === root_id,
-          open: false,
-          isDirectory: file.isDirectory
-    }))
-  }
+  //function recursiveGeneratePaths(currFileId: Nullable<string>, pathAppend: string) {
+  //  let newPathAppend: string = pathAppend
+//
+  //  if (currFileId && projectId) {
+  //    files[filesByFileId.current[currFileId]].filepath = pathAppend + files[filesByFileId.current[currFileId]].filename
+  //    updateFileLocation(currFileId, pathAppend + files[filesByFileId.current[currFileId]].filename, files[filesByFileId.current[currFileId]].parentId, projectId)
+  //    newPathAppend = pathAppend + files[filesByFileId.current[currFileId]].filename + "/"
+  //    if (currFileId in filesByParentId.current) {
+  //      for (let i of filesByParentId.current[currFileId]) {
+  //        recursiveGeneratePaths(files[i].fileId, newPathAppend)
+  //      }
+  //    }
+  //  }
+  //}
 
   function reorientView(index: number){
     setSelectedFileGroup([])
@@ -1460,7 +1409,7 @@ export default function FilePanel() {
         const tag_name = (e.target as HTMLInputElement).value as string
         (e.target as HTMLInputElement).value = ""
 
-        createTag(contextMenuFileId, projectId, contextMenuTags, tag_name)
+        await createTag(contextMenuFileId, projectId, contextMenuTags, tag_name)
       }
     }
   }
@@ -1559,7 +1508,6 @@ export default function FilePanel() {
     setContextMenuFileId(fileId);
     setContextMenuFilePath(filepath);
     setContextMenuTagPopout(false);
-    setContextMenuUser(userId);
     setContextMenuStoragePath(storagePath);
     setContextMenuFileName(filename);
 
@@ -1591,7 +1539,7 @@ export default function FilePanel() {
       <>
         <PanelContainer
             onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel', undefined, undefined, undefined)}
-            onMouseUp={(e) => onFilePlace(e, rootParentId, null)}
+            onMouseUp={(e) => onFilePlace(e, rootParentId)}
             onMouseMove = {(e) => {observeMouseCoords.current && (pickedUpFileGroup || pickedUpFileId) ? setMouseCoords([e.clientX, e.clientY]) : undefined}}
             onClick = {(e) => e.target == e.currentTarget ? setSelectedFileGroup(undefined) : undefined}
             onDrop = {(e) => {projectId && userId ? handleFileDrag(e, projectId, userId, "ROOT-"+projectId, "") : undefined}}
@@ -1639,7 +1587,7 @@ export default function FilePanel() {
                             $selected = {dragOverFileId == file.fileId || selectedFileGroup != undefined && selectedFileGroup.includes(index)}
                             $indexDiff = {0}
                             onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : false}
-                            onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : () => {isLongPress.current = false; clearTimeout(timer.current);}}
+                            onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId) : () => {isLongPress.current = false; clearTimeout(timer.current);}}
                             onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(e, filesByFileId.current[file.fileId]) : selectFile(e, index)}
                             onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
                             onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
@@ -1667,7 +1615,7 @@ export default function FilePanel() {
                             $selected = {dragOverFileId == file.fileId || selectedFileGroup != undefined && selectedFileGroup.includes(index)}
                             $indexDiff = {selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] < selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[0] : selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] > selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[1] : 0}
                             onMouseDown={(e) => file.fileId != pickedUpFileId ? onFilePickUp(e, file.fileId) : undefined}
-                            onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId, file.filepath) : undefined}
+                            onMouseUp={(e) => file.fileId != pickedUpFileId ? onFilePlace(e, file.fileId) : undefined}
                             onClick={(e: React.MouseEvent<HTMLButtonElement>) => e.detail == 2 ? reorientView(index) : undefined}
                             onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
                             onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
@@ -1708,7 +1656,7 @@ export default function FilePanel() {
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
                     <ContextMenuItem
-                        onClick={(e) => {
+                        onClick={() => {
                           handleCreateFolder();
                         }}
                     >
@@ -2169,82 +2117,7 @@ const Input = styled.input`
   border-radius: 5px;
 `;
 
-/*--------------------------------------------------------------------
-Comps for Progress display
---------------------------------------------------------------------*/
-const ProgressBarContainer = styled.div`
-  width: 100%;
-  background-color: #f0f0f0;
-  border-radius: 4px;
-  height: 10px;
-  margin: 10px 0;
-  position: relative;
-`;
 
-const ProgressBarFill = styled.div<{ percent: number }>`
-  height: 100%;
-  width: ${(props) => props.percent}%;
-  background-color: #007bff;
-  border-radius: 4px;
-  transition: width 0.3s ease;
-`;
-
-const ProgressLabel = styled.span`
-  font-size: 12px;
-  margin-left: 8px;
-  color: #555;
-`;
-
-const CancelButton = styled.button`
-  margin-left: 8px;
-  border: none;
-  background: transparent;
-  color: red;
-  font-size: 16px;
-  cursor: pointer;
-
-  &:hover {
-    color: darkred;
-  }
-`;
-const ProgressPanel = styled.div`
-  position: fixed;
-  right: 1rem;
-  bottom: 1rem;
-  width: 300px;
-  max-height: 50vh;
-  overflow-y: auto;
-  background: white;
-  border: 1px solid #ccc;
-  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
-  padding: 1rem;
-  border-radius: 8px;
-  z-index: 999;
-`;
-
-const ProgressHeader = styled.h4`
-  margin: 0 0 0.5rem 0;
-  font-size: 1rem;
-  text-align: left;
-  color: #333;
-`;
-
-const DismissButton = styled.button`
-  background: none;
-  border: none;
-  color: #888;
-  float: right;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 0;
-  margin-left: auto;
-
-  &:hover {
-    color: #333;
-  }
-`;
-
-// @ts-ignore
 const FloatingRecycleButton = styled.button`
 
   width: 2rem;
@@ -2267,41 +2140,3 @@ const FloatingRecycleButton = styled.button`
     background-color: #D7DADD;
   }
 `;
-/*
-const RecycleBinPanel = styled.div`
-  position: absolute;
-  top: 3.5rem;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background-color: #fff5f5;
-  overflow-y: auto;
-  z-index: 500;
-  padding: 1rem;
-  border-top: 2px solid #ddd;
-`;
-
-const RecycleBinHeader = styled.h3`
-  margin-top: 0;
-  color: #c00;
-`;
-
-const RecycleFileActions = styled.div`
-  margin-top: 0.5rem;
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-start;
-
-  button {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.8rem;
-    border: 1px solid #ccc;
-    background-color: #eee;
-    cursor: pointer;
-
-    &:hover {
-      background-color: #ddd;
-    }
-  }
-`;
-*/

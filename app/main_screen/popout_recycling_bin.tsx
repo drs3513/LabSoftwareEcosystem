@@ -1,7 +1,7 @@
 import styled from "styled-components";
 import React, {useRef, useState, useEffect} from "react";
 import { useGlobalState } from "../GlobalStateContext";
-import {getFilesByProjectIdAndIsDeleted, hardDeleteFile, Restorefile} from "@/lib/file";
+import {getFilesByProjectIdAndIsDeleted, hardDeleteFile, restoreFile} from "@/lib/file";
 import { formatBytes } from "@/app/main_screen/[pid]/[id]/file_panel";
 
 interface props {
@@ -102,7 +102,7 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
     }, [projectId]);
 
     async function handleRestore(fileId: string, versionId: string) {
-        await Restorefile(fileId, versionId, projectId as string);
+        await restoreFile(fileId, versionId, projectId as string);
     }
 
     async function handleHardDelete(fileId: string) {

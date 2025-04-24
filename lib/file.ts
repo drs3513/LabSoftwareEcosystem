@@ -6,19 +6,6 @@ import React from "react";
 const client = generateClient<Schema>();
 
 
-export async function listFiles(setFiles: (files: Array<Schema["File"]["type"]>) => void) {
-  const subscription = client.models.File.observeQuery().subscribe({
-    next: (data) => setFiles([...data.items]),
-    error: (error) => {
-      console.error("Error observing messages:", error);
-    },
-  }); 
-  return () => {
-    if (subscription) {
-      subscription.unsubscribe();
-    }
-  };
-}
 
 export async function waitForVersionId(key: string): Promise<string | null> {
   const maxRetries = 1;
@@ -67,8 +54,9 @@ export async function createNewVersion(
   const { key: storageKey } = await uploadFile(file, ownerId, projectId, filepath);
 
   
-  const versionId = waitForVersionId(storageKey);
-  const newfileid = crypto.randomUUID();
+  const versionId = await waitForVersionId(storageKey);
+  if(!versionId) return
+  const newFileId = crypto.randomUUID();
   console.log("Creating the versioned file");
   if(!parentId){
     parentId = `ROOT-${projectId}`;
@@ -76,7 +64,7 @@ export async function createNewVersion(
   // Create a new file version record in the database
   await createFile({
     projectId,
-    fileId:newfileid,
+    fileId:newFileId,
     logicalId: logicalId,
     filename: file.name,
     isDirectory: false,
@@ -100,7 +88,7 @@ export async function processAndUploadFiles(
   ownerId: string,
   parentId: string,
   currentPath: string = "",
-  uploadTaskRef?: React.MutableRefObject<{
+  uploadTaskRef?: React.RefObject<{
     isCanceled: boolean;
     uploadedFiles: { storageKey?: string, fileId?: string }[];
   }>,
@@ -137,7 +125,7 @@ export async function processAndUploadFiles(
       if (uploadTaskRef?.current?.isCanceled) {
         console.warn("[CANCEL] Upload task was canceled mid-process.");
         await abortUpload(uploadTaskRef.current.uploadedFiles, projectId);
-        throw new Error("Upload canceled by user.");
+        new Error("Upload canceled by user.");
       }
 
       for (const [key, value] of Object.entries(obj)) {
@@ -165,7 +153,7 @@ export async function processAndUploadFiles(
           const nextParentId = newFile?.data?.fileId;
           if (!nextParentId) {
             await abortUpload(uploadedFiles, projectId);
-            throw new Error("Failed to create directory");
+            new Error("Failed to create directory");
           }
 
           uploadedFiles.push({ fileId: nextParentId });
@@ -194,34 +182,32 @@ export async function processAndUploadFiles(
               }
               if (!versionId) {
                 await abortUpload(uploadedFiles, projectId);
-                throw new Error("Could not retrieve version ID after retry");
+                new Error("Could not retrieve version ID after retry");
+              } else {
+                const newFile = await createFile({
+                  projectId,
+                  fileId: fileUuid,
+                  logicalId: fileUuid,
+                  filename: fileKey,
+                  isDirectory: false,
+                  filepath: `${currentFilePath}/${fileKey}`,
+                  parentId: currentParentId,
+                  storageId: storageKey,
+                  size: fileValue.size ?? 0,
+                  versionId,
+                  ownerId,
+                  isDeleted: 0,
+                  createdAt: now,
+                  updatedAt: now,
+                });
+                if(!newFile || !newFile.data || !newFile.data.fileId) {
+                  await abortUpload(uploadedFiles, projectId);
+                  new Error("DB record creation failed");
+                } else {
+                  uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
+                  uploadTaskRef?.current?.uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
+                }
               }
-
-              const newFile = await createFile({
-                projectId,
-                fileId: fileUuid,
-                logicalId: fileUuid,
-                filename: fileKey,
-                isDirectory: false,
-                filepath: `${currentFilePath}/${fileKey}`,
-                parentId: currentParentId,
-                storageId: storageKey,
-                size: fileValue.size ?? 0,
-                versionId,
-                ownerId,
-                isDeleted: 0,
-                createdAt: now,
-                updatedAt: now,
-              });
-
-              if (!newFile?.data?.fileId) {
-                await abortUpload(uploadedFiles, projectId);
-                throw new Error("DB record creation failed");
-              }
-
-              uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
-              uploadTaskRef?.current?.uploadedFiles.push({ storageKey, fileId: newFile.data.fileId });
-
               processed++;
               if (setProgress && fileCount > 0) {
                 const percent = (processed / fileCount) * 100;
@@ -230,7 +216,6 @@ export async function processAndUploadFiles(
 
             } catch (error) {
               await abortUpload(uploadedFiles, projectId);
-              throw error;
             }
           }
         }
@@ -248,7 +233,7 @@ export async function processAndUploadFiles(
   }
 }
 
-export async function Restorefile(fileId: string, versionId: string, projectId: string) {
+export async function restoreFile(fileId: string, versionId: string, projectId: string) {
   await client.models.File.update({
     fileId,
     versionId,
@@ -402,20 +387,6 @@ export async function deleteFileFromDB(fileId: string, projectId: string): Promi
   await client.models.File.delete({fileId, projectId});
 }
 
-//PD : I updated this function to use 'filter' attribute
-export async function listFilesForProject(projectId: string) {
-  try {
-    const response = await client.models.File.listFileByProjectId(
-      {projectId}
-    ); // Fetch all files
-    const files = response.data; // Extract file array
-    return files.filter((file) => file ? file.projectId === projectId: null); // Filter files by projectId
-
-  } catch (error) {
-    console.error("Error fetching files for project:", error);
-    return [];
-  }
-}
 
 export async function listFilesForProjectAndParentIds(projectId: string, parentIds: string[]){
 
@@ -495,7 +466,7 @@ export async function createTag(id: string, projectId: string | undefined, currT
 
 
 
-export async function searchFiles(projectId: string, fileNames: string[], tagNames: string[], authorNames: string[]){
+export async function searchFiles(projectId: string, fileNames: string[], tagNames: string[]){
   try {
     console.log(fileNames)
     console.log(tagNames)
@@ -568,13 +539,12 @@ export async function getFileChildren(projectId: string, filepath: string){
 export async function pokeFile(fileId: string, projectId: string, filepath: string){
   try {
 
-    const pokeUpdate = await client.models.File.update({
+    return await client.models.File.update({
       fileId: fileId,
       projectId: projectId,
       filepath: filepath
     })
 
-    return pokeUpdate
 
   } catch (error) {
     console.error("Failed to poke", error)
@@ -662,7 +632,6 @@ export async function createFile({
   parentId: string;
   size: number;
   versionId: string;
-  storageId?: string;
   ownerId: string;
   isDeleted?: number;
   createdAt: string;
@@ -677,7 +646,6 @@ export async function createFile({
     isDirectory,
     filepath,
     parentId,
-    storageId,
     size,
     versionId,
     ownerId,
@@ -686,7 +654,7 @@ export async function createFile({
     createdAt,
     updatedAt,
   });
-}
+} // TODO The change I made here may have broken it
 
 export async function createFolder(
   projectId: string,
@@ -698,7 +666,7 @@ export async function createFolder(
   const fileId = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  const newFile = await createFile({
+  return await createFile({
     projectId,
     fileId,
     logicalId: fileId,
@@ -715,31 +683,30 @@ export async function createFolder(
     updatedAt: now,
   });
 
-  return newFile;
 }
 
 // Retrieve the latest version of a file using the composite primary key
-export async function getLatestFileVersion(fileId: string) {
-  try {
-    const response = await client.models.File.listFileByLogicalIdAndVersionId(
-        {logicalId: fileId // Query all versions with the same fileId
-    });
-
-    if (response.data.length === 0) {
-      throw new Error("No versions found for this file.");
-    }
-
-    //Sort by versionId in descending order
-    const sortedVersions = response.data.sort((a, b) => 
-      parseInt(b.versionId) - parseInt(a.versionId)
-    );
-
-    return sortedVersions[0].versionId; // Return the latest version
-  } catch (error) {
-    console.error("Error retrieving the latest file version:", error);
-    throw error;
-  }
-}
+//export async function getLatestFileVersion(fileId: string) {
+//  try {
+//    const response = await client.models.File.listFileByLogicalIdAndVersionId(
+//        {logicalId: fileId // Query all versions with the same fileId
+//    });
+//
+//    if (response.data.length === 0) {
+//      new Error("No versions found for this file.");
+//    }
+//
+//    //Sort by versionId in descending order
+//    const sortedVersions = response.data.sort((a, b) =>
+//      parseInt(b.versionId) - parseInt(a.versionId)
+//    );
+//
+//    return sortedVersions[0].versionId; // Return the latest version
+//  } catch (error) {
+//    console.error("Error retrieving the latest file version:", error);
+//    throw error;
+//  }
+//}
 
 
 
@@ -789,59 +756,40 @@ export async function deleteFile(id: string, version: string, projectId: string)
   }
 }
 
-export async function displayFiles(files: Array<Schema["File"]["type"]>, showDeleted: boolean) {
-    return files.filter((file) => file && (showDeleted || !file.isDeleted));
-  }
+//export async function displayFiles(files: Array<Schema["File"]["type"]>, showDeleted: boolean) {
+//    return files.filter((file) => file && (showDeleted || !file.isDeleted));
+//  }
   
 
-export async function checkAndDeleteExpiredFiles(
-  files: Array<Schema["File"]["type"]>,
-  timeSpan: number,
-  unit: "days" | "hours"
-) {
-  try {
-    const now = new Date();
-
-    const expiredFiles = files.filter((file) => {
-      if (!file.isDeleted || !file.deletedAt) return false;
-
-      const deletedAt = new Date(file.deletedAt);
-      const diffMs = now.getTime() - deletedAt.getTime();
-
-      const thresholdMs =
-        unit === "days" ? timeSpan * 24 * 60 * 60 * 1000 : timeSpan * 60 * 60 * 1000;
-
-      return diffMs >= thresholdMs;
-    });
-
-    for (const file of expiredFiles) {
-      await client.models.File.delete({ fileId: file.fileId, projectId: file.projectId});
-    }
-
-    if (expiredFiles.length > 0) {
-      alert(`Deleted ${expiredFiles.length} expired files.`);
-    }
-  } catch (error) {
-    console.error("Error checking and deleting expired files:", error);
-  }
-}
-
-export async function updateFileLocation(id: string, path: string, parentId: Nullable<string>, projectId: string){
-  try {
-    if(parentId == null){
-      parentId = "ROOT-" + projectId
-    }
-    if(projectId){
-      await client.models.File.update({
-        fileId: id,
-        filepath: path,
-        projectId,
-        parentId: parentId
-      })
-    }
-    console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
-  } catch(error) {
-    console.error("Error updating file:", error);
-    alert("An error occurred while updating the file. Please try again.")
-  }
-}
+//export async function checkAndDeleteExpiredFiles(
+//  files: Array<Schema["File"]["type"]>,
+//  timeSpan: number,
+//  unit: "days" | "hours"
+//) {
+//  try {
+//    const now = new Date();
+//
+//    const expiredFiles = files.filter((file) => {
+//      if (!file.isDeleted || !file.deletedAt) return false;
+//
+//      const deletedAt = new Date(file.deletedAt);
+//      const diffMs = now.getTime() - deletedAt.getTime();
+//
+//      const thresholdMs =
+//        unit === "days" ? timeSpan * 24 * 60 * 60 * 1000 : timeSpan * 60 * 60 * 1000;
+//
+//      return diffMs >= thresholdMs;
+//    });
+//
+//    for (const file of expiredFiles) {
+//      await client.models.File.delete({ fileId: file.fileId, projectId: file.projectId});
+//    }
+//
+//    if (expiredFiles.length > 0) {
+//      alert(`Deleted ${expiredFiles.length} expired files.`);
+//    }
+//  } catch (error) {
+//    console.error("Error checking and deleting expired files:", error);
+//  }
+//}
+//
