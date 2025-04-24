@@ -1021,6 +1021,17 @@ export default function FilePanel() {
     const currentViewPath = actualRoot.replace(/\/+$/, "");
   
     const filePathMap = new Map<string, { fileId: string, logicalId: string }>();
+    //alert(filesByParentId.current[parentId])
+    //alert(parentId)
+    for(let f in files){
+      for(let file in filesByParentId.current[parentId]){
+        if(filesRef.current[file].filename == files[f].name){
+          console.log(" ")
+        }
+      }
+    }
+
+
     filesRef.current?.forEach(f => {
       const fullPath = `${f.filepath}`.replace(/\/+/g, "/");
       if (fullPath.startsWith(currentViewPath + "/") || fullPath === currentViewPath) {
@@ -1045,7 +1056,7 @@ export default function FilePanel() {
       if (uploadTask.current.isCanceled) {
         break;
       }
-  
+
       const relativePath = file.webkitRelativePath || file.name;
       const parts = relativePath.split("/").filter(Boolean);
       const fileName = parts.pop()!;
@@ -1810,28 +1821,6 @@ export default function FilePanel() {
            // ) : <></>
           }
 
-          {
-            contextMenu && selectedFileGroup && selectedFileGroup.length > 1 ? (
-                <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
-                  <ContextMenu>
-                    <ContextMenuItem
-                        onClick={() => {
-                          handleDownloadSelected();
-                        }}
-                    >
-                      Download Selection
-                    </ContextMenuItem>
-
-                    \\TODO Implement 'Delete Selection'
-                    <ContextMenuItem
-                        onClick={() => handleDownloadCurrentView()}
-                    >
-                      Delete Selection
-                    </ContextMenuItem>
-
-                  </ContextMenu>
-                </ContextMenuWrapper>
-            ) :
             contextMenu && contextMenuType=="filePanel" ? (
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
