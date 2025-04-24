@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, use } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useGlobalState } from "../GlobalStateContext";
 import {
   createMessage,
@@ -13,9 +13,8 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import {Nullable} from "@aws-amplify/data-schema";
 import styled from "styled-components";
-import { SqlServerEngineVersion } from "aws-cdk-lib/aws-rds";
-import {Nullable} from "@aws-amplify/data-schema";
-import {deleteTag} from "@/lib/file";
+
+import {useSearchParams} from 'next/navigation'
 
 const client = generateClient<Schema>();
 
@@ -45,7 +44,7 @@ export default function ChatPanel() {
   //for searching messages
   const [searchInput, setSearchInput] = useState(""); // State for search input
   const [searchTerm, setSearchTerm] = useState<Array<string>>([])
-  const [loading, setLoading] = useState(false)
+  //const [loading, setLoading] = useState(false)
   const [tagSearchTerm, setTagSearchTerm] = useState<Array<string>>([])
   const [authorSearchTerm, setAuthorSearchTerm] = useState<Array<string>>([])
 
@@ -53,8 +52,21 @@ export default function ChatPanel() {
   const [nextToken, setNextToken] = useState<string | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [hasPreviousPage, setHasPreviousPage] = useState(false);
+  const routerSearchParams = useSearchParams()
 
-
+  useEffect(() => {
+      //setLoading(true);
+      const proj_id = routerSearchParams.get("pid");
+      if (!proj_id || !userId) {
+        setMessages([]);
+        setSearchInput("");
+        setTagSearchTerm([]);
+        setAuthorSearchTerm([]);
+        setInput("");
+        //setLoading(false);
+        return;
+      }
+    }, [routerSearchParams, userId]);
 
   
   
@@ -152,55 +164,12 @@ export default function ChatPanel() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  //fetching messages when found the search term
-  async function fetchMessagesWithSearch() {
-    setLoading(true)
-    if (!fileId ) return;
-    console.log("Fetching messages with search term:", searchTerm, "tagSearchTerm:", tagSearchTerm, "authorSearchTerm:", authorSearchTerm);
-    const searchedMessages = await searchMessages(fileId, searchTerm, tagSearchTerm, authorSearchTerm);
-    console.log("Fetched messages:", searchedMessages);
-    if(searchedMessages && searchedMessages.length > 0){
-      let temp_messages: Array<Message> = []
-      for(let msg of searchedMessages){
-        if(msg){
-          temp_messages = [...temp_messages,
-            {
-              messageId: msg.messageId,
-              fileId: msg.fileId,
-              userId: msg.userId,
-              content: msg.content,
-              createdAt: msg.createdAt,
-              edited: msg.isUpdated ?? false,
-              deleted: msg.isDeleted ?? false,
-              email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown"
-            }] }}
-      setMessages(temp_messages);
-      setLoading(false);
-      return temp_messages
-    }
-  }
-
-  useEffect(() => {
-    const hasSearchTerms =
-        searchTerm.length > 0 ||
-        tagSearchTerm.length > 0 ||
-        authorSearchTerm.length > 0;
-
-    if (hasSearchTerms) {
-      console.log("Searching...");
-      fetchMessagesWithSearch();
-    } else {
-      console.log("Fetching old messages when input is empty");
-      fetchMessages(); // restore full messages when no filters
-    }
-  }, [searchTerm, tagSearchTerm, authorSearchTerm]);
-
 //fetching messages when found the search term
   async function fetchMessagesWithSearch() {
-    setLoading(true)
+    //setLoading(true)
     if (!fileId ) return;
     console.log("Fetching messages with search term:", searchTerm, "tagSearchTerm:", tagSearchTerm, "authorSearchTerm:", authorSearchTerm);
-    const searchedMessages = await searchMessages(fileId, searchTerm, tagSearchTerm, authorSearchTerm);
+    const searchedMessages = await searchMessages(fileId, searchTerm, tagSearchTerm);
     console.log("Fetched messages:", searchedMessages);
     if(searchedMessages && searchedMessages.length > 0){
       let temp_messages: Array<Message> = []
@@ -218,7 +187,7 @@ export default function ChatPanel() {
               email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown"
             }] }}
       setMessages(temp_messages);
-      setLoading(false);
+      //setLoading(false);
       return temp_messages
     }
   }
@@ -284,7 +253,7 @@ export default function ChatPanel() {
   
   
       if (!response) {
-        throw new Error("createMessage returned undefined");
+        new Error("createMessage returned undefined");
       }
   
       const newMessage = response?.data ?? response;
@@ -318,7 +287,7 @@ export default function ChatPanel() {
     const newContent = prompt("Enter new message content:");
     if (newContent) {
       try {
-        await updateMessage(messageId, newContent, userId!);
+        await updateMessage(messageId, newContent);
         setMessages((prevMessages) =>
             prevMessages.map((msg) =>
                 msg.messageId === messageId ? { ...msg, content: newContent, edited: true } : msg
@@ -333,11 +302,11 @@ export default function ChatPanel() {
 
   const handleDeleteMessage = async (messageId: string, messageuserId: string)=> {
     if(messageuserId != userId){
-      alert("You do not have acces to this message");
+      alert("You do not have access to this message");
       return;
     }
     try {
-      await deleteMessage(messageId, userId as string);
+      await deleteMessage(messageId);
       setMessages((prevMessages) =>
           prevMessages.map((msg) =>
               msg.messageId === messageId ? { ...msg, content: "", deleted: true } : msg
@@ -705,7 +674,7 @@ const ChatContainer = styled.div`
   width: 100%;
   height: 100%;
   overflow-y: auto;
-  padding: 1rem;
+
 `;
 
 const ChatMessagesWrapper = styled.div`
@@ -767,6 +736,7 @@ const Input = styled.input`
   flex: 1;
   height: 2rem;
   padding: 0.5rem;
+  margin: 1rem;
   border: 1px solid #ccc;
   border-radius: 5px;
 `;

@@ -1,5 +1,4 @@
-import {type ClientSchema, a, defineData, defineFunction} from "@aws-amplify/backend";
-import { ApiKey } from "aws-cdk-lib/aws-apigateway";
+import {type ClientSchema, a, defineData} from "@aws-amplify/backend";
 
 
 const schema = a
@@ -15,6 +14,7 @@ const schema = a
         messages: a.hasMany("Message", "userId"),
         whitelist: a.hasMany("Whitelist","userIds"),
         projects: a.hasMany("Project","userId"),
+        administrator: a.boolean().default(false),
       })
       .identifier(["userId"]),
     Project: a
@@ -62,6 +62,7 @@ const schema = a
         index("logicalId").sortKeys(["versionId"]).name("Version"), //Secondary index
         index("projectId").name("byProject"),
         index("projectId").sortKeys(["isDeleted"]),
+        index("projectId").sortKeys(["parentId"]).name("byProjectIdAndParentId").queryField("listByProjectIdAndParentId"),
         index("projectId").sortKeys(["filepath"])
       ]),
 
@@ -80,7 +81,19 @@ const schema = a
               entry: "./batchUpdateFile.js"
           })
       ),
-
+    batchGetFile: a
+        .query()
+        .arguments({
+            projectId: a.string(),
+            rootIds: a.string().array()
+        })
+        .returns(a.ref("File").array())
+        .handler(
+            a.handler.custom({
+                dataSource: a.ref("File"),
+                entry: "./getFilesByRootId.js"
+            })
+        ),
   searchFiles: a
       .query()
       .arguments({
@@ -112,26 +125,12 @@ const schema = a
         isDeleted: a.boolean().default(false),
         tags: a.string().array(), // <- CHANGE
         file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
-        
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
       })
       .identifier(["messageId"])
       .secondaryIndexes((index) => [
         index("fileId").sortKeys(["createdAt"]).name("messagesByFileIdAndPagination"), // Secondary index for querying messages by fileId
       ]),
-
-      /*deleteMessagesByFileId: a
-        .mutation()
-        .arguments({
-          fileId: a.string(),
-        })
-        .returns(a.json())
-        .handler(
-          a.handler.custom({
-            dataSource: a.ref("Message"),
-            entry: "./deleteMessagesByFileId.js",
-          })
-        ),*/
 
 
     
@@ -171,8 +170,9 @@ const schema = a
     whitelistId: a.id().required(),
     userIds: a.id().required(), // User ID being whitelisted
     createdAt: a.datetime().required(),
+    createdBy: a.id().required(), // ID of the user who created the whitelist entry
     projectId: a.id().required(),
-    role: a.enum(["USER", "ADMIN", "HEAD"]), // Role-specific permission
+    role: a.enum(["NONE", "USER", "ADMIN", "HEAD"]), // Role-specific permission
 
     // Relationships
     user: a.belongsTo("User", "userIds"),

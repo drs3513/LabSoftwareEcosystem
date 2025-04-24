@@ -1,7 +1,8 @@
 import styled from "styled-components";
 import React, {useRef, useState, useEffect} from "react";
 import { useGlobalState } from "../GlobalStateContext";
-import {getFilesByProjectIdAndIsDeleted, hardDeleteFile, Restorefile} from "@/lib/file";
+import {getFilesByProjectIdAndIsDeleted, hardDeleteFile, restoreFile} from "@/lib/file";
+import { formatBytes } from "@/app/main_screen/[pid]/[id]/file_panel";
 
 interface props {
     initialPosX: number;
@@ -101,13 +102,13 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
     }, [projectId]);
 
     async function handleRestore(fileId: string, versionId: string) {
-        await Restorefile(fileId, versionId, projectId as string);
+        await restoreFile(fileId, versionId, projectId as string);
     }
 
     async function handleHardDelete(fileId: string) {
         /*const confirmed = window.confirm("This will permanently delete this file and all versions. Continue?");
         if (!confirmed || !projectId) return;*/
-
+        if(!projectId) return
         try {
             await hardDeleteFile(fileId, projectId as string);
             fetchFiles();
@@ -126,9 +127,9 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
         >
             <Header draggable={true} onDragStart={(e) => handleStartDrag(e)}
                     onDragEnd={(e) => handleEndDrag(e)}>
-                {`${projectName} Recycle Bin`}
+                {`Recycling Bin | Project : ${projectName} `}
                 <CloseButton onClick={close}>
-                    X
+                    ✖
                 </CloseButton>
             </Header>
             <FileContainer>
@@ -137,17 +138,18 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
                     <FileLite key={i} onClick = {() => {/*console.log(file)*/}}>
                         {file.filename}
 
-                        <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
-                                              size={file.size} versionId={file.versionId} ownerId={file.ownerId}
-                                              projectId={file.projectId} createdAt={file.createdAt}
-                                              updatedAt={file.updatedAt}
-                                              isDirectory={file.isDirectory}></FileContext>
-                        <button onClick={() => handleRestore(file.fileId, file.versionId)}>Restore</button>
-                        <button onClick={() => handleHardDelete(file.fileId)}>Delete Permanently</button>
-                    </FileLite>
-                        )
-                )
-            }
+                            <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                                                size={file.size} versionId={file.versionId} ownerId={file.ownerId}
+                                                projectId={file.projectId} createdAt={file.createdAt}
+                                                updatedAt={file.updatedAt}
+                                                isDirectory={file.isDirectory}></FileContext>
+                            <button onClick={() => handleRestore(file.fileId, file.versionId)}>Restore</button>
+                            <button onClick={() => handleHardDelete(file.fileId)}>Delete Permanently</button>
+                        </FileLite>
+                            )
+                    )
+                    ) : <NoFiles>No files!</NoFiles>
+                }
             </FileContainer>
             <Resize draggable={true} onDragStart={(e) => {initialResizeX.current = e.pageX; initialResizeY.current = e.pageY; draggingFloatingWindow.current = true}} onDragEnd = {(e) => {handleResize(e)}}>
                 <svg viewBox={"0 0 24 24"}>
@@ -177,7 +179,8 @@ const PanelContainer = styled.div.attrs<{$posX: number, $posY: number, $width: n
         top: props.$posY,
         left: props.$posX,
         width: props.$width,
-        height: props.$height
+        height: props.$height,
+        zIndex: 2
     }
 }))`
 
@@ -187,6 +190,7 @@ const PanelContainer = styled.div.attrs<{$posX: number, $posY: number, $width: n
     margin: auto;
     background-color: white;
     border-radius: 10px;
+    overflow: hidden;
     border-style: solid;
     border-width: 2px;
     border-color: gray;
@@ -196,9 +200,10 @@ const PanelContainer = styled.div.attrs<{$posX: number, $posY: number, $width: n
 const Header = styled.div`
     width: 100%;
     padding: 10px;
-    background-color: lightgray;
+    background-color: #AFC1D0;
     text-align: center;
     font-weight: bold;
+    border-bottom: 2px solid #D7DADD;
 `;
 
 const CloseButton = styled.button`
@@ -209,6 +214,15 @@ const CloseButton = styled.button`
     border: none;
     font-size: 16px;
     cursor: pointer;
+    &:hover {
+        color: white;
+        transition: 0.2s;
+    }
+`;
+
+const NoFiles = styled.div`
+  color: gray;
+  text-align: center;
 `;
 
 const FileLite = styled.div`
@@ -229,11 +243,11 @@ const FileLite = styled.div`
     width: 100%;
     &:hover {
 
-        border: solid lightblue;
+        filter: drop-shadow(0px 0px 5px #5C9ECC);
 
         padding-top: calc(1rem - 2px);
         padding-bottom: calc(1rem - 2px);
-    }
+        }
 `
 const FileContainer = styled.div`
     width: 100%;
@@ -259,7 +273,7 @@ export function FileContext(file: fileInfo ) {
 
     return (
         <FileContextItem>
-             {file.filepath} - Last updated: {updated.toDateString() == now.toDateString() ? updated.toLocaleTimeString("en-US") : updated.toLocaleDateString("en-US")}
+             {file.filepath} - Deleted: {updated.toDateString() == now.toDateString() ? updated.toLocaleTimeString("en-US") : updated.toLocaleDateString("en-US")} {file.isDirectory? "" : "Size: "+formatBytes(file.size)}
         </FileContextItem>
     );
 }
