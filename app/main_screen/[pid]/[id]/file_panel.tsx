@@ -858,8 +858,10 @@ export default function FilePanel() {
       parentId: string,
       rootFilePath: string
       ) => {
+    console.log("THIS IS WHERE I AM")
     if(event.target != event.currentTarget) return
     if(draggingFloatingWindow.current) return
+    console.log("THIS IS WHERE I AM2")
     event.preventDefault();
     setDragOverFileId(undefined);
     const supportsWebkitGetAsEntry = "webkitGetAsEntry" in DataTransferItem.prototype;
@@ -868,16 +870,19 @@ export default function FilePanel() {
       console.error("[ERROR] webkitGetAsEntry not supported in this browser.");
       return;
     }
-
+    console.log(event)
     const items: {
       index: number;
       item: DataTransferItem;
       entry: any;
       file: File | null;
     }[] = [];
-    if(!event.dataTransfer) return;
 
+    if(!event.dataTransfer) return;
+    console.log("uhh")
+    console.log(event.dataTransfer)
     Array.from(event.dataTransfer.items).forEach((item, index) => {
+
       if (item.kind !== "file") return;
 
       const entry = (item as any).webkitGetAsEntry?.();
