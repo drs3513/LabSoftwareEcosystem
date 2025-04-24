@@ -19,6 +19,7 @@ import {
   waitForVersionId,
   createFolder,
   fetchCachedUrl,
+  getAllFilePathsUnder,
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
@@ -140,7 +141,7 @@ export default function FilePanel() {
 
   const projectName = useRef<string | undefined>(undefined)
 
-  const currentParentRef = useRef<fileInfo | null>(null);
+  const [currentParent, setCurrentParent] = useState<fileInfo | null>(null);
 
 
   const [filePathElement, setFilePathElement] = useState<{fileName: string | undefined, href: string}[]>([])
@@ -230,7 +231,7 @@ export default function FilePanel() {
   //sorts files to be displayed by the user
   //TODO allow toggle of sort mode through setting 'sort' state
   function sort_files_with_path(files: Array<fileInfo>, sortStyle: string = "alphanumeric"){
-    //console.log(files)
+    ////console.log(files)
     let index = 0
     function assignFileByParentId(file: fileInfo) {
       if (filesByParentId.current[file.parentId != null ? file.parentId : "no_parent"] == null) {
@@ -242,10 +243,10 @@ export default function FilePanel() {
 
     //concatenates files together in the same order as the parent
     function concatenateFiles(curr_parent: string, files_by_parentId: any, file_list: any) {
-      //console.log(curr_parent)
+      ////console.log(curr_parent)
 
       for (let i = 0; i < files_by_parentId[curr_parent].length; i++) {
-        //console.log(files_by_parentId[curr_parent][i])
+        ////console.log(files_by_parentId[curr_parent][i])
         file_list.push(files_by_parentId[curr_parent][i])
         if (files_by_parentId[curr_parent][i].fileId in files_by_parentId) {
           file_list = concatenateFiles(files_by_parentId[curr_parent][i].fileId, files_by_parentId, file_list)
@@ -295,7 +296,7 @@ export default function FilePanel() {
 
       sorted_files[key] = values
     }
-    if (activeParentIds[0].id in sorted_files) {
+    if (activeParentIds.length > 0 && activeParentIds[0].id in sorted_files) {
       files = concatenateFiles(activeParentIds[0].id, sorted_files, []);
     }
 
@@ -383,7 +384,7 @@ export default function FilePanel() {
       return
     }
     setRootParentId(root_id)
-    setActiveParentIds([{id: root_id, depth: 0}])
+    setActiveParentIds([{ id: root_id, depth: 0 }]); // defer update to next tick to ensure React sees the change
     fetchRootInfo(root_id, proj_id)
 
     //setActiveParentIds([routerSearchParams.id])
@@ -396,7 +397,7 @@ export default function FilePanel() {
     const { data: file } = await client.models.File.get({ fileId: root_id, projectId: proj_id });
 
     if (file) {
-      currentParentRef.current = {
+      setCurrentParent({
         fileId: file.fileId,
         filename: file.filename,
         filepath: file.filepath,
@@ -411,8 +412,8 @@ export default function FilePanel() {
         updatedAt: file.updatedAt,
         visible: true,
         open: false,
-        isDirectory: file.isDirectory ?? true,
-      };
+        isDirectory: file.isDirectory,
+      });      
     }
 
     if(activeFilePath) {
@@ -425,9 +426,9 @@ export default function FilePanel() {
   }
 
   async function createFileIdMapping(root_id: string, proj_id: string, activeFilePath: string, projectName: string | undefined){
-    //console.log(filepath.split("/").splice(1))
+    ////console.log(filepath.split("/").splice(1))
     let fileIdPath = await getFileIdPath(root_id, proj_id)
-    console.log(fileIdPath)
+    //console.log(fileIdPath)
     if(!fileIdPath) {
       setFilePathElement([])
       return
@@ -514,7 +515,7 @@ export default function FilePanel() {
   async function fetchFilesWithSearch(){
     setLoading(true);
     if (!projectId) return;
-    console.log("Here")
+    //console.log("Here")
     const projectFiles = await searchFiles(projectId, searchTerm, tagSearchTerm, authorSearchTerm)
     //builds array of files with extra information for display
     //Extra information :
@@ -603,11 +604,11 @@ export default function FilePanel() {
 
   async function fetchTags(fileId: string){
     if (!projectId) return
-    console.log("Here!")
+    //console.log("Here!")
     const tempTags = await getTags(fileId, projectId)
 
     setContextMenuTags(tempTags)
-    console.log(tempTags)
+    //console.log(tempTags)
   }
 
 
@@ -884,137 +885,308 @@ export default function FilePanel() {
     handleCreateFile(directories.length > 0, projectId, ownerId, parentId, files, rootFilePath);
   };
 
-  function getFullPathFromParentId(parentId: string): string {
-    const file = filesRef.current.find(f => f.fileId === parentId);
-    return file?.filepath || "/";
-  }
   
-
   /** Processes files and uploads them */
-  const handleCreateFile = async (isDirectory: boolean, projectId: string, ownerId: string, parentId: string, files: File[], rootFilePath: string) => {
+  const handleCreateFile = async (
+    isDirectory: boolean,
+    projectId: string,
+    ownerId: string,
+    parentId: string,
+    files: File[],
+    rootFilePath: string
+  ) => {
     let globalDecision: 'overwrite' | 'version' | 'cancel' | null = null;
     let applyToAll = false;
+
     const showConflictModal = (filename: string) => {
       return new Promise<'overwrite' | 'version' | 'cancel'>(resolve => {
-
         const cleanup = () => {
-          setDisplayConflictModel(false)
-          conflictModalData.current = undefined
+          setDisplayConflictModel(false);
+          conflictModalData.current = undefined;
         };
-
         const handleResolve = (choice: typeof globalDecision, all: boolean) => {
           if (all) {
             globalDecision = choice;
             applyToAll = true;
           }
           cleanup();
-          if(!choice){
-            resolve("cancel")
-            return
-          }
-          resolve(choice);
+          resolve(choice ?? "cancel");
         };
-
-        conflictModalData.current = {
-          fileName: filename,
-          onResolve: handleResolve
-        }
-
-        setDisplayConflictModel(true)
+        conflictModalData.current = { fileName: filename, onResolve: handleResolve };
+        setDisplayConflictModel(true);
       });
     };
-
+  
     if (!files || files.length === 0) {
       console.error("[ERROR] No files received.");
       return;
     }
-
+  
+    const actualRoot = rootFilePath === "/" ? `ROOT-${projectId}` : rootFilePath;
+    const currentViewPath = actualRoot.replace(/\/+$/, "");
+  
+    const filePathMap = new Map<string, { fileId: string, logicalId: string }>();
+    filesRef.current?.forEach(f => {
+      const fullPath = `${f.filepath}`.replace(/\/+/g, "/");
+      if (fullPath.startsWith(currentViewPath + "/") || fullPath === currentViewPath) {
+        filePathMap.set(fullPath, {
+          fileId: f.fileId,
+          logicalId: f.logicalId,
+        });
+      }
+    });
+  
+    const folderDict: Record<string, any> = {};
     uploadTask.current = {
       isCanceled: false,
       uploadedFiles: [],
       cancel: () => {
         uploadTask.current!.isCanceled = true;
-      }
+      },
     };
-
-    const folderDict: Record<string, any> = {};
-    setShowProgressPanel(true)
+    setShowProgressPanel(true);
+  
     for (const file of files) {
-      if (uploadTask.current.isCanceled) break;
+      if (uploadTask.current.isCanceled) {
+        break;
+      }
+  
+      const relativePath = file.webkitRelativePath || file.name;
+      const parts = relativePath.split("/").filter(Boolean);
+      const fileName = parts.pop()!;
+      let currentDict = folderDict;
+      let currentPath = actualRoot;
+      let adjustedParts = [...parts];
 
-const relativePath = file.webkitRelativePath || file.name;
-const filePath =`${relativePath}`.replace(/\/+/g, "/");
-
-const normalizedPath = filePath.replace(/\/+/g, "/");
-
-const pathParts = normalizedPath.split("/");
-const actualName = pathParts.pop()!;
-
-      const conflict = filesRef.current.find(
-        f => f.projectId === projectId && f.filepath.replace(/\/+/g, "/") === normalizedPath
-      );
-    
-
-
+  
+      // Rename top-level folder if needed
+      if (adjustedParts.length > 0) {
+        let baseName = adjustedParts[0];
+        let testPath = `${currentPath}/${baseName}`.replace(/\/+/g, "/");
+  
+        while (filePathMap.has(testPath)) {
+          baseName += "-copy";
+          testPath = `${currentPath}/${baseName}`.replace(/\/+/g, "/");
+        }
+  
+        adjustedParts[0] = baseName;
+      }
+  
+      // Traverse folders and build folderDict
+      for (const folder of adjustedParts) {
+        const testPath = `${currentPath}/${folder}`.replace(/\/+/g, "/");
+        if (!filePathMap.has(testPath)) {
+          if (!currentDict[folder]) currentDict[folder] = { files: {} };
+          currentDict = currentDict[folder];
+        } else {
+          currentPath = testPath;
+        }
+      }
+  
+      const normalizedFullPath = `${currentPath}/${fileName}`.replace(/\/+/g, "/");
+      const conflict = filePathMap.get(normalizedFullPath);
+  
       let decision: 'overwrite' | 'version' | 'cancel' = 'overwrite';
-
       if (conflict && !applyToAll) {
         decision = await showConflictModal(file.name);
-        if (decision === 'cancel') continue;
+        if (decision === "cancel") continue;
       }
-
-      if (decision ==='overwrite' && conflict) {
-        const { key: storageKey } = await uploadFile(file, ownerId, projectId, filePath);
-        waitForVersionId(storageKey).then((versionId) => {
-          return updatefile(conflict.fileId, projectId, versionId as string);
-        });;
-        
+  
+      if (decision === "overwrite" && conflict) {
+        const { key: storageKey } = await uploadFile(file, ownerId, projectId, relativePath);
+        const versionId = await waitForVersionId(storageKey);
+        if (versionId) {
+          await updatefile(conflict.fileId, projectId, versionId);
+        }
+        continue;
       }
-      if (decision === 'version') {
-        try {
-                await createNewVersion(file, conflict?.logicalId as string, projectId, ownerId, parentId, filePath);
-              } catch (error) {
-                console.error("[VERSION ERROR] Failed to create version for:", file.name, error);
-              }
-              continue;
+  
+      if (decision === "version" && conflict) {
+        await createNewVersion(file, conflict.logicalId, projectId, ownerId, parentId, relativePath);
+        continue;
       }
-
-      // Place the file into the shared folderDict
-      let current = folderDict;
-      for (const part of pathParts) {
-        if (!current[part]) current[part] = { files: {} };
-        current = current[part];
-      }
-
-      if (!current.files) current.files = {};
-      current.files[actualName] = file;
+  
+      if (!currentDict.files) currentDict.files = {};
+      currentDict.files[fileName] = file;
     }
-    uploadQueue.current?.push({
+
+    uploadQueue.current?.push({ folderDict, ownerId, projectId, parentId });
+  
+    await processAndUploadFiles(
       folderDict,
-      ownerId,
       projectId,
+      ownerId,
       parentId,
-    });
-    await processAndUploadFiles(folderDict, projectId, ownerId, parentId, rootFilePath, uploadTask,
-        (percent: number) => setUploadProgress(percent));
-
-    // After upload finishes, remove from queue and reset progress
+      rootFilePath,
+      uploadTask,
+      (percent: number) => {
+        setUploadProgress(percent);
+      }
+    );
     uploadQueue.current?.shift();
-    setCompletedUploads((prev) => [...prev, 0]);
-
-    // Delay removal of visual trace
-    setTimeout(() => {
-      setCompletedUploads((prev) => prev.slice(1));
-    }, 3000); // Keeps the completed upload visible for 3 seconds
-
+    setCompletedUploads(prev => [...prev, 0]);
+    setTimeout(() => setCompletedUploads(prev => prev.slice(1)), 3000);
     setUploadProgress(null);
-    setShowProgressPanel(false)
+    setShowProgressPanel(false);
   };
+  
 
-
+  useEffect(() => {
+    const updateCurrentParent = async () => {
+      if (!projectId || activeParentIds.length === 0) {
+        setCurrentParent(null);
+        return;
+      }
+  
+      const currentId = activeParentIds[activeParentIds.length - 1].id;
+  
+      try {
+        const { data: file } = await client.models.File.get({ fileId: currentId, projectId });
+        if (file) {
+          setCurrentParent({
+            fileId: file.fileId,
+            filename: file.filename,
+            filepath: file.filepath,
+            logicalId: file.logicalId,
+            storageId: file.storageId,
+            parentId: file.parentId,
+            size: file.size,
+            versionId: file.versionId,
+            ownerId: file.ownerId,
+            projectId: file.projectId,
+            createdAt: file.createdAt,
+            updatedAt: file.updatedAt,
+            visible: true,
+            open: false,
+            isDirectory: file.isDirectory ?? true,
+          });
+        } else {
+          setCurrentParent(null);
+        }
+      } catch (err) {
+        console.error("[ERROR] Failed to fetch current parent:", err);
+        setCurrentParent(null);
+      }
+    };
+  
+    updateCurrentParent();
+  }, [projectId, activeParentIds]);
+  
 
   const cancelUpload = () => {
-    if (uploadTask.current) {
+    if (uploadTask.current) {const handleCreateFile = async (
+      isDirectory: boolean,
+      projectId: string,
+      ownerId: string,
+      parentId: string,
+      files: File[],
+      rootFilePath: string
+    ) => {
+      let globalDecision: 'overwrite' | 'version' | 'cancel' | null = null;
+      let applyToAll = false;
+    
+      const showConflictModal = (filename: string) => {
+        return new Promise<'overwrite' | 'version' | 'cancel'>(resolve => {
+          const cleanup = () => {
+            setDisplayConflictModel(false);
+            conflictModalData.current = undefined;
+          };
+          const handleResolve = (choice: typeof globalDecision, all: boolean) => {
+            if (all) {
+              globalDecision = choice;
+              applyToAll = true;
+            }
+            cleanup();
+            resolve(choice ?? "cancel");
+          };
+          conflictModalData.current = { fileName: filename, onResolve: handleResolve };
+          setDisplayConflictModel(true);
+        });
+      };
+    
+      if (!files || files.length === 0) {
+        console.error("[ERROR] No files received.");
+        return;
+      }
+    
+      const actualRoot = rootFilePath === "/" ? `ROOT-${projectId}` : rootFilePath;
+    
+      const filePathMap = new Map<string, { fileId: string, logicalId: string }>();
+      filesRef.current?.forEach(f => {
+        const fullPath = `${f.filepath}`.replace(/\/+/g, "/");
+        filePathMap.set(fullPath, {
+          fileId: f.fileId,
+          logicalId: f.logicalId,
+        });
+      });
+    
+      const folderDict: Record<string, any> = {};
+      uploadTask.current = { isCanceled: false, uploadedFiles: [], cancel: () => { uploadTask.current!.isCanceled = true; } };
+      setShowProgressPanel(true);
+    
+      for (const file of files) {
+        if (uploadTask.current.isCanceled) break;
+    
+        const relativePath = file.webkitRelativePath || file.name;
+        const parts = relativePath.split("/").filter(Boolean);
+        const fileName = parts.pop()!;
+        let currentDict = folderDict;
+        let currentPath = actualRoot;
+    
+        for (const folder of parts) {
+          const testPath = `${currentPath}/${folder}`.replace(/\/+/g, "/");
+          if (!filePathMap.has(testPath)) {
+            if (!currentDict[folder]) currentDict[folder] = { files: {} };
+            currentDict = currentDict[folder];
+          } else {
+            currentPath = testPath;
+          }
+        }
+    
+        const normalizedFullPath = `${currentPath}/${fileName}`.replace(/\/+/g, "/");
+        const conflict = filePathMap.get(normalizedFullPath);
+    
+        let decision: 'overwrite' | 'version' | 'cancel' = 'overwrite';
+        if (conflict && !applyToAll) {
+          decision = await showConflictModal(file.name);
+          if (decision === "cancel") continue;
+        }
+    
+        if (decision === "overwrite" && conflict) {
+          const { key: storageKey } = await uploadFile(file, ownerId, projectId, relativePath);
+          const versionId = await waitForVersionId(storageKey);
+          if (versionId) await updatefile(conflict.fileId, projectId, versionId);
+          continue;
+        }
+    
+        if (decision === "version" && conflict) {
+          await createNewVersion(file, conflict.logicalId, projectId, ownerId, parentId, relativePath);
+          continue;
+        }
+    
+        if (!currentDict.files) currentDict.files = {};
+        currentDict.files[fileName] = file;
+      }
+    
+      uploadQueue.current?.push({ folderDict, ownerId, projectId, parentId });
+    
+      await processAndUploadFiles(
+        folderDict,
+        projectId,
+        ownerId,
+        parentId,
+        rootFilePath,
+        uploadTask,
+        (percent: number) => setUploadProgress(percent)
+      );
+    
+      uploadQueue.current?.shift();
+      setCompletedUploads(prev => [...prev, 0]);
+      setTimeout(() => setCompletedUploads(prev => prev.slice(1)), 3000);
+      setUploadProgress(null);
+      setShowProgressPanel(false);
+    };
+    
       uploadTask.current.cancel();
       console.warn("[CANCEL] Upload cancel requested.");
     }
@@ -1081,9 +1253,9 @@ const actualName = pathParts.pop()!;
 
       for(let fileIndex of pickedUpFileGroup) {
         if(!projectId) return
-        console.log("Here!")
+        //console.log("Here!")
         const children = await getFileChildren(projectId, files[fileIndex].filepath)
-        console.log(children)
+        //console.log(children)
       }
       setPickedUpFileGroup(undefined)
 
@@ -1120,9 +1292,9 @@ const actualName = pathParts.pop()!;
       const fileIds = children.map((child) => child.fileId)
       const filepaths = children.map((child) => new_file_path + child.filepath.slice(files[filesByFileId.current[pickedUpFileId]].filepath.length))
       const parentIds = children.map((child) => child.fileId == pickedUpFileId ? (overFileId ? overFileId : `ROOT-${projectId}`) : child.parentId)
-      console.log(filepaths)
+      //console.log(filepaths)
       //`if(overFileId){
-      //`  console.log(files[filesByFileId.current[overFileId]].filepath)
+      //`  ////console.log(files[filesByFileId.current[overFileId]].filepath)
       //`} else {
 //`
       //`}
@@ -1131,7 +1303,7 @@ const actualName = pathParts.pop()!;
       const poke = await pokeFile(fileIds[0], projectId, filepaths[0])
       setPickedUpFileId(undefined)
 
-      console.log(returnedValue)
+      ////console.log(returnedValue)
     }
     observeMouseCoords.current = true
   }
@@ -1222,7 +1394,7 @@ const actualName = pathParts.pop()!;
       }
 
 
-      console.log(files[index])
+      ////console.log(files[index])
     }
   }
   function selectFileGroup(index: number){
@@ -1264,7 +1436,7 @@ const actualName = pathParts.pop()!;
       setTagSearchTerm(temp_tag_set)
       setAuthorSearchTerm(temp_author_set)
       setSearchTerm(temp_name_set)
-      console.log(temp_name_set)
+      ////console.log(temp_name_set)
       setSearch(true)
     }
 
@@ -1367,7 +1539,7 @@ const actualName = pathParts.pop()!;
     if(e.target != e.currentTarget){
       return
     }
-    console.log("This was called")
+    ////console.log("This was called")
     isLongPress.current = false;
     clearTimeout(timer.current);
     e.preventDefault();
@@ -1385,7 +1557,7 @@ const actualName = pathParts.pop()!;
 
 
   function getDepth(file: fileInfo){
-    //console.log(file)
+    ////console.log(file)
     const found_parent_id = activeParentIds.find(parent => parent.id === file.parentId)
     return found_parent_id? found_parent_id.depth : -1
   }
@@ -1425,10 +1597,7 @@ const actualName = pathParts.pop()!;
                 ? activeParentIds[activeParentIds.length - 1].id
                 : `ROOT-${projectId}`;
             
-            
-            const currentParent = filesRef.current.find(f => f.fileId === currentParentId);
-            
-            const currentPath = currentParentRef.current?.filepath ?? "/";
+                const currentPath = currentParent?.filepath ?? "/";
                 
             
               handleFileDrag(e, projectId, userId, currentParentId, currentPath);

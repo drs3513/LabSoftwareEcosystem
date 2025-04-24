@@ -119,6 +119,21 @@ const schema = a
       .secondaryIndexes((index) => [
         index("fileId").sortKeys(["createdAt"]).name("messagesByFileIdAndPagination"), // Secondary index for querying messages by fileId
       ]),
+
+      /*deleteMessagesByFileId: a
+        .mutation()
+        .arguments({
+          fileId: a.string(),
+        })
+        .returns(a.json())
+        .handler(
+          a.handler.custom({
+            dataSource: a.ref("Message"),
+            entry: "./deleteMessagesByFileId.js",
+          })
+        ),*/
+
+
     
     searchMessages: a
         .query()

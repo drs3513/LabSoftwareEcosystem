@@ -28,13 +28,13 @@ export async function waitForVersionId(key: string): Promise<string | null> {
   while (attempt < maxRetries) {
     if (attempt > 0) {
       const delay = baseDelay * Math.pow(2, attempt); // exponential backoff
-      console.log(`[INFO] Retrying in ${delay}ms...`);
+      //console.log(`[INFO] Retrying in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     } else {
       await new Promise((resolve) => setTimeout(resolve, baseDelay));
     }
 
-    console.log(`[INFO] Attempt ${attempt + 1}/${maxRetries} to get versionId for ${key}`);
+    //console.log(`[INFO] Attempt ${attempt + 1}/${maxRetries} to get versionId for ${key}`);
 
     try {
       const versionId = await getFileVersions(key); // ✅ this was missing
@@ -69,7 +69,7 @@ export async function createNewVersion(
   
   const versionId = waitForVersionId(storageKey) as unknown as string;
   const newfileid = crypto.randomUUID();
-  console.log("Creating the versioned file");
+  //console.log("Creating the versioned file");
   if(!parentId){
     parentId = `ROOT-${projectId}`;
   }
@@ -119,8 +119,12 @@ export async function processAndUploadFiles(
   const uploadedFiles: { storageKey?: string, fileId?: string }[] = [];
   let fileCount = 0;
   let processed = 0;
-  
-  // First, count all files
+
+  // 🔧 Join paths without double slashes
+  function joinPaths(...parts: string[]) {
+    return parts.join("/").replace(/\/+/g, "/").replace(/^\/?/, "/").replace(/\/$/, "");
+  }
+
   function countFiles(obj: Record<string, any>): number {
     let count = 0;
     for (const [key, value] of Object.entries(obj)) {
@@ -152,14 +156,14 @@ export async function processAndUploadFiles(
         const uuid = crypto.randomUUID();
 
         if (key !== "files") {
-          // Create directory
+          const dirPath = joinPaths(currentFilePath, key);
           const newFile = await createFile({
             projectId,
             fileId: uuid,
             logicalId: uuid,
             filename: key,
             isDirectory: true,
-            filepath: `${currentFilePath}/${key}`,
+            filepath: dirPath,
             parentId: currentParentId,
             size: 0,
             storageId: null,
@@ -179,16 +183,16 @@ export async function processAndUploadFiles(
           uploadedFiles.push({ fileId: nextParentId });
           uploadTaskRef?.current?.uploadedFiles.push({ fileId: nextParentId });
 
-          await recursivePrint(value, depth + 1, nextParentId, `${currentFilePath}/${key}`);
+          await recursivePrint(value, depth + 1, nextParentId, dirPath);
         } else {
           for (const [fileKey, fileValue] of Object.entries(value)) {
             const fileUuid = crypto.randomUUID();
             if (!(fileValue instanceof File)) continue;
 
-            const folderPath = currentFilePath ? `${currentFilePath}/${fileKey}` : `/${fileKey}`;
+            const filePath = joinPaths(currentFilePath, fileKey);
 
             try {
-              const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, folderPath);
+              const { key: storageKey } = await uploadFile(fileValue, ownerId, projectId, filePath);
               let versionId: string | null = null;
               let retries = 0;
               while (!versionId && retries < 5) {
@@ -211,7 +215,7 @@ export async function processAndUploadFiles(
                 logicalId: fileUuid,
                 filename: fileKey,
                 isDirectory: false,
-                filepath: `${currentFilePath}/${fileKey}`,
+                filepath: filePath,
                 parentId: currentParentId,
                 storageId: storageKey,
                 size: fileValue.size ?? 0,
@@ -250,11 +254,12 @@ export async function processAndUploadFiles(
   }
 
   try {
-    await recursivePrint(dict, 0, parentId || rootParentId, currentPath);;
+    await recursivePrint(dict, 0, parentId || rootParentId, currentPath);
   } catch (e) {
     console.warn("[FINAL] Upload process was aborted.");
   }
 }
+
 
 export async function Restorefile(fileId: string, versionId: string, projectId: string) {
   await client.models.File.update({
@@ -269,6 +274,9 @@ export async function Restorefile(fileId: string, versionId: string, projectId: 
 
 export async function hardDeleteFile(fileId: string, projectId: string) {
   try {
+    /*await client.mutations.deleteMessagesByFileId({
+      fileId
+    });  */  
     // Step 1: Get the file by ID
     const file = await client.models.File.get({ fileId, projectId });
 
@@ -280,7 +288,7 @@ export async function hardDeleteFile(fileId: string, projectId: string) {
     // Step 2: Delete from S3
     if (file?.data?.storageId) {
       await deleteFileFromStorage(file?.data?.storageId);
-      console.log(`[HARD DELETE] Deleted from storage: ${file?.data?.storageId}`);
+      //console.log(`[HARD DELETE] Deleted from storage: ${file?.data?.storageId}`);
     }
 
     // Step 3: Delete from database
@@ -291,7 +299,7 @@ export async function hardDeleteFile(fileId: string, projectId: string) {
         });
     }
 
-    console.log(`[HARD DELETE] Deleted DB record: ${file?.data?.fileId}`);
+    //console.log(`[HARD DELETE] Deleted DB record: ${file?.data?.fileId}`);
     alert("File permanently deleted.");
   } catch (error) {
     console.error("[HARD DELETE ERROR]", error);
@@ -318,12 +326,12 @@ export async function abortUpload(
     try {
       if (storageKey) {
         await deleteFileFromStorage(storageKey);
-        console.log(`[ABORT] Deleted storage: ${storageKey}`);
+        //console.log(`[ABORT] Deleted storage: ${storageKey}`);
       }
 
       if (fileId) {
         await deleteFileFromDB(fileId, projectId);
-        console.log(`[ABORT] Deleted DB record: ${fileId}`);
+        //console.log(`[ABORT] Deleted DB record: ${fileId}`);
       }
     } catch (err) {
       console.error(`[ABORT] Failed to delete ${storageKey ?? fileId}`, err);
@@ -385,7 +393,7 @@ export async function listFilesForProjectAndParentIds(projectId: string, parentI
 
 export async function deleteTag(id: string, projectId: string | undefined, name: string, currTags: Nullable<string>[] | null | undefined) {
   try {
-    console.log("Here!")
+    //console.log("Here!")
     if (!projectId) return
 
     if(!currTags) return
@@ -395,8 +403,8 @@ export async function deleteTag(id: string, projectId: string | undefined, name:
       projectId,
       tags: [...currTags.filter(tag => tag != name)]
     })
-    console.log(name)
-    console.log([...currTags.filter(tag => tag != name)])
+    //console.log(name)
+    //console.log([...currTags.filter(tag => tag != name)])
   } catch (error) {
     console.error("Error removing tag for file:", error)
   }
@@ -422,7 +430,7 @@ export async function createTag(id: string, projectId: string | undefined, currT
       })
     }
 
-    console.log("Successfully updated file with id " + id + " to have tag " + name)
+    //console.log("Successfully updated file with id " + id + " to have tag " + name)
 
   } catch (error) {
     console.error("Error updating tag for file:", error)
@@ -435,10 +443,10 @@ export async function createTag(id: string, projectId: string | undefined, currT
 
 export async function searchFiles(projectId: string, fileNames: string[], tagNames: string[], authorNames: string[]){
   try {
-    console.log(fileNames)
-    console.log(tagNames)
+    //console.log(fileNames)
+    //console.log(tagNames)
     const foundFiles = await client.queries.searchFiles({projectId: projectId, fileNames: fileNames, tagNames: tagNames})
-    console.log(foundFiles)
+    //console.log(foundFiles)
     return foundFiles.data
   } catch (error){
     console.error("Error searching for files:", error)
@@ -458,7 +466,7 @@ export async function getFileIdPath(fileId: string, projectId: string): Promise<
     })
 
     if(!file || !file.data || !file.data.parentId) return [`ROOT-${projectId}`]
-    console.log(file.data.filename)
+    //console.log(file.data.filename)
     if(file.data.parentId == `ROOT-${projectId}`){
       return [file.data.parentId]
     } else {
@@ -565,7 +573,7 @@ export async function getTags(id: string, projectId: string){
       )
 
       if(!tags.data) return tags.data
-      //console.log(tags.data)
+      ////console.log(tags.data)
       return tags.data.tags
     }
   } catch (error) {
@@ -605,7 +613,7 @@ export async function createFile({
   createdAt: string;
   updatedAt: string;
 }) {
-  console.log(`Creating file ${filename} with parent ${parentId}`);
+  //console.log(`Creating file ${filename} with parent ${parentId}`);
   return client.models.File.create({
     fileId,
     projectId,
@@ -775,7 +783,7 @@ export async function updateFileLocation(id: string, path: string, parentId: Nul
         parentId: parentId
       })
     }
-    console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
+    //console.log(`Successfully updated file ${id} to have path ${path} and parentId ${parentId}`)
   } catch(error) {
     console.error("Error updating file:", error);
     alert("An error occurred while updating the file. Please try again.")

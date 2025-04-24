@@ -134,7 +134,7 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
             <FileContainer>
             {
                 files.map((file, i) => (
-                    <FileLite key={i} onClick = {() => {console.log(file)}}>
+                    <FileLite key={i} onClick = {() => {/*console.log(file)*/}}>
                         {file.filename}
 
                         <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
