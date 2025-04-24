@@ -124,13 +124,13 @@ export async function getMessagesByFileIdAndPagination(
 //searchMessages
 export async function searchMessages(fileId: string, messageContents: string[], tagNames: string[]) {
   try{
-    //console.log("Searching messages with fileId:", fileId, "messageContents:", messageContents, "tagsName:", tagNames);
+    console.log("Searching messages with fileId:", fileId, "messageContents:", messageContents, "tagsName:", tagNames);
     const foundMessages = await client.queries.searchMessages({
       fileId: fileId,
       messageContents: messageContents,
       tagNames: tagNames,
     });
-    //console.log("Found messages:", foundMessages);
+    console.log("Found messages:", foundMessages);
     return foundMessages.data;
   }catch (error) {
     console.error("Error searching messages:", error);

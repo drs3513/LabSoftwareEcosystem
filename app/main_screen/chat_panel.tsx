@@ -154,7 +154,7 @@ export default function ChatPanel() {
   useEffect(() => {
 
     if (fileId) {
-      ////console.log("2Fetching messages for fileId:", fileId);
+      console.log("2Fetching messages for fileId:", fileId);
       setNextToken(null); // Reset nextToken when fileId changes
       setMessages([]); // Clear messages when fileId changes
       fetchMessages();

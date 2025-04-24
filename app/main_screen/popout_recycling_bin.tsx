@@ -32,7 +32,7 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
         initialPosY = document.documentElement.offsetHeight - 400;
     }
 
-    const {draggingFloatingWindow} = useGlobalState()
+    const {draggingFloatingWindow, setFileId} = useGlobalState()
 
     const [posX, setPosX] = useState(initialPosX)
     const [posY, setPosY] = useState(initialPosY)
@@ -112,6 +112,8 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
         try {
             await hardDeleteFile(fileId, projectId as string);
             fetchFiles();
+            setFileId(undefined);
+            
         } catch (err) {
             console.error("Hard delete failed:", err);
         }

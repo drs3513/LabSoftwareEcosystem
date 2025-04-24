@@ -1842,7 +1842,6 @@ export default function FilePanel() {
                     >
                       Create Folder
                     </ContextMenuItem>
-                    <ContextMenuItem>Open Chat</ContextMenuItem>
                     <ContextMenuItem
                       onClick={() => handleDownloadCurrentView()}
                     >
@@ -1861,10 +1860,7 @@ export default function FilePanel() {
                     <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true);}}>
                       Tags
                     </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);}}>
-                      Properties
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
+                    <ContextMenuItem onClick={() => {handleDelete(contextMenuFileId!);}}>
                       Delete File
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
@@ -2036,9 +2032,6 @@ export default function FilePanel() {
                   <ContextMenu>
                     <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
                       Tags
-                    </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)}>
-                      Properties
                     </ContextMenuItem>
                     <ContextMenuItem
                       onMouseOver={() => setContextMenuTagPopout(false)}
