@@ -417,7 +417,7 @@ export default function TopBar() {
     <Top_Bar ref={dropdownRef}>
       <Top_Bar_Group>
         <Top_Bar_Item onClick={toggleOptions}>
-          Options
+          Projects
           {showOptions && (
             <Dropdown>
               <DropdownItem onClick={handleCreateProject}>Create Project</DropdownItem>
@@ -425,10 +425,6 @@ export default function TopBar() {
           )}
         </Top_Bar_Item>
 
-        <Top_Bar_Item onClick={toggleWhitelist}>
-          Whitelist
-
-        </Top_Bar_Item>
 
       </Top_Bar_Group>
 
