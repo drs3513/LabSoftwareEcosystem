@@ -171,49 +171,6 @@ export default function ChatPanel() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  //fetching messages when found the search term
-  async function fetchMessagesWithSearch() {
-    setLoading(true)
-    if (!fileId ) return;
-    console.log("Fetching messages with search term:", searchTerm, "tagSearchTerm:", tagSearchTerm, "authorSearchTerm:", authorSearchTerm);
-    const searchedMessages = await searchMessages(fileId, searchTerm, tagSearchTerm, authorSearchTerm);
-    console.log("Fetched messages:", searchedMessages);
-    if(searchedMessages && searchedMessages.length > 0){
-      let temp_messages: Array<Message> = []
-      for(let msg of searchedMessages){
-        if(msg){
-          temp_messages = [...temp_messages,
-            {
-              messageId: msg.messageId,
-              fileId: msg.fileId,
-              userId: msg.userId,
-              content: msg.content,
-              createdAt: msg.createdAt,
-              edited: msg.isUpdated ?? false,
-              deleted: msg.isDeleted ?? false,
-              email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown"
-            }] }}
-      setMessages(temp_messages);
-      setLoading(false);
-      return temp_messages
-    }
-  }
-
-  useEffect(() => {
-    const hasSearchTerms =
-        searchTerm.length > 0 ||
-        tagSearchTerm.length > 0 ||
-        authorSearchTerm.length > 0;
-
-    if (hasSearchTerms) {
-      console.log("Searching...");
-      fetchMessagesWithSearch();
-    } else {
-      //console.log("Fetching old messages when input is empty");
-      fetchMessages(); // restore full messages when no filters
-    }
-  }, [searchTerm, tagSearchTerm, authorSearchTerm]);
-
 //fetching messages when found the search term
   async function fetchMessagesWithSearch() {
     setLoading(true)
