@@ -43,7 +43,7 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
       contextMenuType, setContextMenuType, heldKeys, setHeldKeys, draggingFloatingWindow}}>
       {children}
     </GlobalStateContext.Provider>
-  );
+  )
 }
 
 export function useGlobalState() {
