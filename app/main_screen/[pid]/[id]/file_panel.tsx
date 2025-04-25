@@ -1840,27 +1840,7 @@ if (conflict) {
           }
 
           {
-            contextMenu && selectedFileGroup && selectedFileGroup.length > 1 ? (
-                <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
-                  <ContextMenu>
-                    <ContextMenuItem
-                        onClick={() => {
-                          handleDownloadSelected();
-                        }}
-                    >
-                      Download Selection
-                    </ContextMenuItem>
 
-                    \\TODO Implement 'Delete Selection'
-                    <ContextMenuItem
-                        onClick={() => handleDownloadCurrentView()}
-                    >
-                      Delete Selection
-                    </ContextMenuItem>
-
-                  </ContextMenu>
-                </ContextMenuWrapper>
-            ) :
             contextMenu && contextMenuType=="filePanel" ? (
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
