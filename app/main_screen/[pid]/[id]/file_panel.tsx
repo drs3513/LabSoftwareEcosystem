@@ -1606,13 +1606,13 @@ if (conflict) {
     versionId: string,
     logicalId: string,
     filename: string,
-    filepath: string,
+    storageId: Nullable<string> | undefined,
     ownerId: string,
     projectId: string
   ) => {
-    const path = `uploads/${ownerId}/${projectId}${filepath}`;
+    const path = storageId;
   
-    if (!path || !versionId || !filepath) {
+    if (!path || !versionId || !storageId) {
       console.error("❌ Missing path, versionId, or filename");
       return;
     }
@@ -2127,7 +2127,6 @@ if (conflict) {
             onDownloadVersion={handleDownloadVersion}
           />
         )}
-
 
   </>
   );

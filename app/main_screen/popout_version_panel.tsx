@@ -12,7 +12,7 @@ interface Props {
   fileId: string;
   fileName: string;
   logicalId: string;
-  storageId: string;
+  storageId: Nullable<string>|undefined;
   ownerId: string;
   projectId: string;
   versions: FileVersion[];
