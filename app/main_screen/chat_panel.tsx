@@ -122,8 +122,8 @@ export default function ChatPanel() {
             userId: msg.userId,
             content: msg.content,
             createdAt: msg.createdAt,
-            edited: msg.isUpdated,
-            deleted: msg.isDeleted,
+            edited: msg.edited,
+            deleted: msg.deleted,
             email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown",
           },
         ];
@@ -286,20 +286,31 @@ export default function ChatPanel() {
       const response = await createMessage(fileId, userId, input.trim(), projectId as string);
   
   
-      if (!response) {
+      if (!response || !response.data) {
         new Error("createMessage returned undefined");
+        return
       }
-  
-      const newMessage = response?.data ?? response;
-  
+
+      const newMessage = {
+        messageId: response.data.messageId,
+        fileId: response.data.fileId,
+        userId: response.data.userId,
+        content: response.data.content,
+        createdAt: response.data.createdAt,
+        edited: response.data.isUpdated,
+        deleted: response.data.isDeleted,
+        email: (await client.models.User.get({ userId: response.data.userId }))?.data?.username ?? "Unknown"
+      }
+
+
       if (!newMessage || !("messageId" in newMessage && "content" in newMessage)) {
         console.error("Invalid message response:", response);
         return;
       }
-  
+
       //console.log("Successfully sent message:", newMessage);
   
-      setMessages((prevMessages) => [...prevMessages, newMessage]);
+      setMessages([...messages, newMessage]);
       setInput("");
     } catch (error) {
       console.error("Error sending message:", error);
