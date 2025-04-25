@@ -6,7 +6,7 @@ import JSZip from "jszip";
 //const s3Client = new S3Client({ region: "us-east-1" });
 
 export async function getFileVersions(key: string): Promise<string | null> {
-  const maxRetries = 3;
+  const maxRetries = 10;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     console.log(`[INFO] Fetching file versions (Attempt ${attempt}/${maxRetries})`);
