@@ -116,6 +116,7 @@ interface fileInfo{
   updatedAt: string,
   visible: boolean,
   open: boolean,
+  isDeleted: number,
   isDirectory: boolean | null
   versions?: FileVersion[];
 }
@@ -426,6 +427,7 @@ export default function FilePanel() {
         createdAt: latest.createdAt,
         updatedAt: latest.updatedAt,
         visible: true,
+        isDeleted: latest.isDeleted,
         open: activeParentIds.some((parent) => parent.id == latest.fileId),
         isDirectory: latest.isDirectory,
         versions,
@@ -516,6 +518,7 @@ export default function FilePanel() {
         projectId: file.projectId,
         createdAt: file.createdAt,
         updatedAt: file.updatedAt,
+        isDeleted: file.isDeleted,
         visible: true,
         open: false,
         isDirectory: file.isDirectory,
@@ -603,6 +606,7 @@ export default function FilePanel() {
               projectId: file.projectId,
               createdAt: file.createdAt,
               updatedAt: file.updatedAt,
+              isDeleted: file.isDeleted,
               visible: true,
               open: activeParentIds.some(parent => parent.id === file.fileId),
               isDirectory: file.isDirectory? file.isDirectory : null
@@ -756,8 +760,7 @@ export default function FilePanel() {
         task.isCanceled = true;
       },
     };
-  
-    const allChildren = await getFileChildren(projectId, folderLogicalId);
+    const allChildren = await getFileChildren(projectId, contextMenuFilePath as string);
     const validFiles = allChildren?.filter(f => !f.isDirectory && f.storageId && f.filepath);
   
     const fileList = validFiles?.map(file => ({
@@ -771,8 +774,6 @@ export default function FilePanel() {
   const handleDownloadCurrentView = async () => {
     if (!projectId) return;
   
-    //console.log("[DEBUG] Files in current view:", filesRef.current);
-  
     const task: ZipTask = {
       isCanceled: false,
       cancel() {
@@ -780,22 +781,22 @@ export default function FilePanel() {
       },
     };
   
-    const rootLogicalId = rootParentId?.replace("ROOT-", "") || "";
-  
+    const rootFilePath = currentParent?.filepath ?? "/";
     let fileList: { filepath: string; storageId: string }[] = [];
   
     try {
-      const allChildren = await getFileChildren(projectId, rootLogicalId);
+      const allChildren = await getFileChildren(projectId, rootFilePath);
+  
       fileList = (allChildren || [])
-        .filter(f => !f.isDirectory && f.storageId && f.filepath)
+        .filter(f => !f.isDeleted && !f.isDirectory && f.storageId && f.filepath)
         .map(f => ({
           filepath: f.filepath.startsWith("/") ? f.filepath.slice(1) : f.filepath,
           storageId: f.storageId!,
         }));
   
-      // Merge in case anything else is in filesRef (optional)
+      // Merge visible files from filesRef, avoiding deleted files
       for (const file of filesRef.current) {
-        if (!file.storageId || file.isDirectory) continue;
+        if (file.isDeleted || !file.storageId || file.isDirectory) continue;
   
         fileList.push({
           filepath: file.filepath.startsWith("/") ? file.filepath.slice(1) : file.filepath,
@@ -807,15 +808,18 @@ export default function FilePanel() {
         console.warn("No downloadable files in current view.");
         return;
       }
+  
       const rootName = filePathElement.length > 0
-      ? filePathElement[filePathElement.length - 1].fileName?.replace("/", "") || "project-files"
-      : projectName.current || "project-files";
+        ? filePathElement[filePathElement.length - 1].fileName?.replace("/", "") || "project-files"
+        : projectName.current || "project-files";
+  
       await downloadFolderAsZip(rootName, fileList, task);
     } catch (err) {
       console.error("Download error:", err);
     }
-  
   };
+  
+  
   
   const handleDownloadSelected = async () => {
     if (!projectId || !selectedFileGroup) return;
@@ -1017,19 +1021,21 @@ export default function FilePanel() {
       return;
     }
   
-    const actualRoot = rootFilePath === "/" ? `ROOT-${projectId}` : rootFilePath;
+    const actualRoot = rootFilePath === "/"? "": rootFilePath;
     const currentViewPath = actualRoot.replace(/\/+$/, "");
   
-    const filePathMap = new Map<string, { fileId: string, logicalId: string }>();
-    filesRef.current?.forEach(f => {
-      const fullPath = `${f.filepath}`.replace(/\/+/g, "/");
-      if (fullPath.startsWith(currentViewPath + "/") || fullPath === currentViewPath) {
-        filePathMap.set(fullPath, {
-          fileId: f.fileId,
-          logicalId: f.logicalId,
-        });
-      }
+    const filePathMap = new Map<string, { fileId: string; logicalId: string }>();
+
+    // Use the full filepath as-is, no need to start from currentViewPath
+    filesRef.current?.forEach((f) => {
+      if (f.isDeleted) return;
+      const normalizedPath = f.filepath.replace(/\/+/g, "/");
+      filePathMap.set(normalizedPath, {
+        fileId: f.fileId,
+        logicalId: f.logicalId,
+      });
     });
+
   
     const folderDict: Record<string, any> = {};
     uploadTask.current = {
@@ -1077,10 +1083,30 @@ export default function FilePanel() {
           currentPath = testPath;
         }
       }
-  
-      const normalizedFullPath = `${currentPath}/${fileName}`.replace(/\/+/g, "/");
-      const conflict = filePathMap.get(normalizedFullPath);
-  
+      
+      const normalizedFullPath = currentPath
+  ? `${currentPath}/${relativePath}`.replace(/\/+/g, "/")
+  : `/${relativePath}`.replace(/\/+/g, "/");
+
+// Log the path being checked
+console.log(`[DEBUG] Checking for conflict at path: "${normalizedFullPath}"`);
+
+// Log all existing paths in filePathMap
+console.log("[DEBUG] Existing paths in filePathMap:");
+for (const [key, val] of filePathMap.entries()) {
+  console.log(`  → ${key}`);
+}
+
+const conflict = filePathMap.get(normalizedFullPath);
+
+// Final result of conflict check
+if (conflict) {
+  console.log(`[CONFLICT FOUND] "${fileName}" at path "${normalizedFullPath}" matches existing key.`);
+} else {
+  console.log(`[NO CONFLICT] "${fileName}" at path "${normalizedFullPath}" not found in filePathMap.`);
+}
+
+
       let decision: 'overwrite' | 'version' | 'cancel' = 'overwrite';
       if (conflict && !applyToAll) {
         decision = await showConflictModal(file.name);
@@ -1088,7 +1114,7 @@ export default function FilePanel() {
       }
   
       if (decision === "overwrite" && conflict) {
-        const { key: storageKey } = await uploadFile(file, ownerId, projectId, relativePath);
+        const { key: storageKey } = await uploadFile(file, ownerId, projectId, normalizedFullPath);
         const versionId = await waitForVersionId(storageKey);
         if (versionId) {
           await updatefile(conflict.fileId, projectId, versionId);
@@ -1097,7 +1123,7 @@ export default function FilePanel() {
       }
   
       if (decision === "version" && conflict) {
-        await createNewVersion(file, conflict.logicalId, projectId, ownerId, parentId, relativePath);
+        await createNewVersion(file, conflict.logicalId, projectId, ownerId, parentId, normalizedFullPath);
         continue;
       }
   
@@ -1152,6 +1178,7 @@ export default function FilePanel() {
             size: file.size,
             versionId: file.versionId,
             ownerId: file.ownerId,
+            isDeleted: file.isDeleted,
             projectId: file.projectId,
             createdAt: file.createdAt,
             updatedAt: file.updatedAt,
@@ -1756,6 +1783,7 @@ export default function FilePanel() {
                         <div style={{pointerEvents: "none", display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? file.open ? <Image src={icon_folderopen} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>: <Image src={icon_folder} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>} <div style={{marginLeft: '1em', pointerEvents:"none"}}>{file.filename}
                         <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
                                               logicalId={file.logicalId} storageId={file.storageId}
+                                              isDeleted={ file.isDeleted}
                                               size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                               projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
                                               updatedAt={file.updatedAt} visible={file.visible}
@@ -1782,6 +1810,7 @@ export default function FilePanel() {
                         <div style={{pointerEvents: "none", display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? file.open ? <Image src={icon_folderopen} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>: <Image src={icon_folder} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>} <div style={{marginLeft: '1em', pointerEvents:"none"}}>{file.filename}
                         <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
                                               logicalId={file.logicalId} storageId={file.storageId}
+                                              isDeleted={file.isDeleted}
                                               size={file.size} versionId={file.versionId} ownerId={file.ownerId}
                                               projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
                                               updatedAt={file.updatedAt} visible={file.visible} open={file.open}
@@ -1868,9 +1897,6 @@ export default function FilePanel() {
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDownload(contextMenuStoragePath!, contextMenuFileName!,contextMenuFileId!)}>
                       Download
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => cancelDownload(contextMenuFileId!)}>
-                      Cancel Download
                     </ContextMenuItem>
                     <ContextMenuItem
                       style={{ fontWeight: "bold", cursor: "default" }}
