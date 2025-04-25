@@ -19,6 +19,7 @@ export default function ConflictModal({ filename, onResolve }: Props) {
           <input type="checkbox" checked={applyAll} onChange={() => setApplyAll(!applyAll)} />
           Apply to all
         </label>
+        <Button onClick={() => onResolve("overwrite", applyAll)}>Rename</Button>
         <Button onClick={() => onResolve("overwrite", applyAll)}>Overwrite</Button>
         <Button onClick={() => onResolve("version", applyAll)}>Create Version</Button>
         <Button onClick={() => onResolve("cancel", applyAll)}>Cancel</Button>

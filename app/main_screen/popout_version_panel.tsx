@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import styled from "styled-components";
 import type { Schema } from "@/amplify/data/resource";
+import {Nullable} from "@aws-amplify/data-schema";
 
 type FileVersion = Pick<
   Schema["File"]["type"],
@@ -23,7 +24,7 @@ interface Props {
     versionId: string,
     logicalId: string,
     filename: string,
-    storageId: string,
+    storageId: Nullable<string> | undefined,
     ownerId: string,
     projectId: string
   ) => void;
