@@ -1606,12 +1606,11 @@ if (conflict) {
     versionId: string,
     logicalId: string,
     filename: string,
-    storageId: string,
     filepath: string,
     ownerId: string,
     projectId: string
   ) => {
-    const path = storageId;
+    const path = `uploads/${ownerId}/${projectId}${filepath}`;
   
     if (!path || !versionId || !filepath) {
       console.error("❌ Missing path, versionId, or filename");
@@ -1900,11 +1899,6 @@ if (conflict) {
                       Download
                     </ContextMenuItem>
                     <ContextMenuItem
-                      onClick={() => handleDownloadCurrentView()}
-                    >
-                      Download All in View
-                    </ContextMenuItem>
-                    <ContextMenuItem
                       style={{ fontWeight: "bold", cursor: "default" }}
                       onClick={() => {
                         setContextMenuVersionPopout(true);
@@ -2076,11 +2070,6 @@ if (conflict) {
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
                       Delete Folder
-                    </ContextMenuItem>
-                    <ContextMenuItem
-                      onClick={() => handleDownloadCurrentView()}
-                    >
-                      Download All in View
                     </ContextMenuItem>
                   </ContextMenu>
                   {contextMenuTagPopout ?
