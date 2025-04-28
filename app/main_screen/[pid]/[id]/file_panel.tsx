@@ -1802,7 +1802,7 @@ if (conflict) {
         >
           {
             filePathElement.length > 0  ?
-            ( <StickyTopBar>
+            ( <StickyTopBar key={'top_bar'}>
                   <FilePathContainer>
                     {filePathElement.map((pathElement, i) => (
                       <FilePathLink href={pathElement.href} style={{textDecoration: "none", color: "black"}} key={i}
@@ -1889,7 +1889,7 @@ if (conflict) {
 
                       )
                     }
-                    <div style={{height: "40%", width:"100%", flexShrink:"0"}}></div>
+                    <div style={{height: "40%", width:"100%", flexShrink:"0", pointerEvents: "none"}}></div>
                   </>
 
 
