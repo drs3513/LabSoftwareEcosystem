@@ -30,7 +30,7 @@ import Link from "next/link";
 import ConflictModal from '../../conflictModal';
 import VersionPanel from "@/app/main_screen/popout_version_panel";
 import { isUserWhitelistedForProject } from '@/lib/whitelist';
-
+import previewFile from "@/app/main_screen/file_preview"
 //SVG imports
 import Image from "next/image";
 import icon_sort0 from "/assets/icons/sort-alphabetical-outlined-rounded.svg";
@@ -1989,121 +1989,11 @@ if (conflict) {
                       Versions
                     </ContextMenuItem>
                     <ContextMenuItem
-                      onClick={async () => {
-                        const file = files.find(f => f.fileId === contextMenuFileId);
-                        if (!file || !projectId) return;
-                      
-                        const ext = file.filename.split(".").pop()?.toLowerCase();
-                        const isText = ["txt", "md", "log", "csv"].includes(ext!); // Removed "py"
-                        const isOfficeDoc = ["doc", "docx", "rtf", "dox", "word"].includes(ext!);
-                        const isPDF = ext === "pdf";
-                        const isImage = ["png", "jpg", "jpeg"].includes(ext!);
-                      
-                        if (!isText && !isOfficeDoc && !isPDF && !isImage) return;
-                      
-                        const path = file.storageId as string;
-                        const versionId = file.versionId;
-                      
-                        try {
-                          const cachedUrl = await fetchCachedUrl(path, versionId);
-                          const popup = window.open("", "_blank", "width=800,height=600");
-                      
-                          if (!popup) {
-                            alert("Popup blocked. Please allow popups for this site.");
-                            return;
-                          }
-                      
-                          const previewContent = isPDF
-                          ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
-                          : isImage
-                          ? `<img src="${cachedUrl}" alt="${file.filename}" />`
-                          : isText
-                          ? `<pre><code id="code-block">Loading...</code></pre>`
-                          : `<p>Unsupported file type.</p>`;
-                        
-                        const html = `
-                          <!DOCTYPE html>
-                          <html lang="en">
-                          <head>
-                            <title>Preview - ${file.filename}</title>
-                            <style>
-                              html, body {
-                                height: 100%;
-                                margin: 0;
-                                font-family: sans-serif;
-                                background: #f0f0f0;
-                              }
-                              .toolbar {
-                                width: 100%;
-                                background: #333;
-                                color: white;
-                                padding: 10px;
-                                display: flex;
-                                justify-content: space-between;
-                                align-items: center;
-                                box-sizing: border-box;
-                              }
-                              .toolbar a {
-                                color: white;
-                                text-decoration: none;
-                                padding: 8px 12px;
-                                background-color: #007bff;
-                                border-radius: 5px;
-                              }
-                              .preview {
-                                height: calc(100% - 50px); /* Leave space for toolbar */
-                                overflow: auto;
-                                display: block;
-                              }
-                              iframe, img {
-                                max-width: 90%;
-                                max-height: 90%;
-                                border: none;
-                                margin: auto;
-                              }
-                              pre {
-                                background: white;
-                                padding: 1rem;
-                                margin: 0;
-                                width: 100%;
-                                height: 100%;
-                                box-sizing: border-box;
-                                overflow: auto;
-                                white-space: pre-wrap;
-                                word-wrap: break-word;
-                              }
-                            </style>
-                          </head>
-                          <body>
-                            <div class="toolbar">
-                              <div>Previewing: ${file.filename}</div>
-                              <a href="${cachedUrl}" download="${file.filename}">Download</a>
-                            </div>
-                            <div class="preview">
-                              ${previewContent}
-                            </div>
-                            ${
-                              isText
-                                ? `<script>
-                                     fetch("${cachedUrl}")
-                                       .then(res => res.text())
-                                       .then(code => {
-                                         document.getElementById("code-block").textContent = code;
-                                       });
-                                   </script>`
-                                : ""
-                            }
-                          </body>
-                          </html>
-                        `;
-                        
-                      
-                          popup.document.write(html);
-                          popup.document.close();
-                        } catch (err) {
-                          console.error("Preview failed:", err);
-                        }
-                      }}  
+                      onClick={() => {
+                        const file = files[filesByFileId.current[contextMenuFileId]]
+                        previewFile(file)
+
+                      }}
                     >
                       Preview
                     </ContextMenuItem>
