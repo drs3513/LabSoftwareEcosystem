@@ -11,8 +11,8 @@ interface Message {
   userId: string;
   content: string;
   createdAt: string;
-  edited?: boolean;
-  deleted?: boolean;
+  isUpdated?: boolean;
+  isDeleted?: boolean;
   email?: string;
 }
 
