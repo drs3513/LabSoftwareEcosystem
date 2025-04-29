@@ -1646,6 +1646,7 @@ export default function FilePanel() {
     logicalId: string,
     filename: string,
     filepath: string,
+    storadeId: Nullable<string> | undefined,
     ownerId: string,
     projectId: string
   ) => {
