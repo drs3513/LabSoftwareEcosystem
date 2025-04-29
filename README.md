@@ -1,16 +1,26 @@
-## AWS Amplify Next.js (App Router) Starter Template
+## Lab Software Ecosystem
 
-This repository provides a starter template for creating applications using Next.js (App Router) and AWS Amplify, emphasizing easy setup for authentication, API, and database capabilities.
+This repository provides a startup designed for centralizing file storage and communication without the need for various tools.
 
 ## Overview
 
-This template equips you with a foundational Next.js application integrated with AWS Amplify, streamlined for scalability and performance. It is ideal for developers looking to jumpstart their project with pre-configured AWS services like Cognito, AppSync, and DynamoDB.
+Research labs are at the forefront of innovation and happen with collaboration between
+sometimes dozens of researchers. Processes can be roadblocked by poor organization of files and
+scattered, untracked communication. It is crucial to remedy these problems to ensure the
+efficiency and productivity of cutting-edge labs. Our Lab Software Ecosystem aims to both
+centralize the communications between lab researchers in conjunction with providing a secure
+storage of vital lab files and experiments. This will be interfaced with an efficient, user-friendly
+web front end that can access web-hosted file storage. Providing solutions for these obstacles
+will streamline the research workflow in team-based lab research. Important information will be
+well-documented and accessible, readily visible to mitigate redundancy, and properly secured to
+control access to each project.
 
 ## Features
 
-- **Authentication**: Setup with Amazon Cognito for secure user authentication.
+- **Authentication**: Set up with Amazon Cognito for secure user authentication.
 - **API**: Ready-to-use GraphQL endpoint with AWS AppSync.
 - **Database**: Real-time database powered by Amazon DynamoDB.
+- **Storage**: Real-time storage access powered by Amazon S3 bucket. 
 
 ## Deploying to AWS
 
