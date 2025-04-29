@@ -25,8 +25,7 @@ interface Props {
     versionId: string,
     logicalId: string,
     filename: string,
-    filepath: string,
-    storageId: Nullable<string> | undefined,
+    filepath: Nullable<string> | undefined,
     ownerId: string,
     projectId: string
   ) => void;
@@ -84,15 +83,17 @@ export default function VersionPanel({
                 key={i}
                 $current={isCurrent}
                 onClick={() =>
+                {
                   onDownloadVersion(
-                    version.versionId,
-                    logicalId,
-                    fileName,
-                    "",
-                    version.storageId ?? storageId,
-                    ownerId,
-                    projectId
-                  )
+                      version.versionId,
+                      logicalId,
+                      fileName,
+                      version.storageId ?? storageId,
+                      ownerId,
+                      projectId
+                  );
+                }
+
                 }
               >
                 {versionNumber} – {dateStr}
