@@ -1846,7 +1846,7 @@ export default function FilePanel() {
                                               $pickedUp={(pickedUpFileGroup != undefined && (pickedUpFileGroup.includes(index)) || isParentPickedUp(file.fileId))}
                                               $mouseX={mouseCoords[0]}
                                               $mouseY={mouseCoords[1]}
-                                              $selected = {dragOverFileId == file.fileId || (selectedFileGroup != undefined && (selectedFileGroup.includes(index) || isParentSelected(file.fileId)))}
+                                              $selected = {dragOverFileId == file.fileId || (selectedFileGroup != undefined && (selectedFileGroup.includes(index) ))} //|| isParentSelected(file.fileId)
                                               $indexDiff = {0}
                                               onMouseDown={(e) => onFilePickUp(e, file.fileId)}
                                               onMouseUp={(e) => (pickedUpFileGroup != undefined && !pickedUpFileGroup.includes(index) ? onFilePlace(e, file.fileId) : undefined)}
