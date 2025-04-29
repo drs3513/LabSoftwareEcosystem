@@ -15,7 +15,7 @@ import WhitelistPanel from '@/app/main_screen/popout_whitelist_user_panel'
 const client = generateClient<Schema>();
 
 export default function ProjectPanel() {
-  const { setRole, setProjectId, projectId, userId, setFileId } = useGlobalState();
+  const { setRole, setProjectId, projectId, userId, setFileId, setMessageThread } = useGlobalState();
   const router = useRouter()
   const routerSearchParams = useSearchParams();
   const { user } = useAuthenticator();
@@ -26,25 +26,28 @@ export default function ProjectPanel() {
     x: number;
     y: number;
     projectId: string | null;
+    projectName: string | null
   }>({
     visible: false,
     x: 0,
     y: 0,
     projectId: null,
+    projectName: null
   });
   
-  function handleRightClick(event: React.MouseEvent, projectId: string) {
+  function handleRightClick(event: React.MouseEvent, projectId: string, projectName: string) {
     event.preventDefault();
     setContextMenu({
       visible: true,
       x: event.clientX,
       y: event.clientY,
       projectId,
+      projectName
     });
   }
 
   useEffect(() => {
-    const hideMenu = () => setContextMenu({ visible: false, x: 0, y: 0, projectId: null });
+    const hideMenu = () => setContextMenu({ visible: false, x: 0, y: 0, projectId: null, projectName: null });
     window.addEventListener("click", hideMenu);
     return () => window.removeEventListener("click", hideMenu);
   }, []);
@@ -61,11 +64,13 @@ export default function ProjectPanel() {
     } catch (err) {
       console.error("Failed to delete project:", err);
     } finally {
-      setContextMenu({ visible: false, x: 0, y: 0, projectId: null });
+      setContextMenu({ visible: false, x: 0, y: 0, projectId: null, projectName: null });
     }
   }
   
   const [contextMenuProjectId, setContextMenuProjectId] = useState<string | undefined>(undefined);
+  const [contextMenuProjectName, setContextMenuProjectName] = useState<string | undefined>(undefined);
+
   const [displayedWhitelistPanels, setDisplayedWhitelistPanels] = useState<string[]>([])
 
   const [contextMenuPosition, setContextMenuPosition] = useState<number[]>([0,0])
@@ -168,10 +173,18 @@ export default function ProjectPanel() {
     return () => subscription.unsubscribe();
   };
 
-  function createContextMenu(e: React.MouseEvent<HTMLDivElement>, projectId: string) {
+  function createContextMenu(e: React.MouseEvent<HTMLDivElement>, projectId: string, projectName: string) {
     e.preventDefault()
-    setContextMenuProjectId(projectId)
-    setContextMenuPosition([e.pageX, e.pageY])
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      projectId,
+      projectName
+    })
+
+    //setContextMenuProjectId(projectId)
+    //setContextMenuPosition([e.pageX, e.pageY])
 
   }
 
@@ -205,7 +218,7 @@ export default function ProjectPanel() {
                     //console.log(usrrole);
                     setRole(usrrole);
                   }}
-                  onContextMenu = {(e) => createContextMenu(e, project.projectId)}
+                  onContextMenu = {(e) => createContextMenu(e, project.projectId, project.projectName)}
                 >
                   {project.projectName}
 
@@ -223,13 +236,16 @@ export default function ProjectPanel() {
                         close={() => setDisplayedWhitelistPanels(displayedWhitelistPanels.filter(id => id != projectId))}
                         initialPosX = {50} initialPosY={50}/>
         ))}
-        {contextMenuProjectId ?
-            <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+        {contextMenu.visible ?
+            <ContextMenuWrapper $x={contextMenu.x} $y={contextMenu.y}>
               <ContextMenu>
-                <ContextMenuItem onClick={() => setDisplayedWhitelistPanels([...displayedWhitelistPanels, contextMenuProjectId])}>
+                <ContextMenuItem onClick={() => setDisplayedWhitelistPanels([...displayedWhitelistPanels, contextMenu.projectId!!])}>
                   Whitelist Users
                 </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleDeleteProject(contextMenuProjectId)}>
+                <ContextMenuItem onClick={() => setMessageThread({id: contextMenu.projectId!!, label: contextMenu.projectName!!, path: undefined, type: 1})}>
+                  Open Chat
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleDeleteProject(contextMenu.projectId!!)}>
                   Delete Project
                 </ContextMenuItem>
               </ContextMenu>
@@ -345,7 +361,7 @@ const ContextMenu = styled.div`
 
 const ContextMenuWrapper = styled.div<{$x: number, $y: number}>`
     position: fixed;
-    z-index: 2;
+    z-index: 20;
     left: ${(props) => props.$x}px;
     top: ${(props) => props.$y}px;
     display: flex;

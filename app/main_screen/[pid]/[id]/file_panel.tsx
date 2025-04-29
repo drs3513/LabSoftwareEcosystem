@@ -144,6 +144,7 @@ interface fileInfo{
   versions?: FileVersion[];
 }
 
+
 interface activeParent{
   id: string,
   depth: number
@@ -155,7 +156,7 @@ export default function FilePanel() {
   const routerSearchParams = useSearchParams()
   const router = useRouter()
 
-  const {userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId, heldKeys, setHeldKeys, draggingFloatingWindow} = useGlobalState();
+  const {userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId, heldKeys, setHeldKeys, draggingFloatingWindow, setMessageThread} = useGlobalState();
 
   const {uploadQueue, uploadTask, setUploadProgress,
     setDownloadProgressMap, setCompletedUploads,
@@ -194,6 +195,7 @@ export default function FilePanel() {
   const observeMouseCoords = useRef<boolean>(true);
 
   const [contextMenuFileId, setContextMenuFileId] = useState<string | undefined>(undefined);
+
 
   const [contextMenuStoragePath, setContextMenuStoragePath] = useState<Nullable<string> | undefined>(undefined);
 
@@ -239,6 +241,8 @@ export default function FilePanel() {
   const timer = useRef(setTimeout(() => {}, 500));
 
   const timerGetFiles = useRef(setTimeout(() => {}, 500))
+
+  const timerObserveFiles = useRef(setTimeout(() => {}, 500))
 
   const isLongPress  = useRef(false);
 
@@ -380,7 +384,7 @@ export default function FilePanel() {
         default: {
           values = values.sort(compare_file_name)
           break
-        }activeParentIds.length - 1
+        }
       }
 
       sorted_files[key] = values
@@ -402,7 +406,6 @@ export default function FilePanel() {
 
 
   async function fetchFiles() {
-    console.log("Here?")
     clearTimeout(timerGetFiles.current)
     timerGetFiles.current =  setTimeout(async () => {
       if (!projectId || !userId) {
@@ -451,10 +454,7 @@ export default function FilePanel() {
       }
       setLoading(false);
       setFiles(sort_files_with_path(groupedFiles));
-      console.log("setting Loading Parent Ids : ")
-      console.log([...loadingParentIds.filter(parent => !groupedFiles.some(file => file.parentId == parent.id))])
       setLoadingParentIds([])
-      console.log(sort_files_with_path(groupedFiles))
       return groupedFiles;
     }, 600)
 
@@ -464,7 +464,6 @@ export default function FilePanel() {
   useEffect(() => {
     if(search) return
     if(projectId){
-      console.log(loadingParentIds.length)
       fetchFiles()
 
       const unsubscribe = observeFiles();
@@ -600,7 +599,11 @@ export default function FilePanel() {
       next: async ({items}) => {
         //If a file is observed that is not already saved by the files object
         if(items.some(file_1 => !files.some(file_2 => compare_file_objects(file_1, file_2)))) {
-          fetchFiles()
+          clearTimeout(timerObserveFiles.current)
+          timerObserveFiles.current = setTimeout(() => {
+            fetchFiles();
+          }, 500);
+
         }
       },
       error: (error) => {
@@ -906,7 +909,6 @@ export default function FilePanel() {
       ) => {
     if(event.target != event.currentTarget) return
     if(draggingFloatingWindow.current) return
-    console.log(dragOverFileId)
     event.preventDefault();
     setDragOverFileId(undefined);
     const supportsWebkitGetAsEntry = "webkitGetAsEntry" in DataTransferItem.prototype;
@@ -915,7 +917,6 @@ export default function FilePanel() {
       console.error("[ERROR] webkitGetAsEntry not supported in this browser.");
       return;
     }
-    //console.log(event)
     const items: {
       index: number;
       item: DataTransferItem;
@@ -949,7 +950,6 @@ export default function FilePanel() {
     const directories: string[] = [];
 
     const readEntry = async (entry: any, path = ""): Promise<void> => {
-      //console.log(entry)
       if (entry.isFile) {
         await new Promise<void>((resolve, reject) => {
           entry.file((file: File) => {
@@ -1030,6 +1030,7 @@ export default function FilePanel() {
     files: File[],
     rootFilePath: string
   ) => {
+
     let globalDecision: 'overwrite' | 'version' | 'cancel' | null = null;
     let applyToAll = false;
 
@@ -1119,47 +1120,67 @@ export default function FilePanel() {
           currentPath = testPath;
         }
       }
-      
       const normalizedFullPath = currentPath
   ? `${currentPath}/${relativePath}`.replace(/\/+/g, "/")
-  : `/${relativePath}`.replace(/\/+/g, "/");
+    : `/${relativePath}`.replace(/\/+/g, "/");
 
-// Log the path being checked
-console.log(`[DEBUG] Checking for conflict at path: "${normalizedFullPath}"`);
+    // Log the path being checked
+    console.log(`[DEBUG] Checking for conflict at path: "${normalizedFullPath}"`);
 
-// Log all existing paths in filePathMap
-console.log("[DEBUG] Existing paths in filePathMap:");
-for (const [key, val] of filePathMap.entries()) {
-  console.log(`  → ${key}`);
-}
+    // Log all existing paths in filePathMap
+    //console.log("[DEBUG] Existing paths in filePathMap:");
+    //for (const [key, val] of filePathMap.entries()) {
+    //  console.log(`  → ${key}`);
+    //}
 
-const conflict = filePathMap.get(normalizedFullPath);
+    const conflict = filePathMap.get(normalizedFullPath);
 
-// Final result of conflict check
-if (conflict) {
-  console.log(`[CONFLICT FOUND] "${fileName}" at path "${normalizedFullPath}" matches existing key.`);
-} else {
-  console.log(`[NO CONFLICT] "${fileName}" at path "${normalizedFullPath}" not found in filePathMap.`);
-}
+    // Final result of conflict check
+    if (conflict) {
+      console.log(`[CONFLICT FOUND] "${fileName}" at path "${normalizedFullPath}" matches existing key.`);
+    } else {
+      console.log(`[NO CONFLICT] "${fileName}" at path "${normalizedFullPath}" not found in filePathMap.`);
+    }
 
-
+      setShowProgressPanel(false);
       let decision: 'overwrite' | 'version' | 'cancel' = 'overwrite';
       if (conflict && !applyToAll) {
         decision = await showConflictModal(file.name);
-        if (decision === "cancel") continue;
+        if (decision === "cancel") return;
       }
-  
+      setShowProgressPanel(true)
       if (decision === "overwrite" && conflict) {
+        setUploadProgress(0)
+        uploadQueue.current = [{ folderDict, ownerId, projectId, parentId }];
+
+        setCompletedUploads((prev) => [...prev, 0]);
         const { key: storageKey } = await uploadFile(file, ownerId, projectId, normalizedFullPath);
+        setUploadProgress(30)
         const versionId = await waitForVersionId(storageKey);
+        setUploadProgress(60)
         if (versionId) {
           await updatefile(conflict.fileId, projectId, versionId);
         }
+        setUploadProgress(100)
+        setTimeout(() => {
+          setCompletedUploads((prev) => prev.slice(1));
+        }, 3000);
+        setUploadProgress(null);
+        setShowProgressPanel(false);
         continue;
       }
   
       if (decision === "version" && conflict) {
+        setUploadProgress(0)
+        uploadQueue.current = [{ folderDict, ownerId, projectId, parentId }];
+        setCompletedUploads((prev) => [...prev, 0]);
         await createNewVersion(file, conflict.logicalId, projectId, ownerId, parentId, normalizedFullPath);
+        setUploadProgress(100)
+        setTimeout(() => {
+          setCompletedUploads((prev) => prev.slice(1));
+        }, 3000);
+        setUploadProgress(null);
+        setShowProgressPanel(false);
         continue;
       }
   
@@ -1199,7 +1220,7 @@ if (conflict) {
         return;
       }
   
-      const currentId = activeParentIds[activeParentIds.length - 1].id;
+      const currentId = activeParentIds[0].id;
   
       try {
         const { data: file } = await client.models.File.get({ fileId: currentId, projectId });
@@ -1322,10 +1343,7 @@ if (conflict) {
 
         files[filesByFileId.current[fileId]].parentId = overFileId
 
-        //console.log(children)
-        //console.log(files[filesByFileId.current[pickedUpFileId]].filepath)
-        //console.log(overFileId)
-        //console.log(files[filesByFileId.current[overFileId]].filepath)
+
         let new_file_path = `/${files[filesByFileId.current[fileId]].filename}`
         if(overFileId in filesByFileId.current){
           new_file_path = `${files[filesByFileId.current[overFileId]].filepath}/${files[filesByFileId.current[fileId]].filename}`
@@ -1344,23 +1362,13 @@ if (conflict) {
         const fileIds = children.map((child) => child.fileId)
         const filepaths = children.map((child) => new_file_path + child.filepath.slice(files[filesByFileId.current[fileId]].filepath.length))
         const parentIds = children.map((child) => parentsToMove.includes(child.fileId) ? (overFileId ? overFileId : `ROOT-${projectId}`) : child.parentId)
-        //console.log(filepaths)
-        //`if(overFileId){
-        //`  console.log(files[filesByFileId.current[overFileId]].filepath)
-        //`} else {
-//`
-        //`}
+
         await batchUpdateFilePath(fileIds, projectId, parentIds, filepaths)
         await pokeFile(parentsToMove[0], projectId, filepaths[0])
       }
 
       await fetchFiles()
-//      for(let fileIndex of pickedUpFileGroup) {
-//        if(!projectId) return
-//        console.log("Here!")
-//        const children = await getFileChildren(projectId, files[fileIndex].filepath)
-//        console.log(children)
-//      }
+
 
       setPickedUpFileGroup(undefined)
 
@@ -1375,10 +1383,7 @@ if (conflict) {
 
       files[filesByFileId.current[pickedUpFileId]].parentId = overFileId
 
-      //console.log(children)
-      //console.log(files[filesByFileId.current[pickedUpFileId]].filepath)
-      //console.log(overFileId)
-      //console.log(files[filesByFileId.current[overFileId]].filepath)
+
       let new_file_path = `/${files[filesByFileId.current[pickedUpFileId]].filename}`
       if(overFileId in filesByFileId.current){
         new_file_path = `${files[filesByFileId.current[overFileId]].filepath}/${files[filesByFileId.current[pickedUpFileId]].filename}`
@@ -1397,18 +1402,12 @@ if (conflict) {
       const fileIds = children.map((child) => child.fileId)
       const filepaths = children.map((child) => new_file_path + child.filepath.slice(files[filesByFileId.current[pickedUpFileId]].filepath.length))
       const parentIds = children.map((child) => child.fileId == pickedUpFileId ? (overFileId ? overFileId : `ROOT-${projectId}`) : child.parentId)
-      //console.log(filepaths)
-      //`if(overFileId){
-      //`  console.log(files[filesByFileId.current[overFileId]].filepath)
-      //`} else {
-//`
-      //`}
+
       await batchUpdateFilePath(fileIds, projectId, parentIds, filepaths)
       fetchFiles()
       await pokeFile(fileIds[0], projectId, filepaths[0])
       setPickedUpFileId(undefined)
 
-      //console.log(returnedValue)
     }
     observeMouseCoords.current = true
   }
@@ -1483,7 +1482,6 @@ if (conflict) {
   }
 
   function selectFile(e: React.MouseEvent<HTMLButtonElement>, index: number){
-    console.log(files[index])
     clearTimeout(timer.current)
     isLongPress.current = false
     if(e.detail == 2){
@@ -1571,7 +1569,6 @@ if (conflict) {
       setTagSearchTerm(temp_tag_set)
       setAuthorSearchTerm(temp_author_set)
       setSearchTerm(temp_name_set)
-      //console.log(temp_name_set)
       setSearch(true)
     }
 
@@ -1624,7 +1621,6 @@ if (conflict) {
     if(!files[filesByFileId.current[openFileId]].isDirectory) return
     //if openFileId in activeParentIds
     if(activeParentIds.some(parent => parent.id === openFileId)){
-      console.log("Closing")
       //create list of activeParentIds to remove (with children)
       let to_remove = [openFileId]
       to_remove = [...to_remove, ...recursiveCloseFolder(openFileId)]
@@ -1634,7 +1630,6 @@ if (conflict) {
       setLoadingParentIds([...loadingParentIds.filter(parent => !(to_remove.includes(parent.id)))])
     }
     else {
-      console.log("Opening")
       const found_active_parent = activeParentIds.find(parent => parent.id === files[filesByFileId.current[openFileId]].parentId)
 
       setActiveParentIds([...activeParentIds, {id: openFileId, depth: found_active_parent? found_active_parent.depth + 1 : 0}])
@@ -1654,8 +1649,7 @@ if (conflict) {
     ownerId: string,
     projectId: string
   ) => {
-    const path = `uploads/${ownerId}/${projectId}${filepath}`;
-  
+    const path = `${filepath}`;
     if (!path || !versionId || !filepath) {
       console.error("❌ Missing path, versionId, or filename");
       return;
@@ -1790,7 +1784,7 @@ if (conflict) {
               activeParentIds.length > 0
                 ? activeParentIds[0].id
                 : `ROOT-${projectId}`;
-            
+              console.log(currentParent)
                 const currentPath = currentParent?.filepath ?? "/";
                 
             
@@ -1855,7 +1849,12 @@ if (conflict) {
                                               onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ?
                                                   file.isDirectory ?
                                                       handleFileDrag(e, projectId, userId, file.fileId, file.filepath) :
-                                                      handleFileDrag(e, projectId, userId, file.parentId, file.filepath.slice(0,file.filepath.length-(file.filename.length+1)))
+                                                      handleFileDrag(e, projectId, userId,
+                                                          file.parentId == rootParentId && rootParentId.startsWith("ROOT-") ?
+                                                              "ROOT-"+projectId : file.parentId
+
+
+                                                          , file.filepath.slice(0,file.filepath.length-(file.filename.length+1)))
                                                   : undefined}}>
 
                                           <div style={{pointerEvents: "none", display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? activeParentIds.some(activeParent => activeParent.id == file.fileId) || loadingParentIds.some(loadingParent => loadingParent.id == file.fileId) ? <Image src={icon_folderopen} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>: <Image src={icon_folder} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>} <div style={{marginLeft: '1em', pointerEvents:"none"}}>{file.filename}
@@ -1889,7 +1888,7 @@ if (conflict) {
 
                       )
                     }
-                    <div style={{height: "40%", width:"100%", flexShrink:"0", pointerEvents: "none"}}></div>
+                    <div style={{height: "40%", width:"100%", flexShrink:"0", pointerEvents: "none"}} key={"spacing_bottom"}></div>
                   </>
 
 
@@ -1942,7 +1941,7 @@ if (conflict) {
 
           {
 
-            contextMenu && contextMenuType=="filePanel" ? (
+            contextMenu && contextMenuType=="filePanel" && contextMenuFilePath ? (
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
                     <ContextMenuItem
@@ -1960,43 +1959,47 @@ if (conflict) {
 
                   </ContextMenu>
                 </ContextMenuWrapper>
-            ) : contextMenuFileId && contextMenu && contextMenuType=="fileFile" ? (
+            ) : contextMenuFileId && contextMenu && contextMenuType=="fileFile" && contextMenuFilePath ? (
 
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
-                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);}}>
+                    <ContextMenuItem>
                       Rename
                     </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true);}}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true)}}>
                       Tags
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => {handleDelete(contextMenuFileId!);}}>
-                      Delete File
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
-                      Open Chat
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDownload(contextMenuStoragePath!, contextMenuFileName!,contextMenuFileId!)}>
                       Download
                     </ContextMenuItem>
-                    <ContextMenuItem
-                      style={{ fontWeight: "bold", cursor: "default" }}
-                      onClick={() => {
-                        setContextMenuVersionPopout(true);
-                        setContextMenuTagPopout(false); // optionally close tags
-                      }}
-                    >
-                      Versions
+                    <ContextMenuItem onClick={() => setMessageThread({id: contextMenuFileId, label: contextMenuFilePath.split("/").pop()!!, path: projectName.current + contextMenuFilePath, type: 0})}>
+                      Open Chat
                     </ContextMenuItem>
                     <ContextMenuItem
-                      onClick={() => {
-                        const file = files[filesByFileId.current[contextMenuFileId]]
-                        previewFile(file)
+                        onClick={() => {
+                          const file = files[filesByFileId.current[contextMenuFileId]]
+                          previewFile(file)
 
-                      }}
+                        }}
                     >
                       Preview
                     </ContextMenuItem>
+                    <ContextMenuItem
+                        style={{ fontWeight: "bold", cursor: "default" }}
+                        onClick={() => {
+                          setContextMenuVersionPopout(true);
+                          setContextMenuTagPopout(false); // optionally close tags
+                        }}
+                    >
+                      Versions
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => {handleDelete(contextMenuFileId!);}}>
+                      Delete File
+                    </ContextMenuItem>
+
+
+
+
                     </ContextMenu>
                   {contextMenuTagPopout ?
                       <ContextMenuPopout $index={1}>
@@ -2024,19 +2027,18 @@ if (conflict) {
                       : <></>
                   }
                 </ContextMenuWrapper>
-            ) : contextMenu && contextMenuType=="fileFolder" ? (
+            ) : contextMenu && contextMenuType=="fileFolder"  && contextMenuFileId && contextMenuFilePath ? (
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
                     <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
                       Tags
                     </ContextMenuItem>
                     <ContextMenuItem
-                      onMouseOver={() => setContextMenuTagPopout(false)}
                       onClick={() => handleFolderDownload(contextMenuFileName as string, contextMenuFileId as string)}
                     >
                       Download
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={() => setFileId(contextMenuFileId)} onMouseOver={() => setContextMenuTagPopout(false)}>
+                    <ContextMenuItem onClick={() => setMessageThread({id: contextMenuFileId, label: contextMenuFilePath.split("/").pop()!!, path: projectName.current + contextMenuFilePath, type: 0})}>
                       Open Chat
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
@@ -2103,7 +2105,7 @@ if (conflict) {
             fileId={versionPanelData.fileId}
             fileName={versionPanelData.filename}
             logicalId={versionPanelData.logicalId}
-            storageId={versionPanelData.storageId}
+            storageId={versionPanelData.storageId!!}
             ownerId={versionPanelData.ownerId}
             projectId={versionPanelData.projectId}
             versions={versionPanelData.versions ?? []}
@@ -2328,7 +2330,7 @@ const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: n
     opacity : props.$pickedUp ? 0.75 : 1,
     backgroundColor: props.$pickedUp ? "lightskyblue" : props.$selected ? "lightblue" : "white",
     borderRadius: props.$pickedUp ? "10px" : "0",
-    zIndex: props.$pickedUp ? "999" : "20"
+    zIndex: props.$pickedUp ? "999" : "2"
 
   }
 }))`
@@ -2395,7 +2397,7 @@ const StickyTopBar = styled.div`
     flex-direction: column;
     position: sticky;
     top: 0;
-    z-index: 21;
+    z-index: 3;
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D7DADD;

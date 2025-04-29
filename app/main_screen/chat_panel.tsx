@@ -18,9 +18,8 @@ import {useSearchParams} from 'next/navigation'
 
 const client = generateClient<Schema>();
 
-interface Message {
+interface messageInfo {
   messageId: string;
-  fileId: string;
   userId: string;
   content: string;
   createdAt: string;
@@ -31,8 +30,8 @@ interface Message {
 
 
 export default function ChatPanel() {
-  const { projectId, fileId, userId} = useGlobalState();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const { projectId, userId, messageThread} = useGlobalState();
+  const [messages, setMessages] = useState<messageInfo[]>([]);
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -72,70 +71,71 @@ export default function ChatPanel() {
   
   
   async function fetchMessages() {
-    if (!fileId ) return;
-
-    //console.log("1Fetching next messages for fileId:", fileId, "nextToken:", nextToken || "null");
-
-
-  const response = await getMessagesByFileIdAndPagination(fileId, nextToken);
-  console.log(response)
-  console.log("FETCHING REG")
-  if(nextToken !== null){
-    setNextToken(null); // Reset nextToken 
-    setHasNextPage(false); // assume No more pages to fetch
-  }
-
-  if (!response || !response.data) {
-    ////console.log("No response or data found.");
-    setNextToken(null); // Reset nextToken
-    setHasNextPage(false); // No more pages to fetch
-    setLoading(false); // Stop loading
-    return;
-  }
-
-  // Ensure nextToken is a string or null
-  const newNextToken = response.nextToken || null;
-
-  // setNextToken(newNextToken);
-  // setHasNextPage(!!newNextToken);
-
-  // Process messages
-  const messages = response.data;
-  console.log(messages)
-    console.log("Woah")
-  ////console.log("Fetched messages:", messages);
-  // Sort messages by createdAt timestamp
-  if (messages && messages.length > 0) {
-    const sortedMessages = messages.sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
-    console.log(sortedMessages)
-    console.log("a")
-    let temp_messages: Array<Message> = [];
-    for (let msg of sortedMessages) {
-      console.log(msg)
-      if (msg) {
-        temp_messages = [...temp_messages,
-          {
-            messageId: msg.messageId,
-            fileId: msg.fileId,
-            userId: msg.userId,
-            content: msg.content,
-            createdAt: msg.createdAt,
-            edited: msg.edited,
-            deleted: msg.deleted,
-            email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown",
-          },
-        ];
-      }
+    console.log("Fetching")
+    if (!messageThread ) return;
+    let response
+    if(messageThread.type == 0) {
+      response = await getMessagesByFileIdAndPagination(messageThread.id, undefined, nextToken);
+    } else {
+      response = await getMessagesByFileIdAndPagination(undefined, messageThread.id, nextToken)
     }
-    console.log(temp_messages)
-    console.log("^^")
-    // Append new messages to state
-    setMessages([...temp_messages]);
-    //setMessages(temp_messages);
-    setLoading(false); // Stop loading
-  
+
+
+
+
+    if(nextToken !== null){
+      setNextToken(null); // Reset nextToken
+      setHasNextPage(false); // assume No more pages to fetch
+    }
+
+    if (!response || !response.data) {
+      ////console.log("No response or data found.");
+      setNextToken(null); // Reset nextToken
+      setHasNextPage(false); // No more pages to fetch
+      setLoading(false); // Stop loading
+      return;
+    }
+
+    // Ensure nextToken is a string or null
+    const newNextToken = response.nextToken || null;
+
+    // setNextToken(newNextToken);
+    // setHasNextPage(!!newNextToken);
+
+    // Process messages
+    const messages = response.data;
+    console.log("Fetched")
+    ////console.log("Fetched messages:", messages);
+    // Sort messages by createdAt timestamp
+    if (messages && messages.length > 0) {
+      const sortedMessages = messages.sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+
+      let temp_messages: Array<messageInfo> = [];
+      for (let msg of sortedMessages) {
+        console.log(msg)
+        console.log("Message of Sorted")
+        if (msg) {
+          temp_messages = [...temp_messages,
+            {
+              messageId: msg.messageId,
+              userId: msg.userId,
+              content: msg.content,
+              createdAt: msg.createdAt,
+              edited: msg.isUpdated,
+              deleted: msg.isDeleted,
+              email: (await client.models.User.get({ userId: msg.userId }))?.data?.username ?? "Unknown",
+            },
+          ];
+        }
+      }
+
+      // Append new messages to state
+      setMessages([...temp_messages]);
+      //setMessages(temp_messages);
+      setLoading(false); // Stop loading
+
   }
     
     //If there's a nextToken, update it and fetch more
@@ -157,10 +157,28 @@ export default function ChatPanel() {
     }
   };
 
-  const observeMessages = () => {
+  const observeMessagesOnFileId = () => {
     const subscription = client.models.Message.observeQuery({
       filter: {
-        fileId: {eq: fileId},
+        fileId: {eq: messageThread!!.id},
+      },
+    }).subscribe({
+
+      next: async ({items}) => {
+        await fetchMessages()
+      },
+      error: (error) => {
+        console.error("[ERROR] Error observing files:", error);
+      },
+    });
+
+    return () => subscription.unsubscribe();
+  };
+
+  const observeMessagesOnProjectId = () => {
+    const subscription = client.models.Message.observeQuery({
+      filter: {
+        projectId: {eq: messageThread!!.id},
       },
     }).subscribe({
 
@@ -178,18 +196,28 @@ export default function ChatPanel() {
 
   useEffect(() => {
 
-    if (fileId) {
-      console.log("2Fetching messages for fileId:", fileId);
+    if (messageThread) {
+
+
+
+      console.log("Fetching messages for fileId:", messageThread.id);
       setNextToken(null); // Reset nextToken when fileId changes
       setMessages([]); // Clear messages when fileId changes
       fetchMessages();
-      const unsubscribe = observeMessages();
-      return () => unsubscribe();
+      if(messageThread.type == 0){
+        const unsubscribe = observeMessagesOnFileId();
+        return () => unsubscribe();
+      } else {
+        const unsubscribe = observeMessagesOnProjectId();
+        return () => unsubscribe();
+      }
+
+
 
     }
 
 
-  }, [fileId]);
+  }, [messageThread]);
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -197,18 +225,23 @@ export default function ChatPanel() {
 //fetching messages when found the search term
   async function fetchMessagesWithSearch() {
     //setLoading(true)
-    if (!fileId ) return;
+    if (!messageThread ) return;
     //console.log("Fetching messages with search term:", searchTerm, "tagSearchTerm:", tagSearchTerm, "authorSearchTerm:", authorSearchTerm);
-    const searchedMessages = await searchMessages(fileId, searchTerm, tagSearchTerm);
+    let searchedMessages
+
+    if(messageThread.type == 0) {
+      searchedMessages = await searchMessages(messageThread.id, undefined, searchTerm, tagSearchTerm);
+    } else {
+      searchedMessages = await searchMessages(undefined, messageThread.id, searchTerm, tagSearchTerm);
+    }
     //console.log("Fetched messages:", searchedMessages);
     if(searchedMessages && searchedMessages.length > 0){
-      let temp_messages: Array<Message> = []
+      let temp_messages: Array<messageInfo> = []
       for(let msg of searchedMessages){
         if(msg){
           temp_messages = [...temp_messages,
             {
               messageId: msg.messageId,
-              fileId: msg.fileId,
               userId: msg.userId,
               content: msg.content,
               createdAt: msg.createdAt,
@@ -219,6 +252,9 @@ export default function ChatPanel() {
       setMessages(temp_messages);
       //setLoading(false);
       return temp_messages
+    } else {
+      setMessages([])
+      return []
     }
   }
 
@@ -272,8 +308,8 @@ export default function ChatPanel() {
       //console.log("Message input is empty. Aborting send.");
       return;
     }
-    if (!fileId || !userId || !projectId) {
-      console.error("Missing required fields:", { fileId, userId, projectId });
+    if (!messageThread || !userId) {
+      console.error("No MessageThread selected?");
       return;
     }
     //console.log("Sending message with the following data:");
@@ -283,8 +319,8 @@ export default function ChatPanel() {
     //console.log("content:", input.trim());
   
     try {
-      const response = await createMessage(fileId, userId, input.trim(), projectId as string);
-  
+      const response = await createMessage(messageThread.id, userId, input.trim(), messageThread.type);
+      console.log(response)
   
       if (!response || !response.data) {
         new Error("createMessage returned undefined");
@@ -293,7 +329,6 @@ export default function ChatPanel() {
 
       const newMessage = {
         messageId: response.data.messageId,
-        fileId: response.data.fileId,
         userId: response.data.userId,
         content: response.data.content,
         createdAt: response.data.createdAt,
@@ -302,7 +337,7 @@ export default function ChatPanel() {
         email: (await client.models.User.get({ userId: response.data.userId }))?.data?.username ?? "Unknown"
       }
 
-
+      console.log(newMessage)
       if (!newMessage || !("messageId" in newMessage && "content" in newMessage)) {
         console.error("Invalid message response:", response);
         return;
@@ -400,8 +435,6 @@ export default function ChatPanel() {
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if(e.target.value.length == 0){
       setSearch(false)
-    } else {
-      setSearch(true)
     }
     setSearchInput(e.target.value);
 
@@ -510,90 +543,108 @@ export default function ChatPanel() {
   };
 
 
+  if(messageThread) {
+    return (
 
-  return (
-      //step 2: display the searching input to the top bar container and call the handleSearch function
-      <ChatContainer onScroll={handleScroll}>
-        <TopBarContainer>
-          <SearchInputWrapper>
-            <Input
-                type="text"
-                value={searchInput}
-                onChange={handleSearchInputChange}
-                onKeyDown={handleSearch}
-                placeholder="Search messages..."
-            />
-            {search && (
-                <ClearButton onClick={handleClearSearch}>X</ClearButton>
-            )}
-          </SearchInputWrapper>
-        </TopBarContainer>
 
-        <ChatMessagesWrapper >
-          {messages.map((msg) => (
-              <ChatMessage
-                  key={msg.messageId}
-                  $sender={msg.userId === userId}
-                  onContextMenu={msg.deleted ? undefined : (e) => {handleContextMenu(e, msg.messageId, msg.userId); setContextMenuMessageId(msg.messageId); setContextMenuTagPopout(false);}
-                  }
-              >
-                {msg.deleted ? (
-                    <DeletedMessageBox>Message deleted</DeletedMessageBox>
-                ) : (
-                    <Chat_Body $sender={msg.userId === userId}>
-                      <div>{msg.content}</div>
-                      <ChatSender>{msg.userId === userId ? "You" : msg.email}</ChatSender>
-                      <ChatTimeStamp>{new Date(msg.createdAt).toLocaleDateString()}{" "}{new Date(msg.createdAt).toLocaleTimeString()}</ChatTimeStamp>
-                      {msg.edited && <ChatUpdateStatus>Edited</ChatUpdateStatus>}
-                    </Chat_Body>
-                )}
-              </ChatMessage>
-          ))}
-          <div ref={chatEndRef} />
-        </ChatMessagesWrapper>
-        <InputContainer>
-          <Input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Type a message..." />
-        </InputContainer>
-        {contextMenu && (
-            <ContextMenuWrapper $x={window.innerWidth - contextMenu.x} $y={contextMenu.y}>
-            <ContextMenu
-                ref={contextMenuRef}>
-              <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)} onClick={() => handleUpdateMessage(contextMenu.messageId, contextMenu.msguserId)}>
-                Update
-              </ContextMenuItem>
-              <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)} onClick={() => handleDeleteMessage(contextMenu.messageId, contextMenu.msguserId)}>
-                Delete
-              </ContextMenuItem>
-              <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
-                Tags
-              </ContextMenuItem>
-            </ContextMenu>
-              {contextMenuTagPopout ?
-                  <ContextMenuPopout $index={2}>
-                    {tags || tags === null ?
-                        <>
-                          <ContextMenuTagInput placeholder="Insert Tag Name" id={"tag_input"} onKeyDown = {(e) => handleTagInput(e)}/>
-                          { tags ?
-                              tags.filter(tag => tag !== null).map(
-                                  (tag, i) => (
-                                      <ContextMenuItem key={i}>
-                                        {tag == "" ? " " : tag}
-                                        <ContextMenuExitButton id = {"tag_button"} onClick = {(e) => handleDeleteTag(e, i)}>
-                                          X
-                                        </ContextMenuExitButton>
-                                      </ContextMenuItem>
-                                  )) : <></>}
-                        </>
-                        : <ContextMenuItem>Loading...</ContextMenuItem>
+        //step 2: display the searching input to the top bar container and call the handleSearch function
+        <ChatContainer onScroll={handleScroll}>
+          <TopBarContainer>
+            <MessagePanelHeader>
+              {messageThread.label}
+            </MessagePanelHeader>
+            <MessagePanelPath>
+              {messageThread.path}
+            </MessagePanelPath>
+            <SearchInputWrapper>
+              <Input
+                  type="text"
+                  value={searchInput}
+                  onChange={handleSearchInputChange}
+                  onKeyDown={handleSearch}
+                  placeholder="Search messages..."
+              />
+              {search && (
+                  <ClearButton onClick={handleClearSearch}>X</ClearButton>
+              )}
+            </SearchInputWrapper>
+          </TopBarContainer>
+
+          <ChatMessagesWrapper >
+            {messages.map((msg) => (
+                <ChatMessage
+                    key={msg.messageId}
+                    $sender={msg.userId === userId}
+                    onContextMenu={msg.deleted ? undefined : (e) => {handleContextMenu(e, msg.messageId, msg.userId); setContextMenuMessageId(msg.messageId); setContextMenuTagPopout(false);}
                     }
-                  </ContextMenuPopout>
-                  : <></>
-              }
+                >
+                  {msg.deleted ? (
+                      <DeletedMessageBox>Message deleted</DeletedMessageBox>
+                  ) : (
+                      <Chat_Body $sender={msg.userId === userId}>
+                        <div>{msg.content}</div>
+                        <ChatSender>{msg.userId === userId ? "You" : msg.email}</ChatSender>
+                        <ChatTimeStamp>{new Date(msg.createdAt).toLocaleDateString()}{" "}{new Date(msg.createdAt).toLocaleTimeString()}</ChatTimeStamp>
+                        {msg.edited && <ChatUpdateStatus>Edited</ChatUpdateStatus>}
+                      </Chat_Body>
+                  )}
+                </ChatMessage>
+            ))}
+            <div ref={chatEndRef} />
+          </ChatMessagesWrapper>
+          <InputContainer>
+            <Input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Type a message..." />
+          </InputContainer>
+          {contextMenu && (
+              <ContextMenuWrapper $x={window.innerWidth - contextMenu.x} $y={contextMenu.y}>
+                <ContextMenu
+                    ref={contextMenuRef}>
+                  <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)} onClick={() => handleUpdateMessage(contextMenu.messageId, contextMenu.msguserId)}>
+                    Update
+                  </ContextMenuItem>
+                  <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)} onClick={() => handleDeleteMessage(contextMenu.messageId, contextMenu.msguserId)}>
+                    Delete
+                  </ContextMenuItem>
+                  <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
+                    Tags
+                  </ContextMenuItem>
+                </ContextMenu>
+                {contextMenuTagPopout ?
+                    <ContextMenuPopout $index={2}>
+                      {tags || tags === null ?
+                          <>
+                            <ContextMenuTagInput placeholder="Insert Tag Name" id={"tag_input"} onKeyDown = {(e) => handleTagInput(e)}/>
+                            { tags ?
+                                tags.filter(tag => tag !== null).map(
+                                    (tag, i) => (
+                                        <ContextMenuItem key={i}>
+                                          {tag == "" ? " " : tag}
+                                          <ContextMenuExitButton id = {"tag_button"} onClick = {(e) => handleDeleteTag(e, i)}>
+                                            X
+                                          </ContextMenuExitButton>
+                                        </ContextMenuItem>
+                                    )) : <></>}
+                          </>
+                          : <ContextMenuItem>Loading...</ContextMenuItem>
+                      }
+                    </ContextMenuPopout>
+                    : <></>
+                }
 
-            </ContextMenuWrapper>
-        )}
-      </ChatContainer>
-  );
+              </ContextMenuWrapper>
+          )}
+        </ChatContainer>
+    );
+  } else {
+    return (
+        <FullPanelHeader>
+
+          Right click a project, or file to open a message thread!
+        </FullPanelHeader>
+
+    )
+  }
+
 }
 
 const SearchInputWrapper = styled.div`
@@ -780,6 +831,8 @@ const ChatUpdateStatus = styled.div`
 `;
 
 const InputContainer = styled.div`
+  position: sticky;
+  bottom: 0;
   display: flex;
   padding: 0.5rem;
   background: #f0f0f0;
@@ -798,6 +851,7 @@ const Input = styled.input`
 //step1: added the styled component for the top bar container
 const TopBarContainer = styled.div`
   display: flex;
+  flex-direction: column;
   padding: 0.5rem;
   position: sticky;
   top: 0;
@@ -805,3 +859,28 @@ const TopBarContainer = styled.div`
 
 `;
 
+const FullPanelHeader = styled.h3`
+  font-weight: normal;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+`;
+
+const MessagePanelHeader = styled.div`
+  font-size: large;
+  width: 100%;
+  text-align: center;
+  font-weight: normal;
+  padding-bottom: 0.2rem;
+`;
+
+const MessagePanelPath = styled.div`
+  font-size: small;
+  width: 100%;
+  text-align: center;
+  font-weight: normal;
+  color: gray;
+  
+`;

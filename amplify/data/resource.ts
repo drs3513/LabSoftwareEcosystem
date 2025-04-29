@@ -115,21 +115,22 @@ const schema = a
     Message: a
       .model({
         messageId: a.id().required(),
-        fileId: a.id().required(), // Foreign key linking to File
+        fileId: a.id(), // Foreign key linking to File
         userId: a.id().required(), // Foreign key linking to User
-        projectId: a.id().required(),
+        projectId: a.id(),
         content: a.string().required(),
         createdAt: a.datetime().required(),
         updatedAt: a.datetime(),
         isUpdated: a.boolean().default(false),
         isDeleted: a.boolean().default(false),
-        tags: a.string().array(), // <- CHANGE
+        tags: a.string().array(),
         file: a.belongsTo("File", ["fileId","projectId"]), // Define belongsTo relationship with File
         sender: a.belongsTo("User", "userId"), // Define belongsTo relationship with User
       })
       .identifier(["messageId"])
       .secondaryIndexes((index) => [
         index("fileId").sortKeys(["createdAt"]).name("messagesByFileIdAndPagination"), // Secondary index for querying messages by fileId
+          index("projectId").sortKeys(["createdAt"]).name("messagesByProjectIdAndPagination")
       ]),
 
 
@@ -148,6 +149,20 @@ const schema = a
                 entry: "./searchMessages.js"
             })
         ),
+      searchMessagesByProjectId: a
+          .query()
+          .arguments({
+              projectId: a.string(),
+              messageContents: a.string().array(),
+              tagNames: a.string().array()
+          })
+          .returns(a.ref("Message").array())
+          .handler(
+              a.handler.custom({
+                  dataSource: a.ref("Message"),
+                  entry: "./searchMessagesByProjectId.js"
+              })
+          ),
   
   getMessagesByFileId: a
   .query()
@@ -163,6 +178,22 @@ const schema = a
       entry: "./getMessagesByFileId.js",
     })
   ),
+
+      getMessagesByProjectId: a
+          .query()
+          .arguments({
+              projectId: a.string(),
+              nextToken: a.string(),
+              limit: a.integer(),
+          })
+          .returns(a.json())
+          .handler(
+              a.handler.custom({
+                  dataSource: a.ref("Message"),
+                  entry: "./getMessagesByProjectId.js"
+
+              })
+          ),
 
   // Whitelist model
   Whitelist: a
