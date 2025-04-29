@@ -1767,6 +1767,7 @@ export default function FilePanel() {
    * Evaluates whether or not any of the file's parents have been selected. Works recursively, in the case that only a
    * higher-order parent has been picked up.
    **/
+  //TODO FIX THIS FOR WHEN YOU ARE NOT ON THE ROOT
   function isParentSelected(fileId : string): boolean {
     if(!selectedFileGroup) return false
     if(activeParentIds.some(parent => parent.id == files[filesByFileId.current[fileId]].parentId)){
@@ -1843,7 +1844,7 @@ export default function FilePanel() {
                                     activeParentIds.some(parent => parent.id == file.parentId) && (
                                         <File key={file.fileId}
                                               $depth={getDepth(file)}
-                                              $pickedUp={(pickedUpFileGroup != undefined && (pickedUpFileGroup.includes(index)) || isParentPickedUp(file.fileId))}
+                                              $pickedUp={(pickedUpFileGroup != undefined && (pickedUpFileGroup.includes(index)))} // || isParentPickedUp(file.fileId)
                                               $mouseX={mouseCoords[0]}
                                               $mouseY={mouseCoords[1]}
                                               $selected = {dragOverFileId == file.fileId || (selectedFileGroup != undefined && (selectedFileGroup.includes(index) ))} //|| isParentSelected(file.fileId)
