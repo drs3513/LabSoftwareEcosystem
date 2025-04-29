@@ -24,7 +24,9 @@ control access to each project.
 
 ## Deploying to AWS
 
-Copy this repository to your own. **Hint** If using GitUI, git clone https://github.com/drs3513/LabSoftwareEcosystem/tree/main in the repository will duplicate it
+Copy this repository to your own. 
+**Hint** If using GitUI, git clone https://github.com/drs3513/LabSoftwareEcosystem/tree/main in the repository will duplicate it
+
 In AWS, open AWS Amplify. Select Create new app. In Choose Source Code Provider, select GitHub. Sign in and select the repository that holds the clone. Select the main branch.
 On the next page, the settings are optional. (Base settings were used in development.) Review and deploy. 
 
