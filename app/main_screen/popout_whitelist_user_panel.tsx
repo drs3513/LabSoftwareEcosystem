@@ -448,7 +448,7 @@ export default function WhitelistPanel(props: props) {
                         {`Username: ${contextMenuUser.username}`}
                     </ContextMenuItem>
                     <ContextMenuItem>
-                        {`Email: ${contextMenuUser.username}`}
+                        {`Email: ${contextMenuUser.email}`}
                     </ContextMenuItem>
                     {
                         contextMenuUserRole ? (
@@ -554,7 +554,7 @@ const PanelContainer = styled.div.attrs<{$posX: number, $posY: number, $width: n
         left: props.$posX,
         width: props.$width,
         height: props.$height,
-        zIndex: 2
+        zIndex: 150
     }
 }))`
 
@@ -662,7 +662,7 @@ const ContextMenu = styled.div`
 
 const ContextMenuWrapper = styled.div<{$x: number, $y: number}>`
     position: fixed;
-    z-index: 2;
+    z-index: 152;
     left: ${(props) => props.$x}px;
     top: ${(props) => props.$y}px;
     display: flex;

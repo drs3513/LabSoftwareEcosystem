@@ -189,7 +189,7 @@ const PanelContainer = styled.div.attrs<{$posX: number, $posY: number, $width: n
         left: props.$posX,
         width: props.$width,
         height: props.$height,
-        zIndex: 2
+        zIndex: 150
     }
 }))`
 
