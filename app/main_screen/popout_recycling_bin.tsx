@@ -204,6 +204,7 @@ const PanelContainer = styled.div.attrs<{$posX: number, $posY: number, $width: n
     border-width: 2px;
     border-color: gray;
     filter: drop-shadow(0px 0px 2px gray);
+    z-index: 150;
     
 `
 const Header = styled.div`
