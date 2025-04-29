@@ -1651,11 +1651,11 @@ export default function FilePanel() {
     projectId: string
   ) => {
     const path = `${filepath}`;
-    if (!path || !versionId || !filepath) {
+    if (!path || !versionId) {
       console.error("❌ Missing path, versionId, or filename");
       return;
     }
-  
+
     // Generate the URL to your redirecting API route
     const downloadUrl = `/api/files?key=${encodeURIComponent(path)}&versionId=${encodeURIComponent(versionId)}`;
   
