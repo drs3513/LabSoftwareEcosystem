@@ -25,6 +25,7 @@ interface Props {
     versionId: string,
     logicalId: string,
     filename: string,
+    filepath: string,
     storageId: Nullable<string> | undefined,
     ownerId: string,
     projectId: string
@@ -87,6 +88,7 @@ export default function VersionPanel({
                     version.versionId,
                     logicalId,
                     fileName,
+                    "",
                     version.storageId ?? storageId,
                     ownerId,
                     projectId
