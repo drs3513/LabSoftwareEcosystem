@@ -24,12 +24,16 @@ control access to each project.
 
 ## Deploying to AWS
 
-For detailed instructions on deploying your application, refer to the [deployment section](https://docs.amplify.aws/nextjs/start/quickstart/nextjs-app-router-client-components/#deploy-a-fullstack-app-to-aws) of our documentation.
+Copy this repository to your own. **Hint** If using GitUI, git clone https://github.com/drs3513/LabSoftwareEcosystem/tree/main in the repository will duplicate it
+In AWS, open AWS Amplify. Select Create new app. In Choose Source Code Provider, select GitHub. Sign in and select the repository that holds the clone. Select the main branch.
+On the next page, the settings are optional. (Base settings were used in development.) Review and deploy. 
+
+Now a base file management platform is being deployed, ready to be developed and improved. 
 
 ## Security
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
 
 ## License
-
-This library is licensed under the MIT-0 License. See the LICENSE file.
+This project is based on a starter template licensed under the [MIT-0 License](LICENSE).  
+All modifications and additions are released under the same license unless otherwise stated.
