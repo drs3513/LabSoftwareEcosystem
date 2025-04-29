@@ -105,16 +105,11 @@ export default function TopBar() {
     const projectName = prompt("Enter Project Name:");
     if (!projectName || !userId) return;
     const project = await createProject(userId as string, projectName);
-    if (!project) {
-      alert("Error creating project. Please try again later.");
-      return;
-    }
     const initWhitelist = await whitelistUser(project.data!.projectId, userId, Role.HEAD);
     if (!initWhitelist) {
-      alert("Error adding you to the whitelist. Please try again later.");
+      alert("Error creating project, please try again later.");
       return;
     }
-    alert("Project created successfully!");
   }
 
 

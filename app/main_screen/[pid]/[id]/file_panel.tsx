@@ -30,7 +30,7 @@ import Link from "next/link";
 import ConflictModal from '../../conflictModal';
 import VersionPanel from "@/app/main_screen/popout_version_panel";
 import { isUserWhitelistedForProject } from '@/lib/whitelist';
-
+import previewFile from "@/app/main_screen/file_preview"
 //SVG imports
 import Image from "next/image";
 import icon_sort0 from "/assets/icons/sort-alphabetical-outlined-rounded.svg";
@@ -68,7 +68,7 @@ import RecycleBinPanel from "@/app/main_screen/popout_recycling_bin";
 
 const client = generateClient<Schema>();
 
-function compare_file_date(file_1: any, file_2: any){
+function compare_file_date_helper(file_1: any, file_2: any){
   let date_1 = new Date(file_1.updatedAt)
   let date_2 = new Date(file_2.updatedAt)
   if(date_1 == date_2){
@@ -80,15 +80,38 @@ function compare_file_date(file_1: any, file_2: any){
   }
 }
 
+function compare_file_date(file_1: any, file_2: any){
+  if(file_1.isDirectory && file_2.isDirectory) return compare_file_date_helper(file_1, file_2)*-1
+  if(file_1.isDirectory) return -1
+  if(file_2.isDirectory) return 1
+  return compare_file_date_helper(file_1, file_2)*-1
+
+}
+
 function compare_file_date_reverse(file_1: fileInfo, file_2: fileInfo){
-  return compare_file_date(file_1, file_2) * -1
+  if(file_1.isDirectory && file_2.isDirectory) return compare_file_date_helper(file_1, file_2)
+  if(file_1.isDirectory) return -1
+  if(file_2.isDirectory) return 1
+  return compare_file_date_helper(file_1, file_2)
 }
 
 function compare_file_name(file_1: any, file_2: any){
+  if(file_1.isDirectory && file_2.isDirectory) return file_1.filename.localeCompare(file_2.filename)
+  if(file_1.isDirectory) return -1
+  if(file_2.isDirectory) return 1
   return file_1.filename.localeCompare(file_2.filename)
+
+
 }
 function compare_file_name_reverse(file_1: any, file_2: any){
+  if(file_1.isDirectory && file_2.isDirectory) return compare_file_name(file_1, file_2) * -1
+  if(file_1.isDirectory) return -1
+  if(file_2.isDirectory) return 1
   return compare_file_name(file_1, file_2) * -1
+}
+
+function compare_file_objects(file_1: any, file_2: fileInfo){
+  return file_1.fileId === file_2.fileId && file_1.filepath === file_2.filepath && file_1.storageId === file_2.storageId && file_1.versionId === file_2.versionId && file_1.logicalId === file_2.logicalId && file_1.isDeleted === file_2.isDeleted && file_1.parentId === file_2.parentId
 }
 
 const sort_style_map: {[key: string]: any} = {"alphanumeric" : compare_file_name, "alphanumeric-reverse" : compare_file_name_reverse, "chronological" : compare_file_date, "chronological-reverse" : compare_file_date_reverse}
@@ -121,6 +144,7 @@ interface fileInfo{
   versions?: FileVersion[];
 }
 
+
 interface activeParent{
   id: string,
   depth: number
@@ -132,7 +156,7 @@ export default function FilePanel() {
   const routerSearchParams = useSearchParams()
   const router = useRouter()
 
-  const {userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId, heldKeys, setHeldKeys, draggingFloatingWindow} = useGlobalState();
+  const {userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId, heldKeys, setHeldKeys, draggingFloatingWindow, setMessageThread} = useGlobalState();
 
   const {uploadQueue, uploadTask, setUploadProgress,
     setDownloadProgressMap, setCompletedUploads,
@@ -159,6 +183,8 @@ export default function FilePanel() {
   const [filePathElement, setFilePathElement] = useState<{fileName: string | undefined, href: string, fileId: string, filepath: string}[]>([])
 
   const [activeParentIds, setActiveParentIds] = useState<activeParent[]>([])
+  const [loadingParentIds, setLoadingParentIds] = useState<activeParent[]>([])
+
 
   const [rootParentId, setRootParentId] = useState<string | null>(null)
 
@@ -169,6 +195,7 @@ export default function FilePanel() {
   const observeMouseCoords = useRef<boolean>(true);
 
   const [contextMenuFileId, setContextMenuFileId] = useState<string | undefined>(undefined);
+
 
   const [contextMenuStoragePath, setContextMenuStoragePath] = useState<Nullable<string> | undefined>(undefined);
 
@@ -212,6 +239,10 @@ export default function FilePanel() {
 
 
   const timer = useRef(setTimeout(() => {}, 500));
+
+  const timerGetFiles = useRef(setTimeout(() => {}, 500))
+
+  const timerObserveFiles = useRef(setTimeout(() => {}, 500))
 
   const isLongPress  = useRef(false);
 
@@ -375,78 +406,68 @@ export default function FilePanel() {
 
 
   async function fetchFiles() {
-    //console.log("Anything")
-    if (!projectId || !userId){
-      return
-    }
-    //console.log(userId + " " + projectId)
-    //const isWhitelisted = await isUserWhitelistedForProject(userId, projectId);
-//
-    //  if (!isWhitelisted) {
-    //    console.log("User is not whitelisted for this project.");
-    //    setProjectId(undefined);
-    //    setRootParentId(null);
-    //    setActiveParentIds([]);
-    //    setFilePathElement([]);
-    //    setFiles([]);
-    //    setLoading(false);
-    //    return;
-    //  }
-
-    const projectFiles = await listFilesForProjectAndParentIds(projectId, activeParentIds.map(parent => parent.id)); // This will return all versions
-
-    if (!projectFiles) return []
-    const grouped: Record<string, typeof projectFiles> = {};
-    for (const file of projectFiles) {
-      if (!file || (file.isDeleted)) continue;
-
-      if (!grouped[file.logicalId]) {
-        grouped[file.logicalId] = [];
+    clearTimeout(timerGetFiles.current)
+    timerGetFiles.current =  setTimeout(async () => {
+      if (!projectId || !userId) {
+        return
       }
-      grouped[file.logicalId].push(file);
-    }
-  
-    const groupedFiles: fileInfo[] = [];
-    for (const logicalId in grouped) {
-      const versions = grouped[logicalId].sort((a, b) =>
-        new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
-      );
-      const latest = versions[0];
-  
-      groupedFiles.push({
-        fileId: latest.fileId,
-        logicalId: latest.logicalId,
-        filename: latest.filename,
-        filepath: latest.filepath,
-        parentId: latest.parentId,
-        storageId: latest.storageId,
-        size: latest.size,
-        versionId: latest.versionId,
-        ownerId: latest.ownerId,
-        projectId: latest.projectId,
-        createdAt: latest.createdAt,
-        updatedAt: latest.updatedAt,
-        visible: true,
-        isDeleted: latest.isDeleted,
-        open: activeParentIds.some((parent) => parent.id == latest.fileId),
-        isDirectory: latest.isDirectory,
-        versions,
-      });
-    }
-    setLoading(false);
-    setFiles(sort_files_with_path(groupedFiles));
-    return groupedFiles;
+
+      const projectFiles = await listFilesForProjectAndParentIds(projectId, activeParentIds.map(parent => parent.id)); // This will return all versions
+
+      if (!projectFiles) return []
+      const grouped: Record<string, typeof projectFiles> = {};
+      for (const file of projectFiles) {
+        if (!file || (file.isDeleted)) continue;
+
+        if (!grouped[file.logicalId]) {
+          grouped[file.logicalId] = [];
+        }
+        grouped[file.logicalId].push(file);
+      }
+
+      const groupedFiles: fileInfo[] = [];
+      for (const logicalId in grouped) {
+        const versions = grouped[logicalId].sort((a, b) =>
+            new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
+        );
+        const latest = versions[0];
+
+        groupedFiles.push({
+          fileId: latest.fileId,
+          logicalId: latest.logicalId,
+          filename: latest.filename,
+          filepath: latest.filepath,
+          parentId: latest.parentId,
+          storageId: latest.storageId,
+          size: latest.size,
+          versionId: latest.versionId,
+          ownerId: latest.ownerId,
+          projectId: latest.projectId,
+          createdAt: latest.createdAt,
+          updatedAt: latest.updatedAt,
+          visible: true,
+          isDeleted: latest.isDeleted,
+          open: activeParentIds.some((parent) => parent.id == latest.fileId),
+          isDirectory: latest.isDirectory,
+          versions,
+        });
+      }
+      setLoading(false);
+      setFiles(sort_files_with_path(groupedFiles));
+      setLoadingParentIds([])
+      return groupedFiles;
+    }, 600)
+
+
   }
   
   useEffect(() => {
     if(search) return
     if(projectId){
       fetchFiles()
+
       const unsubscribe = observeFiles();
       return () => unsubscribe();
-
-
-
     }
   }, [activeParentIds, search]);
 
@@ -460,6 +481,9 @@ export default function FilePanel() {
       setFilePathElement([]);
       setFiles([]);
       setLoading(false);
+      setSelectedFileGroup([])
+      setPickedUpFileGroup([])
+      setLoadingParentIds([])
       return;
     }
 
@@ -491,7 +515,6 @@ export default function FilePanel() {
       setRootParentId(root_id);
       setActiveParentIds([{ id: root_id, depth: 0 }]);
       await fetchRootInfo(root_id, proj_id);
-      //fetchFiles();
     };
 
     initializeProject();
@@ -552,6 +575,14 @@ export default function FilePanel() {
 
   }
 
+  /**
+   * function : observeFiles
+   * Goal : observe changes to the files stored in the database, and transmit this to the user
+   * Problem : When the database contains many files, this query does not return the entire language of the query at once
+   * Solution : Check to see if the query observes even a single file which is different than what is saved
+   * If the above is true, then create a timer which waits 400ms, and then fetches all open files
+   * The timer is to prevent multiple observeQuery() invocations in quick successions from creating multiple fetches
+   */
   const observeFiles = () => {
     const subscription = client.models.File.observeQuery({
       filter: {
@@ -566,7 +597,14 @@ export default function FilePanel() {
     }).subscribe({
 
       next: async ({items}) => {
-        fetchFiles()
+        //If a file is observed that is not already saved by the files object
+        if(items.some(file_1 => !files.some(file_2 => compare_file_objects(file_1, file_2)))) {
+          clearTimeout(timerObserveFiles.current)
+          timerObserveFiles.current = setTimeout(() => {
+            fetchFiles();
+          }, 500);
+
+        }
       },
       error: (error) => {
         console.error("[ERROR] Error observing files:", error);
@@ -879,7 +917,6 @@ export default function FilePanel() {
       console.error("[ERROR] webkitGetAsEntry not supported in this browser.");
       return;
     }
-    //console.log(event)
     const items: {
       index: number;
       item: DataTransferItem;
@@ -913,7 +950,6 @@ export default function FilePanel() {
     const directories: string[] = [];
 
     const readEntry = async (entry: any, path = ""): Promise<void> => {
-      //console.log(entry)
       if (entry.isFile) {
         await new Promise<void>((resolve, reject) => {
           entry.file((file: File) => {
@@ -994,6 +1030,7 @@ export default function FilePanel() {
     files: File[],
     rootFilePath: string
   ) => {
+
     let globalDecision: 'overwrite' | 'version' | 'cancel' | null = null;
     let applyToAll = false;
 
@@ -1083,47 +1120,67 @@ export default function FilePanel() {
           currentPath = testPath;
         }
       }
-      
       const normalizedFullPath = currentPath
   ? `${currentPath}/${relativePath}`.replace(/\/+/g, "/")
-  : `/${relativePath}`.replace(/\/+/g, "/");
+    : `/${relativePath}`.replace(/\/+/g, "/");
 
-// Log the path being checked
-console.log(`[DEBUG] Checking for conflict at path: "${normalizedFullPath}"`);
+    // Log the path being checked
+    console.log(`[DEBUG] Checking for conflict at path: "${normalizedFullPath}"`);
 
-// Log all existing paths in filePathMap
-console.log("[DEBUG] Existing paths in filePathMap:");
-for (const [key, val] of filePathMap.entries()) {
-  console.log(`  → ${key}`);
-}
+    // Log all existing paths in filePathMap
+    //console.log("[DEBUG] Existing paths in filePathMap:");
+    //for (const [key, val] of filePathMap.entries()) {
+    //  console.log(`  → ${key}`);
+    //}
 
-const conflict = filePathMap.get(normalizedFullPath);
+    const conflict = filePathMap.get(normalizedFullPath);
 
-// Final result of conflict check
-if (conflict) {
-  console.log(`[CONFLICT FOUND] "${fileName}" at path "${normalizedFullPath}" matches existing key.`);
-} else {
-  console.log(`[NO CONFLICT] "${fileName}" at path "${normalizedFullPath}" not found in filePathMap.`);
-}
+    // Final result of conflict check
+    if (conflict) {
+      console.log(`[CONFLICT FOUND] "${fileName}" at path "${normalizedFullPath}" matches existing key.`);
+    } else {
+      console.log(`[NO CONFLICT] "${fileName}" at path "${normalizedFullPath}" not found in filePathMap.`);
+    }
 
-
+      setShowProgressPanel(false);
       let decision: 'overwrite' | 'version' | 'cancel' = 'overwrite';
       if (conflict && !applyToAll) {
         decision = await showConflictModal(file.name);
-        if (decision === "cancel") continue;
+        if (decision === "cancel") return;
       }
-  
+      setShowProgressPanel(true)
       if (decision === "overwrite" && conflict) {
+        setUploadProgress(0)
+        uploadQueue.current = [{ folderDict, ownerId, projectId, parentId }];
+
+        setCompletedUploads((prev) => [...prev, 0]);
         const { key: storageKey } = await uploadFile(file, ownerId, projectId, normalizedFullPath);
+        setUploadProgress(30)
         const versionId = await waitForVersionId(storageKey);
+        setUploadProgress(60)
         if (versionId) {
           await updatefile(conflict.fileId, projectId, versionId);
         }
+        setUploadProgress(100)
+        setTimeout(() => {
+          setCompletedUploads((prev) => prev.slice(1));
+        }, 3000);
+        setUploadProgress(null);
+        setShowProgressPanel(false);
         continue;
       }
   
       if (decision === "version" && conflict) {
+        setUploadProgress(0)
+        uploadQueue.current = [{ folderDict, ownerId, projectId, parentId }];
+        setCompletedUploads((prev) => [...prev, 0]);
         await createNewVersion(file, conflict.logicalId, projectId, ownerId, parentId, normalizedFullPath);
+        setUploadProgress(100)
+        setTimeout(() => {
+          setCompletedUploads((prev) => prev.slice(1));
+        }, 3000);
+        setUploadProgress(null);
+        setShowProgressPanel(false);
         continue;
       }
   
@@ -1163,7 +1220,7 @@ if (conflict) {
         return;
       }
   
-      const currentId = activeParentIds[activeParentIds.length - 1].id;
+      const currentId = activeParentIds[0].id;
   
       try {
         const { data: file } = await client.models.File.get({ fileId: currentId, projectId });
@@ -1286,10 +1343,7 @@ if (conflict) {
 
         files[filesByFileId.current[fileId]].parentId = overFileId
 
-        //console.log(children)
-        //console.log(files[filesByFileId.current[pickedUpFileId]].filepath)
-        //console.log(overFileId)
-        //console.log(files[filesByFileId.current[overFileId]].filepath)
+
         let new_file_path = `/${files[filesByFileId.current[fileId]].filename}`
         if(overFileId in filesByFileId.current){
           new_file_path = `${files[filesByFileId.current[overFileId]].filepath}/${files[filesByFileId.current[fileId]].filename}`
@@ -1308,23 +1362,13 @@ if (conflict) {
         const fileIds = children.map((child) => child.fileId)
         const filepaths = children.map((child) => new_file_path + child.filepath.slice(files[filesByFileId.current[fileId]].filepath.length))
         const parentIds = children.map((child) => parentsToMove.includes(child.fileId) ? (overFileId ? overFileId : `ROOT-${projectId}`) : child.parentId)
-        //console.log(filepaths)
-        //`if(overFileId){
-        //`  console.log(files[filesByFileId.current[overFileId]].filepath)
-        //`} else {
-//`
-        //`}
+
         await batchUpdateFilePath(fileIds, projectId, parentIds, filepaths)
         await pokeFile(parentsToMove[0], projectId, filepaths[0])
       }
 
       await fetchFiles()
-//      for(let fileIndex of pickedUpFileGroup) {
-//        if(!projectId) return
-//        console.log("Here!")
-//        const children = await getFileChildren(projectId, files[fileIndex].filepath)
-//        console.log(children)
-//      }
+
 
       setPickedUpFileGroup(undefined)
 
@@ -1339,10 +1383,7 @@ if (conflict) {
 
       files[filesByFileId.current[pickedUpFileId]].parentId = overFileId
 
-      //console.log(children)
-      //console.log(files[filesByFileId.current[pickedUpFileId]].filepath)
-      //console.log(overFileId)
-      //console.log(files[filesByFileId.current[overFileId]].filepath)
+
       let new_file_path = `/${files[filesByFileId.current[pickedUpFileId]].filename}`
       if(overFileId in filesByFileId.current){
         new_file_path = `${files[filesByFileId.current[overFileId]].filepath}/${files[filesByFileId.current[pickedUpFileId]].filename}`
@@ -1361,18 +1402,12 @@ if (conflict) {
       const fileIds = children.map((child) => child.fileId)
       const filepaths = children.map((child) => new_file_path + child.filepath.slice(files[filesByFileId.current[pickedUpFileId]].filepath.length))
       const parentIds = children.map((child) => child.fileId == pickedUpFileId ? (overFileId ? overFileId : `ROOT-${projectId}`) : child.parentId)
-      //console.log(filepaths)
-      //`if(overFileId){
-      //`  console.log(files[filesByFileId.current[overFileId]].filepath)
-      //`} else {
-//`
-      //`}
+
       await batchUpdateFilePath(fileIds, projectId, parentIds, filepaths)
       fetchFiles()
       await pokeFile(fileIds[0], projectId, filepaths[0])
       setPickedUpFileId(undefined)
 
-      //console.log(returnedValue)
     }
     observeMouseCoords.current = true
   }
@@ -1447,7 +1482,6 @@ if (conflict) {
   }
 
   function selectFile(e: React.MouseEvent<HTMLButtonElement>, index: number){
-    //console.log(files[index])
     clearTimeout(timer.current)
     isLongPress.current = false
     if(e.detail == 2){
@@ -1535,7 +1569,6 @@ if (conflict) {
       setTagSearchTerm(temp_tag_set)
       setAuthorSearchTerm(temp_author_set)
       setSearchTerm(temp_name_set)
-      //console.log(temp_name_set)
       setSearch(true)
     }
 
@@ -1584,9 +1617,8 @@ if (conflict) {
     setSelectedFileGroup(undefined)
     isLongPress.current = false
     clearTimeout(timer.current)
-    if(search){
-      return
-    }
+    if(search) return
+    if(!files[filesByFileId.current[openFileId]].isDirectory) return
     //if openFileId in activeParentIds
     if(activeParentIds.some(parent => parent.id === openFileId)){
       //create list of activeParentIds to remove (with children)
@@ -1594,11 +1626,18 @@ if (conflict) {
       to_remove = [...to_remove, ...recursiveCloseFolder(openFileId)]
       //remove
       setActiveParentIds([...activeParentIds.filter(parent => !(to_remove.includes(parent.id)))])
+
+      setLoadingParentIds([...loadingParentIds.filter(parent => !(to_remove.includes(parent.id)))])
     }
     else {
       const found_active_parent = activeParentIds.find(parent => parent.id === files[filesByFileId.current[openFileId]].parentId)
 
       setActiveParentIds([...activeParentIds, {id: openFileId, depth: found_active_parent? found_active_parent.depth + 1 : 0}])
+
+      if(!files.some(file => file.parentId == openFileId)){
+        setLoadingParentIds([...loadingParentIds, {id: openFileId, depth: found_active_parent? found_active_parent.depth + 1 : 0}])
+      }
+
     }
   }
 
@@ -1606,13 +1645,12 @@ if (conflict) {
     versionId: string,
     logicalId: string,
     filename: string,
-    storageId: Nullable<string> | undefined,
+    filepath: string,
     ownerId: string,
     projectId: string
   ) => {
-    const path = storageId;
-  
-    if (!path || !versionId || !storageId) {
+    const path = `${filepath}`;
+    if (!path || !versionId || !filepath) {
       console.error("❌ Missing path, versionId, or filename");
       return;
     }
@@ -1700,7 +1738,36 @@ if (conflict) {
     }
 
   }
-
+  /**
+   * Function: isParentPickedUp
+   * Returns: boolean
+   * Evaluates whether or not any of the file's parents have been picked up. Works recursively, in the case that only a
+   * higher-order parent has been picked up.
+  **/
+  function isParentPickedUp(fileId : string): boolean {
+    if(!pickedUpFileGroup) return false
+    if(activeParentIds.some(parent => parent.id == files[filesByFileId.current[fileId]].parentId)){
+      if(pickedUpFileGroup.some(pickedUpFileIndex => files[pickedUpFileIndex].fileId === fileId)) return true
+      return !files[filesByFileId.current[fileId]].parentId.startsWith("ROOT") && isParentPickedUp(files[filesByFileId.current[fileId]].parentId)
+    } else {
+      return false
+    }
+  }
+  /**
+   * Function: isParentSelected
+   * Returns: boolean
+   * Evaluates whether or not any of the file's parents have been selected. Works recursively, in the case that only a
+   * higher-order parent has been picked up.
+   **/
+  function isParentSelected(fileId : string): boolean {
+    if(!selectedFileGroup) return false
+    if(activeParentIds.some(parent => parent.id == files[filesByFileId.current[fileId]].parentId)){
+      if(selectedFileGroup.some(selectedFileIndex => files[selectedFileIndex].fileId === fileId)) return true
+      return !files[filesByFileId.current[fileId]].parentId.startsWith("ROOT") && isParentSelected(files[filesByFileId.current[fileId]].parentId)
+    } else {
+      return false
+    }
+  }
 
   return (
     
@@ -1715,9 +1782,9 @@ if (conflict) {
             
               const currentParentId =
               activeParentIds.length > 0
-                ? activeParentIds[activeParentIds.length - 1].id
+                ? activeParentIds[0].id
                 : `ROOT-${projectId}`;
-            
+              console.log(currentParent)
                 const currentPath = currentParent?.filepath ?? "/";
                 
             
@@ -1729,7 +1796,7 @@ if (conflict) {
         >
           {
             filePathElement.length > 0  ?
-            ( <>
+            ( <StickyTopBar key={'top_bar'}>
                   <FilePathContainer>
                     {filePathElement.map((pathElement, i) => (
                       <FilePathLink href={pathElement.href} style={{textDecoration: "none", color: "black"}} key={i}
@@ -1739,60 +1806,93 @@ if (conflict) {
                       </FilePathLink>
                     ))}
                   </FilePathContainer>
-                <TopBarContainer>
-                  <FloatingRecycleButton onClick={(e) => handleShowRecycleBin(e)} title="Recycle Bin">
-                    <div style={{justifyContent:"center"}}>{activeRecyclingBins.some(bin => bin.projectId == projectId) ? <Image src={icon_binline} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/> : <Image src={icon_binsolid} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/>}</div>
-                  </FloatingRecycleButton>
-                  <Input onKeyDown={(e) => handleSearch(e)} onChange = {(e) => e.target.value.length == 0 ? setSearch(false) : undefined}>
+                  <TopBarContainer>
+                    <FloatingRecycleButton onClick={(e) => handleShowRecycleBin(e)} title="Recycle Bin">
+                      <div style={{justifyContent:"center"}}>{activeRecyclingBins.some(bin => bin.projectId == projectId) ? <Image src={icon_binline} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/> : <Image src={icon_binsolid} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/>}</div>
+                    </FloatingRecycleButton>
+                    <Input onKeyDown={(e) => handleSearch(e)} onChange = {(e) => e.target.value.length == 0 ? setSearch(false) : undefined}>
 
-                  </Input>
-                  <SortContainer>
-                    <SortSelector
-                        onClick={() => sortButtonClicked()}>
-                      <Image src={sort_number == 0 ? icon_sort0 : sort_number == 1 ? icon_sort1 : sort_number == 2 ? icon_sort2 : icon_sort3} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/>
-                    </SortSelector>
-                  </SortContainer>
-                </TopBarContainer>
-                </>
+                    </Input>
+                    <SortContainer>
+                      <SortSelector
+                          onClick={() => sortButtonClicked()}>
+                        <Image src={sort_number == 0 ? icon_sort0 : sort_number == 1 ? icon_sort1 : sort_number == 2 ? icon_sort2 : icon_sort3} alt="" layout="fill" objectFit='scale-down' objectPosition='center'/>
+                      </SortSelector>
+                    </SortContainer>
+                  </TopBarContainer>
+                </StickyTopBar>
             ) : <></>
 
           }
 
           {files.length > 0 && !loading ? (
               !search ? (
-                  files.map((file, index) => (
-                      <File key={file.fileId}
-                            $depth={getDepth(file)}
-                            $pickedUp={(pickedUpFileGroup != undefined && pickedUpFileGroup.includes(index))}
-                            $mouseX={mouseCoords[0]}
-                            $mouseY={mouseCoords[1]}
-                            $selected = {dragOverFileId == file.fileId || selectedFileGroup != undefined && selectedFileGroup.includes(index)}
-                            $indexDiff = {0}
-                            onMouseDown={(e) => onFilePickUp(e, file.fileId)}
-                            onMouseUp={(e) => (pickedUpFileGroup != undefined && !pickedUpFileGroup.includes(index) ? onFilePlace(e, file.fileId) : undefined)}
-                            onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(e, filesByFileId.current[file.fileId]) : e.ctrlKey ? appendToFileGroup(selectFile(e, index)) : selectFile(e, index)}
-                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
-                            onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
-                            onDragLeave = {(e) => {handleDragOver(e, undefined)}}
-                            onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ?
-                                file.isDirectory ?
-                                handleFileDrag(e, projectId, userId, file.fileId, file.filepath) :
-                                    handleFileDrag(e, projectId, userId, file.parentId, file.filepath.slice(0,file.filepath.length-(file.filename.length+1)))
-                                : undefined}}>
-
-                        <div style={{pointerEvents: "none", display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? file.open ? <Image src={icon_folderopen} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>: <Image src={icon_folder} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>} <div style={{marginLeft: '1em', pointerEvents:"none"}}>{file.filename}
-                        <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
-                                              logicalId={file.logicalId} storageId={file.storageId}
-                                              isDeleted={ file.isDeleted}
-                                              size={file.size} versionId={file.versionId} ownerId={file.ownerId}
-                                              projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
-                                              updatedAt={file.updatedAt} visible={file.visible}
-                                              open={file.open}
-                                              isDirectory={file.isDirectory}></FileContext></div></div>
-                      </File>
+                  <>
+                    {
+                      files.map((file, index) => (
+                              <>
+                                {
+                                    activeParentIds.some(parent => parent.id == file.parentId) && (
+                                        <File key={file.fileId}
+                                              $depth={getDepth(file)}
+                                              $pickedUp={(pickedUpFileGroup != undefined && (pickedUpFileGroup.includes(index)) || isParentPickedUp(file.fileId))}
+                                              $mouseX={mouseCoords[0]}
+                                              $mouseY={mouseCoords[1]}
+                                              $selected = {dragOverFileId == file.fileId || (selectedFileGroup != undefined && (selectedFileGroup.includes(index) || isParentSelected(file.fileId)))}
+                                              $indexDiff = {0}
+                                              onMouseDown={(e) => onFilePickUp(e, file.fileId)}
+                                              onMouseUp={(e) => (pickedUpFileGroup != undefined && !pickedUpFileGroup.includes(index) ? onFilePlace(e, file.fileId) : undefined)}
+                                              onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(e, filesByFileId.current[file.fileId]) : e.ctrlKey ? appendToFileGroup(selectFile(e, index)) : selectFile(e, index)}
+                                              onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
+                                              onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
+                                              onDragLeave = {(e) => {handleDragOver(e, undefined)}}
+                                              onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ?
+                                                  file.isDirectory ?
+                                                      handleFileDrag(e, projectId, userId, file.fileId, file.filepath) :
+                                                      handleFileDrag(e, projectId, userId,
+                                                          file.parentId == rootParentId && rootParentId.startsWith("ROOT-") ?
+                                                              "ROOT-"+projectId : file.parentId
 
 
-              ))) : (
+                                                          , file.filepath.slice(0,file.filepath.length-(file.filename.length+1)))
+                                                  : undefined}}>
+
+                                          <div style={{pointerEvents: "none", display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? activeParentIds.some(activeParent => activeParent.id == file.fileId) || loadingParentIds.some(loadingParent => loadingParent.id == file.fileId) ? <Image src={icon_folderopen} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>: <Image src={icon_folder} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>} <div style={{marginLeft: '1em', pointerEvents:"none"}}>{file.filename}
+                                            <br></br><FileContext fileId={file.fileId} filename={file.filename} filepath={file.filepath}
+                                                                  logicalId={file.logicalId} storageId={file.storageId}
+                                                                  isDeleted={ file.isDeleted}
+                                                                  size={file.size} versionId={file.versionId} ownerId={file.ownerId}
+                                                                  projectId={file.projectId} parentId={file.parentId} createdAt={file.createdAt}
+                                                                  updatedAt={file.updatedAt} visible={file.visible}
+                                                                  open={file.open}
+                                                                  isDirectory={file.isDirectory}></FileContext></div></div>
+                                        </File>
+                                    )
+                                }
+                                {
+                                    loadingParentIds.some(loadingParent => loadingParent.id === file.fileId) && (
+                                        <File key = {`${file.fileId}_loading`}
+                                              $depth={getDepth(file)+1}
+                                              $pickedUp={(pickedUpFileGroup != undefined && pickedUpFileGroup.includes(index))}
+                                              $mouseX={mouseCoords[0]}
+                                              $mouseY={mouseCoords[1]}
+                                              $selected ={false}
+                                              $indexDiff = {0}
+                                        >
+                                          Loading...
+                                        </File>
+                                    )
+                                }
+                              </>
+                          )
+
+                      )
+                    }
+                    <div style={{height: "40%", width:"100%", flexShrink:"0", pointerEvents: "none"}} key={"spacing_bottom"}></div>
+                  </>
+
+
+                  ) : (
                   files.sort(sort_style_map[sort]).map((file, index) => (
                       <File key={file.fileId}
                             $depth={0}
@@ -1841,7 +1941,7 @@ if (conflict) {
 
           {
 
-            contextMenu && contextMenuType=="filePanel" ? (
+            contextMenu && contextMenuType=="filePanel" && contextMenuFilePath ? (
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
                     <ContextMenuItem
@@ -1859,153 +1959,47 @@ if (conflict) {
 
                   </ContextMenu>
                 </ContextMenuWrapper>
-            ) : contextMenuFileId && contextMenu && contextMenuType=="fileFile" ? (
+            ) : contextMenuFileId && contextMenu && contextMenuType=="fileFile" && contextMenuFilePath ? (
 
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
-                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(false);}}>
+                    <ContextMenuItem>
                       Rename
                     </ContextMenuItem>
-                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true);}}>
+                    <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true)}}>
                       Tags
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => {handleDelete(contextMenuFileId!);}}>
-                      Delete File
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => setFileId(contextMenuFileId)}>
-                      Open Chat
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDownload(contextMenuStoragePath!, contextMenuFileName!,contextMenuFileId!)}>
                       Download
                     </ContextMenuItem>
-                    <ContextMenuItem
-                      style={{ fontWeight: "bold", cursor: "default" }}
-                      onClick={() => {
-                        setContextMenuVersionPopout(true);
-                        setContextMenuTagPopout(false); // optionally close tags
-                      }}
-                    >
-                      Versions
+                    <ContextMenuItem onClick={() => setMessageThread({id: contextMenuFileId, label: contextMenuFilePath.split("/").pop()!!, path: projectName.current + contextMenuFilePath, type: 0})}>
+                      Open Chat
                     </ContextMenuItem>
                     <ContextMenuItem
-                      onClick={async () => {
-                        const file = files.find(f => f.fileId === contextMenuFileId);
-                        if (!file || !projectId) return;
-                      
-                        const ext = file.filename.split(".").pop()?.toLowerCase();
-                        const isText = ["txt", "md", "log", "csv"].includes(ext!); // Removed "py"
-                        const isOfficeDoc = ["doc", "docx", "rtf", "dox", "word"].includes(ext!);
-                        const isPDF = ext === "pdf";
-                        const isImage = ["png", "jpg", "jpeg"].includes(ext!);
-                      
-                        if (!isText && !isOfficeDoc && !isPDF && !isImage) return;
-                      
-                        const path = file.storageId as string;
-                        const versionId = file.versionId;
-                      
-                        try {
-                          const cachedUrl = await fetchCachedUrl(path, versionId);
-                          const popup = window.open("", "_blank", "width=800,height=600");
-                      
-                          if (!popup) {
-                            alert("Popup blocked. Please allow popups for this site.");
-                            return;
-                          }
-                      
-                          const previewContent = isPDF
-                          ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
-                          : isImage
-                          ? `<img src="${cachedUrl}" alt="${file.filename}" />`
-                          : isText
-                          ? `<pre><code id="code-block">Loading...</code></pre>`
-                          : `<p>Unsupported file type.</p>`;
-                        
-                        const html = `
-                          <!DOCTYPE html>
-                          <html lang="en">
-                          <head>
-                            <title>Preview - ${file.filename}</title>
-                            <style>
-                              html, body {
-                                height: 100%;
-                                margin: 0;
-                                font-family: sans-serif;
-                                background: #f0f0f0;
-                              }
-                              .toolbar {
-                                width: 100%;
-                                background: #333;
-                                color: white;
-                                padding: 10px;
-                                display: flex;
-                                justify-content: space-between;
-                                align-items: center;
-                                box-sizing: border-box;
-                              }
-                              .toolbar a {
-                                color: white;
-                                text-decoration: none;
-                                padding: 8px 12px;
-                                background-color: #007bff;
-                                border-radius: 5px;
-                              }
-                              .preview {
-                                height: calc(100% - 50px); /* Leave space for toolbar */
-                                overflow: auto;
-                                display: block;
-                              }
-                              iframe, img {
-                                max-width: 90%;
-                                max-height: 90%;
-                                border: none;
-                                margin: auto;
-                              }
-                              pre {
-                                background: white;
-                                padding: 1rem;
-                                margin: 0;
-                                width: 100%;
-                                height: 100%;
-                                box-sizing: border-box;
-                                overflow: auto;
-                                white-space: pre-wrap;
-                                word-wrap: break-word;
-                              }
-                            </style>
-                          </head>
-                          <body>
-                            <div class="toolbar">
-                              <div>Previewing: ${file.filename}</div>
-                              <a href="${cachedUrl}" download="${file.filename}">Download</a>
-                            </div>
-                            <div class="preview">
-                              ${previewContent}
-                            </div>
-                            ${
-                              isText
-                                ? `<script>
-                                     fetch("${cachedUrl}")
-                                       .then(res => res.text())
-                                       .then(code => {
-                                         document.getElementById("code-block").textContent = code;
-                                       });
-                                   </script>`
-                                : ""
-                            }
-                          </body>
-                          </html>
-                        `;
-                        
-                      
-                          popup.document.write(html);
-                          popup.document.close();
-                        } catch (err) {
-                          console.error("Preview failed:", err);
-                        }
-                      }}  
+                        onClick={() => {
+                          const file = files[filesByFileId.current[contextMenuFileId]]
+                          previewFile(file)
+
+                        }}
                     >
                       Preview
                     </ContextMenuItem>
+                    <ContextMenuItem
+                        style={{ fontWeight: "bold", cursor: "default" }}
+                        onClick={() => {
+                          setContextMenuVersionPopout(true);
+                          setContextMenuTagPopout(false); // optionally close tags
+                        }}
+                    >
+                      Versions
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => {handleDelete(contextMenuFileId!);}}>
+                      Delete File
+                    </ContextMenuItem>
+
+
+
+
                     </ContextMenu>
                   {contextMenuTagPopout ?
                       <ContextMenuPopout $index={1}>
@@ -2033,19 +2027,18 @@ if (conflict) {
                       : <></>
                   }
                 </ContextMenuWrapper>
-            ) : contextMenu && contextMenuType=="fileFolder" ? (
+            ) : contextMenu && contextMenuType=="fileFolder"  && contextMenuFileId && contextMenuFilePath ? (
                 <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
                   <ContextMenu>
                     <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
                       Tags
                     </ContextMenuItem>
                     <ContextMenuItem
-                      onMouseOver={() => setContextMenuTagPopout(false)}
                       onClick={() => handleFolderDownload(contextMenuFileName as string, contextMenuFileId as string)}
                     >
                       Download
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={() => setFileId(contextMenuFileId)} onMouseOver={() => setContextMenuTagPopout(false)}>
+                    <ContextMenuItem onClick={() => setMessageThread({id: contextMenuFileId, label: contextMenuFilePath.split("/").pop()!!, path: projectName.current + contextMenuFilePath, type: 0})}>
                       Open Chat
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
@@ -2112,7 +2105,7 @@ if (conflict) {
             fileId={versionPanelData.fileId}
             fileName={versionPanelData.filename}
             logicalId={versionPanelData.logicalId}
-            storageId={versionPanelData.storageId}
+            storageId={versionPanelData.storageId!!}
             ownerId={versionPanelData.ownerId}
             projectId={versionPanelData.projectId}
             versions={versionPanelData.versions ?? []}
@@ -2127,6 +2120,7 @@ if (conflict) {
             onDownloadVersion={handleDownloadVersion}
           />
         )}
+
 
   </>
   );
@@ -2317,6 +2311,9 @@ const PanelContainer = styled.div<{$dragging: boolean}>`
   background-color: ${props => props.$dragging ? "lightblue" : "white"};
   text-align: center;
   overflow-y: scroll;
+  display: flex;
+  justify-content: right;
+  flex-direction: column;
   z-index: 0;
 `;
 
@@ -2327,12 +2324,13 @@ const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: n
     top: props.$pickedUp ? props.$mouseY + 15 + "px" : "auto",
     left: props.$pickedUp ? props.$mouseX + 15 + "px" : "auto",
     marginLeft: props.$pickedUp ? props.$depth * 20 : "auto" ,
-    width: props.$pickedUp ? "auto" : "calc(100% - " + props.$depth * 20 + "px)",
+    marginRight: 0,
+    width: props.$pickedUp ? "auto" : "calc(100% - " + props.$depth * 10 + "px)",
     pointerEvents: props.$pickedUp ? "none" : "auto",
     opacity : props.$pickedUp ? 0.75 : 1,
     backgroundColor: props.$pickedUp ? "lightskyblue" : props.$selected ? "lightblue" : "white",
     borderRadius: props.$pickedUp ? "10px" : "0",
-    zIndex: props.$pickedUp ? "999" : "20"
+    zIndex: props.$pickedUp ? "999" : "2"
 
   }
 }))`
@@ -2351,9 +2349,10 @@ const File = styled.button.attrs<{$depth: number, $pickedUp: boolean, $mouseX: n
   -ms-user-select: none;
   user-select: none;
   border-radius: 0;
+
   &:hover {
 
-    filter: drop-shadow(0px 0px 5px #5C9ECC);
+    filter: drop-shadow(-5px 0px 5px #78a7c7);
 
     padding-top: calc(1rem - 2px);
     padding-bottom: calc(1rem - 2px);
@@ -2373,15 +2372,12 @@ const NoFiles = styled.div`
 const TopBarContainer = styled.div`
   display: flex;
   padding: 0.5rem;
-  position: sticky;
   top: 0;
   background-color: white;
-
 `;
 
 const FilePathContainer = styled.div`
     display: flex;
-    position: sticky;
     top: 0;
     width: 100%;
     border-bottom-style: solid;
@@ -2394,7 +2390,18 @@ const FilePathContainer = styled.div`
     overflow-x: auto;
     white-space: nowrap;
     background-color: white;
+    flex-shrink: 0;
 `;
+const StickyTopBar = styled.div`
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D7DADD;
+`
 const Input = styled.input`
   flex: 1;
   height: 3rem;

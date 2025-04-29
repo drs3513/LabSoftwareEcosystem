@@ -17,21 +17,31 @@ interface Message {
 }
 
 
-export async function createMessage(fileId: string, userId: string, content: string, projectId: string) {
+export async function createMessage(id: string, userId: string, content: string, type: number) {
   try {
     const uuid = crypto.randomUUID();
     const messageId = `${uuid}`;
     const now = new Date().toISOString();
+    if(type == 0){
+      return await client.models.Message.create({
+        messageId,
+        fileId: id,
+        userId,
+        content,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      return await client.models.Message.create({
+        messageId,
+        projectId: id,
+        userId,
+        content,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
 
-    return await client.models.Message.create({
-      messageId,
-      projectId,
-      fileId,
-      userId,
-      content,
-      createdAt: now,
-      updatedAt: now,
-    });
   } catch (error) {
     console.error("Error creating message:", error);
   }
@@ -72,15 +82,27 @@ interface PaginatedMessages {
 // }
 
 export async function getMessagesByFileIdAndPagination(
-  fileId: string,
+  fileId: string | undefined,
+  projectId: string | undefined,
   nextToken: string | null
 ): Promise<{ data: Message[]; nextToken: string | null }> {
   try {
-    const results = await client.queries.getMessagesByFileId({
-      fileId,
-      nextToken,
-      limit: 10,
-    });
+    if(!fileId && !projectId) return { data: [], nextToken: null };
+    let results
+    if(fileId){
+      results = await client.queries.getMessagesByFileId({
+        fileId,
+        nextToken,
+        limit: 10,
+      });
+    } else if(projectId) {
+      results = await client.queries.getMessagesByProjectId({
+        projectId,
+        nextToken,
+        limit: 10,
+      });
+    }
+
     //console.log("Full Results from getMessagesByFileId:", results);
     
     
@@ -122,16 +144,26 @@ export async function getMessagesByFileIdAndPagination(
   }
 }
 //searchMessages
-export async function searchMessages(fileId: string, messageContents: string[], tagNames: string[]) {
+export async function searchMessages(fileId: string | undefined, projectId: string | undefined, messageContents: string[], tagNames: string[]) {
+  if(!fileId && !projectId) return
   try{
     console.log("Searching messages with fileId:", fileId, "messageContents:", messageContents, "tagsName:", tagNames);
-    const foundMessages = await client.queries.searchMessages({
-      fileId: fileId,
-      messageContents: messageContents,
-      tagNames: tagNames,
-    });
-    console.log("Found messages:", foundMessages);
-    return foundMessages.data;
+    if(fileId){
+      const foundMessages = await client.queries.searchMessages({
+        fileId: fileId,
+        messageContents: messageContents,
+        tagNames: tagNames,
+      });
+      return foundMessages.data
+    }
+    else {
+      const foundMessages = await client.queries.searchMessagesByProjectId({
+        projectId: projectId,
+        messageContents: messageContents,
+        tagNames: tagNames
+      })
+      return foundMessages.data
+    }
   }catch (error) {
     console.error("Error searching messages:", error);
   }

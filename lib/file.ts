@@ -103,6 +103,8 @@ export async function processAndUploadFiles(
   }>,
   setProgress?: (percent: number) => void
 ) {
+  console.log("THIS IS THE THING")
+  console.log(currentPath)
   const now = new Date().toISOString();
   const rootParentId = `ROOT-${projectId}`;
   const uploadedFiles: { storageKey?: string, fileId?: string }[] = [];
@@ -182,8 +184,11 @@ export async function processAndUploadFiles(
           for (const [fileKey, fileValue] of Object.entries(value)) {
             const fileUuid = crypto.randomUUID();
             if (!(fileValue instanceof File)) continue;
-
+            console.log("I THINK THIS IS THE BAD PART")
+            console.log(fileKey)
+            console.log(currentFilePath)
             const filePath = joinPaths(currentFilePath, fileKey);
+            console.log(filePath)
             console.log(`[UPLOAD] Starting file upload: "${fileKey}" to path "${filePath}"`);
 
             try {
@@ -205,7 +210,7 @@ export async function processAndUploadFiles(
                 logicalId: fileUuid,
                 filename: fileKey,
                 isDirectory: false,
-                filepath: `${currentFilePath}/${fileKey}`,
+                filepath: filePath,
                 parentId: currentParentId,
                 storageId: storageKey,
                 size: fileValue.size ?? 0,
@@ -686,7 +691,6 @@ export async function updatefile(id: string, projectId: string, versionId: strin
         versionId: versionId,
         updatedAt: now,
       });
-      alert("File updated successfully.");
     } catch (error) {
       console.error("Error updating file:", error);
       alert("An error occurred while updating the file. Please try again.");

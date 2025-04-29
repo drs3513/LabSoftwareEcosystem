@@ -18,6 +18,21 @@ interface GlobalStateContextType {
   heldKeys: string[];
   setHeldKeys: (val: string[]) => void;
   draggingFloatingWindow: RefObject<boolean>;
+  messageThread: MessageThread | undefined;
+  setMessageThread: (val: MessageThread) => void;
+}
+
+enum MessageThreadType {
+  Project,
+  File
+}
+
+interface MessageThread {
+  id: string;
+  label: string;
+  path: string | undefined;
+  type: number; //0 is file, 1 is project
+
 }
 
 const GlobalStateContext = createContext<GlobalStateContextType | undefined>(undefined);
@@ -27,6 +42,7 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [fileId, setFileId] = useState<string | undefined>(undefined);
+  const [messageThread, setMessageThread] = useState<MessageThread | undefined>(undefined)
   const [userId, setUserId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<boolean>(false);
   const [contextMenuType, setContextMenuType] = useState<string>("file");
@@ -40,7 +56,7 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
 
   return (
     <GlobalStateContext.Provider value={{ role, setRole, projectId, setProjectId, fileId, setFileId, userId, contextMenu, setContextMenu,
-      contextMenuType, setContextMenuType, heldKeys, setHeldKeys, draggingFloatingWindow}}>
+      contextMenuType, setContextMenuType, heldKeys, setHeldKeys, draggingFloatingWindow, messageThread, setMessageThread}}>
       {children}
     </GlobalStateContext.Provider>
   )

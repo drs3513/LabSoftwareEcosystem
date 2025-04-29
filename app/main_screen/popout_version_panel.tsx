@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import styled from "styled-components";
 import type { Schema } from "@/amplify/data/resource";
 import {Nullable} from "@aws-amplify/data-schema";
+import { useGlobalState } from "../GlobalStateContext";
 
 type FileVersion = Pick<
   Schema["File"]["type"],
@@ -48,15 +49,19 @@ export default function VersionPanel({
   const dragStartX = useRef(0);
   const dragStartY = useRef(0);
 
+  const {draggingFloatingWindow} = useGlobalState()
+
   function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     dragStartX.current = e.pageX - rect.left;
     dragStartY.current = e.pageY - rect.top;
+    draggingFloatingWindow.current = true
   }
 
   function handleDragEnd(e: React.DragEvent<HTMLDivElement>) {
     setPosX(e.pageX - dragStartX.current);
     setPosY(e.pageY - dragStartY.current);
+    draggingFloatingWindow.current = false
   }
 
   return (
@@ -75,7 +80,7 @@ export default function VersionPanel({
 
             return (
               <VersionItem
-                key={version.versionId}
+                key={i}
                 $current={isCurrent}
                 onClick={() =>
                   onDownloadVersion(
