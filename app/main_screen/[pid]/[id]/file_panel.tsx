@@ -454,7 +454,15 @@ export default function FilePanel() {
       }
       setLoading(false);
       setFiles(sort_files_with_path(groupedFiles));
-      setLoadingParentIds([])
+      console.log("HERE")
+      console.log(loadingParentIds)
+      let toRemoveLoadingParents = []
+      for(let file of groupedFiles){
+        if(loadingParentIds.some(loadingParent => loadingParent.id == file.parentId)){
+          toRemoveLoadingParents.push(file.parentId)
+        }
+      }
+      setLoadingParentIds([...loadingParentIds].filter(loadingParent => !toRemoveLoadingParents.includes(loadingParent.id)))
       return groupedFiles;
     }, 600)
 
