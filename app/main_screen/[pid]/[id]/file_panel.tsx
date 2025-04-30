@@ -18,6 +18,7 @@ import {
   waitForVersionId,
   createFolder,
   fetchCachedUrl,
+    getPathForFile
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
@@ -68,7 +69,13 @@ import RecycleBinPanel from "@/app/main_screen/popout_recycling_bin";
 
 const client = generateClient<Schema>();
 
-function compare_file_date_helper(file_1: any, file_2: any){
+/**
+ * Directly compares the dates of two files
+ * @param file_1 first file to compare
+ * @param file_2 second file to compare
+ * @returns file_1 > file_2
+ */
+function compare_file_date_helper(file_1: fileInfo, file_2: fileInfo){
   let date_1 = new Date(file_1.updatedAt)
   let date_2 = new Date(file_2.updatedAt)
   if(date_1 == date_2){
@@ -80,7 +87,13 @@ function compare_file_date_helper(file_1: any, file_2: any){
   }
 }
 
-function compare_file_date(file_1: any, file_2: any){
+/**
+ * Compares the dates of two files, with the stipulation that a folder > a file
+ * @param file_1 first file to compare
+ * @param file_2 second file to compare
+ * @returns file_1 > file_2
+ */
+function compare_file_date(file_1: fileInfo, file_2: fileInfo){
   if(file_1.isDirectory && file_2.isDirectory) return compare_file_date_helper(file_1, file_2)*-1
   if(file_1.isDirectory) return -1
   if(file_2.isDirectory) return 1
@@ -88,6 +101,12 @@ function compare_file_date(file_1: any, file_2: any){
 
 }
 
+/**
+ * Compares the dates of two files, in reverse, with the stipulation that a folder > a file
+ * @param file_1 first file to compare
+ * @param file_2 second file to compare
+ * @returns file_1 > file_2
+ */
 function compare_file_date_reverse(file_1: fileInfo, file_2: fileInfo){
   if(file_1.isDirectory && file_2.isDirectory) return compare_file_date_helper(file_1, file_2)
   if(file_1.isDirectory) return -1
@@ -95,21 +114,39 @@ function compare_file_date_reverse(file_1: fileInfo, file_2: fileInfo){
   return compare_file_date_helper(file_1, file_2)
 }
 
-function compare_file_name(file_1: any, file_2: any){
+/**
+ * Compares the names of two files, with the stipulation that a folder > a file
+ * @param file_1 first file to compare
+ * @param file_2 second file to compare
+ * @returns file_1 > file_2
+ */
+function compare_file_name(file_1: fileInfo, file_2: fileInfo){
   if(file_1.isDirectory && file_2.isDirectory) return file_1.filename.localeCompare(file_2.filename)
   if(file_1.isDirectory) return -1
   if(file_2.isDirectory) return 1
   return file_1.filename.localeCompare(file_2.filename)
-
-
 }
-function compare_file_name_reverse(file_1: any, file_2: any){
+
+/**
+ * Compares the names of two files, in reverse, with the stipulation that a folder > a file
+ * @param file_1 first file to compare
+ * @param file_2 second file to compare
+ * @returns file_1 > file_2
+ */
+function compare_file_name_reverse(file_1: fileInfo, file_2: fileInfo){
   if(file_1.isDirectory && file_2.isDirectory) return compare_file_name(file_1, file_2) * -1
   if(file_1.isDirectory) return -1
   if(file_2.isDirectory) return 1
   return compare_file_name(file_1, file_2) * -1
 }
 
+
+/**
+ * Compares the equality of a File which is returned by a query to the database, and a fileInfo object.
+ * @param file_1 first file to compare
+ * @param file_2 second file to compare
+ * @returns file_1 == file_2
+ */
 function compare_file_objects(file_1: any, file_2: fileInfo){
   return file_1.fileId === file_2.fileId && file_1.filepath === file_2.filepath && file_1.storageId === file_2.storageId && file_1.versionId === file_2.versionId && file_1.logicalId === file_2.logicalId && file_1.isDeleted === file_2.isDeleted && file_1.parentId === file_2.parentId
 }
@@ -124,6 +161,9 @@ type FileVersion = Pick<
   "size" | "versionId" | "ownerId" | "projectId" | "createdAt" | "updatedAt"
 >;
 
+/**
+ * Data required for a file object
+ */
 interface fileInfo{
   fileId: string,
   filename: string,
@@ -144,7 +184,27 @@ interface fileInfo{
   versions?: FileVersion[];
 }
 
+/**
+ * Information associated with a contextMenu
+ * If type == "File" || type == "Folder", all fields are not null / undefined
+ * If type == "Panel", filePath, storagePath, fileName, and versionId are null / undefined
+ */
+interface contextMenuType{
+  x: number,
+  y: number,
+  fileId: string | undefined,
+  filePath: string | undefined,
+  storagePath: Nullable<string> | undefined,
+  type: string,
+  fileName: string | undefined,
+  versionId: string | undefined
+}
 
+/**
+ * Information associated with a directory which is open in the current view
+ * @property {string} id - fileId of activeParent
+ * @prop {number} depth - How long of a chain of parent directories can be made to the root of the view
+ */
 interface activeParent{
   id: string,
   depth: number
@@ -156,24 +216,12 @@ export default function FilePanel() {
   const routerSearchParams = useSearchParams()
   const router = useRouter()
 
-  const {userId, contextMenu, setContextMenu, contextMenuType, setContextMenuType, setFileId, heldKeys, setHeldKeys, draggingFloatingWindow, setMessageThread} = useGlobalState();
+  const {userId, heldKeys, setHeldKeys, draggingFloatingWindow, setMessageThread} = useGlobalState();
 
   const {uploadQueue, uploadTask, setUploadProgress,
     setDownloadProgressMap, setCompletedUploads,
   setShowProgressPanel} = useNotificationState();
 
-
-  //const folderDownloadTask = useRef<{ isCanceled: boolean; cancel: () => void } | null>(null);
-
-  //const uploadQueue = useRef<Array<{
-  //  folderDict: Record<string, any>,
-  //  ownerId: string,
-  //  projectId: string,
-  //  parentId: string
-        //}>>([]);
-//
-  //const uploadTask = useRef<{  isCanceled: boolean;
-  //  uploadedFiles: { storageKey?: string, fileId?: string }[];  cancel: () => void; }>({ isCanceled: false, uploadedFiles: [], cancel: () => {} });
   const [projectId, setProjectId] = useState<string | undefined>(undefined)
 
   const projectName = useRef<string | undefined>(undefined)
@@ -188,20 +236,11 @@ export default function FilePanel() {
 
   const [rootParentId, setRootParentId] = useState<string | null>(null)
 
-  const [contextMenuPosition, setContextMenuPosition] = useState([0,0])
-
-  const [mouseCoords, setMouseCoords] = useState([0,0])
+  const [mouseCoords, setMouseCoords] = useState<{x: number, y: number}>({x: 0, y: 0})
 
   const observeMouseCoords = useRef<boolean>(true);
 
-  const [contextMenuFileId, setContextMenuFileId] = useState<string | undefined>(undefined);
-
-
-  const [contextMenuStoragePath, setContextMenuStoragePath] = useState<Nullable<string> | undefined>(undefined);
-
-  const [contextMenuFileName, setContextMenuFileName] = useState<string | undefined>(undefined);
-
-  const [contextMenuFilePath, setContextMenuFilePath] = useState<string | undefined>(undefined);
+  const [contextMenu, setContextMenu] = useState<contextMenuType | undefined>(undefined)
 
   const [contextMenuTagPopout, setContextMenuTagPopout] = useState(false);
 
@@ -258,6 +297,12 @@ export default function FilePanel() {
   const [dragOverFileId, setDragOverFileId] = useState<string | undefined>(undefined);
 
   const [activeRecyclingBins, setActiveRecyclingBins] = useState<{projectId: string, projectName: string}[]>([])
+
+  /**
+   * Returns the associated .svg file for a given file, if file type is within the set of file types which an icon has
+   * been created for, returns that icon, else, returns a generic icon.
+   * @param fileName
+   */
 
   function return_file_icon(fileName: string){
     const extension = fileName.split('.').pop()
@@ -316,6 +361,13 @@ export default function FilePanel() {
     }
     return icon_filegeneric;
   }
+
+  /**
+   * Sorts the files that the user sees. Files are sorted within each parent directory.
+   * @param {fileInfo} files - An array of fileInfo objects
+   * @param {string} sortStyle - String which designates the sorting style to utilize. Each valid sorting style has a
+   * corresponding comparison function.
+   */
 
 
   //sorts files to be displayed by the user
@@ -404,7 +456,11 @@ export default function FilePanel() {
     return files
   }
 
-
+  /**
+   * Fetches all files which are children of an 'activeParentId'
+   * Timer is used to maintain that fetchFiles() is only called, at maximum, every 600ms. This prevents the subscription
+   * function from sending an overtly large amount of fetchFiles() requests at any given time.
+   */
   async function fetchFiles() {
     clearTimeout(timerGetFiles.current)
     timerGetFiles.current =  setTimeout(async () => {
@@ -468,7 +524,12 @@ export default function FilePanel() {
 
 
   }
-  
+
+  /**
+   * useEffect() observing the current values of 'activeParentIds', and 'search'.
+   * When the user is not searching, calls fetchFiles(), and initiates a new subscription to the file table.
+   * Whenever the useEffect() is called, the currently activated observeFiles() subscription is removed, and replaced with a new one.
+   */
   useEffect(() => {
     if(search) return
     if(projectId){
@@ -478,6 +539,14 @@ export default function FilePanel() {
       return () => unsubscribe();
     }
   }, [activeParentIds, search]);
+
+  /**
+   * useEffect() observing the current routerSearchParams, as well as the userId
+   * When there is both a projectId selected in the searchParams, as well as a logged-in user, a check is performed to
+   * see if the user is whitelisted for the project designated by the search params.
+   * If the user is not whitelisted (or there does not exist) the project designated by the searchParams, then a project
+   * is not opened. Otherwise, the requested project is returned to the user.
+   */
 
   useEffect(() => {
     setLoading(true);
@@ -574,9 +643,7 @@ export default function FilePanel() {
     const filePathEnd = await getFilePath(root_id, proj_id)
     if(!filePathEnd) return
     fileIdPath.push({id: root_id, filepath: filePathEnd})
-    //console.log(fileIdPath)
-    //console.log([projectName, ...activeFilePath.split("/").splice(1)])
-    //console.log(activeFilePath)
+
     setFilePathElement([projectName, ...activeFilePath.split("/").splice(1)].map((fileName, i) => ({fileName: `${fileName}/`, href: `/main_screen?pid=${proj_id}&id=${fileIdPath[i].id}`, fileId: fileIdPath[i].id, filepath: fileIdPath[i].filepath})))
     setLoading(false)
     return
@@ -585,8 +652,11 @@ export default function FilePanel() {
 
   /**
    * function : observeFiles
+   *
    * Goal : observe changes to the files stored in the database, and transmit this to the user
+   *
    * Problem : When the database contains many files, this query does not return the entire language of the query at once
+   *
    * Solution : Check to see if the query observes even a single file which is different than what is saved
    * If the above is true, then create a timer which waits 400ms, and then fetches all open files
    * The timer is to prevent multiple observeQuery() invocations in quick successions from creating multiple fetches
@@ -621,10 +691,11 @@ export default function FilePanel() {
   
     return () => subscription.unsubscribe();
   };
-  
-  
 
 
+  /**
+   * Fetches files which adhere to the previously defined search parameters.
+   */
   async function fetchFilesWithSearch(){
     setLoading(true);
     if (!projectId) return;
@@ -669,22 +740,31 @@ export default function FilePanel() {
     }
 
   }
+
+  /**
+   * useEffect() on any searchTerms the user have utilized in their search query, and whether or not the user is actively searching.
+   * If the user is performing a search, then fetches files which adhere to that search query.
+   * Unfortunately, subscribing to a search query is unfeasible, as there does not exist the functionality within Amplify
+   * to subscribe to the search terms devised.
+   */
   useEffect(() => {
     if(search){
 
       fetchFilesWithSearch();
-      //const unsubscribe = observeFilesWithSearch();
-      //return () => unsubscribe();
     }
   }, [searchTerm, tagSearchTerm, authorSearchTerm, search])
 
 
-  // Close context menu when clicking outside
+  /**
+   * Whenever a contextMenu is opened, creates eventListeners which wait until the user clicks anywhere other than the limited
+   * set of locations which do not immediately close the contextMenu. If the user clicks on this outside region, then the contextMenu is closed.
+   */
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if(!(e.target && ((e.target as HTMLInputElement).id == "tag_input") || (e.target as HTMLDivElement).id == "tag_button") && contextMenu){
-        setContextMenu(false);
-        setContextMenuFileId(undefined);
+        setContextMenu(undefined);
+        setContextMenuTags([])
+        observeMouseCoords.current = false;
       }
     };
     document.addEventListener("click", handleClickOutside);
@@ -694,6 +774,26 @@ export default function FilePanel() {
       document.removeEventListener("contextmenu", handleClickOutside);
     };
   }, [contextMenu]);
+
+
+  /**
+   * When the component is currently listening to mouse movements (denoted by observeMouseCoords.current), listen for any mouse movements by the client.
+   */
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setMouseCoords({x: e.clientX, y: e.clientY})
+    }
+    if (observeMouseCoords.current) {
+
+
+      document.addEventListener("mousemove", handleMouseMove)
+    }
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove)
+    }
+
+  }, [observeMouseCoords.current])
+
 
   useEffect(() => {
       const recordKeyPress = (e: KeyboardEvent) => {
@@ -718,31 +818,49 @@ export default function FilePanel() {
       }
   )
 
+  /***
+   Function : fetchTags
+   Returns None
+
+   Action : sets 'contextMenuTags' state to be equal to the tags of a given fileId.
+   Called immediately upon right-click action of a file / folder, such that tags are retrieved (hopefully) prior to
+   the tag popout being initiated
+
+   ***/
   async function fetchTags(fileId: string){
     if (!projectId) return
-    //console.log("Here!")
     const tempTags = await getTags(fileId, projectId)
-
     setContextMenuTags(tempTags)
-    //console.log(tempTags)
   }
 
+  /***
+   Function: useEffect() observing 'contextMenu'
 
+   Action : If the 'contextMenu' state is ever initiated on a file, or a folder, then both fetch all existing tags,
+   and observe the tags of that file / folder.
+
+   ***/
   useEffect(() => {
-    if(contextMenuFileId){
-      fetchTags(contextMenuFileId)
+    if(contextMenu && (contextMenu.type == "File" || contextMenu.type == "Folder")){
+      fetchTags(contextMenu.fileId!!)
       const unsubscribe = observeTags();
       return () => unsubscribe();
     }
 
-  }, [contextMenuFileId])
+  }, [contextMenu])
 
+  /***
+   Function: observeTags
+   Action: Subscribes to a very limited subset of the file table (only on the active fileId opened in the context menu).
+   If any changes are made to that file with a matching fileId, then set the visible tags to be equal to that which is
+   observed.
 
+   ***/
   const observeTags = () => {
-
+    if(!contextMenu) return () => {};
     const subscription = client.models.File.observeQuery({
       filter: {
-        fileId: {eq: contextMenuFileId}
+        fileId: {eq: contextMenu.fileId!!}
       },
     }).subscribe({
       next: async ({ items }) => {
@@ -799,14 +917,14 @@ export default function FilePanel() {
 
   const handleFolderDownload = async (folderName: string, folderLogicalId: string) => {
     if (!projectId) return;
-  
+    if (!contextMenu) return
     const task: ZipTask = {
       isCanceled: false,
       cancel() {
         task.isCanceled = true;
       },
     };
-    const allChildren = await getFileChildren(projectId, contextMenuFilePath as string);
+    const allChildren = await getFileChildren(projectId, contextMenu.filePath!!);
     const validFiles = allChildren?.filter(f => !f.isDirectory && f.storageId && f.filepath);
   
     const fileList = validFiles?.map(file => ({
@@ -1308,28 +1426,18 @@ export default function FilePanel() {
   }
 
 
-
-
-
-
   async function onFilePlace(e: React.MouseEvent<HTMLElement>, overFileId: Nullable<string>) {
     isLongPress.current = false;
-    clearTimeout(timer.current)
-    if(search){
-      return
-    }
-    if(e.target != e.currentTarget){
-      return
-    }
+    if(e.target != e.currentTarget) return
+    if(search) return
+
     if(!projectId) return
     if(!overFileId) return
     observeMouseCoords.current = false
 
-    //console.log(overFileId)
-
     clearTimeout(timer.current);
-    ////console.log(pickedUpFileGroup)
-    if(pickedUpFileGroup != undefined){
+
+    if(pickedUpFileGroup){
 
       observeMouseCoords.current = false
 
@@ -1431,7 +1539,7 @@ export default function FilePanel() {
     timer.current = setTimeout(() => {
       if(isLongPress.current){
         observeMouseCoords.current = true
-        setMouseCoords([e.clientX, e.clientY])
+        setMouseCoords({x: e.clientX, y: e.clientY})
 
 
         if(selectedFileGroup == undefined){
@@ -1598,11 +1706,11 @@ export default function FilePanel() {
 
   async function handleTagInput(e: React.KeyboardEvent<HTMLInputElement>){
     if(e.key == "Enter"){
-      if(contextMenuFileId && projectId && (e.target as HTMLInputElement).value.length > 0){
+      if(contextMenu && contextMenu.fileId && projectId && (e.target as HTMLInputElement).value.length > 0){
         const tag_name = (e.target as HTMLInputElement).value as string
         (e.target as HTMLInputElement).value = ""
 
-        await createTag(contextMenuFileId, projectId, contextMenuTags, tag_name)
+        await createTag(contextMenu.fileId, projectId, contextMenuTags, tag_name)
       }
     }
   }
@@ -1673,21 +1781,26 @@ export default function FilePanel() {
     a.click();
   };
 
-  function handleCreateFolder() {
+  async function handleCreateFolder(contextMenuFileId: string | undefined, contextMenuFilePath: string | undefined) {
     if (!projectId || !userId) return;
   
     const name = window.prompt("Name of folder", "New Folder");
     if (!name) return;
-  
     const parentId = contextMenuFileId ?? `ROOT-${projectId}`;
-    const parentPath = contextMenuFilePath ?? "";
+    let parentPath
+    if(!contextMenuFilePath){
+      parentPath = await getPathForFile(contextMenuFileId!!, projectId)
+    } else {
+      parentPath = contextMenuFilePath
+    }
+
     const fullPath = `${parentPath}/${name}`.replace(/\/+/g, "/");
   
     createFolder(projectId, name, userId, parentId, fullPath);
   }  
 
 
-  function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, location: string, userId: string | undefined, storagePath: Nullable<string> |undefined, filename: string |undefined){
+  function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, type: string, userId: string | undefined, storagePath: Nullable<string> |undefined, fileName: string |undefined, versionId: string | undefined){
     //console.log("Here!")
     if(e.target != e.currentTarget){
       return
@@ -1698,14 +1811,20 @@ export default function FilePanel() {
 
     clearTimeout(timer.current);
     e.preventDefault();
-    setContextMenu(true);
-    setContextMenuType(location);
-    setContextMenuPosition([e.pageX, e.pageY]);
-    setContextMenuFileId(fileId);
-    setContextMenuFilePath(filepath);
+
+    setContextMenu({
+      x: e.pageX,
+      y: e.pageY,
+      fileId: fileId,
+      filePath: filepath,
+      storagePath: storagePath,
+      type: type,
+      fileName: fileName,
+      versionId: versionId
+
+    })
+    observeMouseCoords.current = true
     setContextMenuTagPopout(false);
-    setContextMenuStoragePath(storagePath);
-    setContextMenuFileName(filename);
 
   }
 
@@ -1726,8 +1845,9 @@ export default function FilePanel() {
   }
 
   const contextFile = useMemo(() => {
-    return files.find(f => f.fileId === contextMenuFileId);
-  }, [files, contextMenuFileId]);
+    if(!contextMenu) return undefined
+    return files.find(f => f.fileId === contextMenu.fileId);
+  }, [files, contextMenu]);
 
   useEffect(() => {
     if (contextMenuVersionPopout && contextFile) {
@@ -1737,7 +1857,7 @@ export default function FilePanel() {
   }, [contextMenuVersionPopout, contextFile]);
   
   function handleShowRecycleBin(e: React.MouseEvent<HTMLButtonElement>){
-    setMouseCoords([e.clientX, e.clientY])
+    setMouseCoords({x: e.clientX, y: e.clientY})
     if(activeRecyclingBins.some(bin => bin.projectId === projectId)){
       setActiveRecyclingBins(activeRecyclingBins.filter((bin) => bin.projectId !== projectId))
     } else {
@@ -1752,6 +1872,7 @@ export default function FilePanel() {
    * Evaluates whether or not any of the file's parents have been picked up. Works recursively, in the case that only a
    * higher-order parent has been picked up.
   **/
+  //TODO FIX THIS FOR WHEN YOU ARE NOT ON THE ROOT
   function isParentPickedUp(fileId : string): boolean {
     if(!pickedUpFileGroup) return false
     if(activeParentIds.some(parent => parent.id == files[filesByFileId.current[fileId]].parentId)){
@@ -1782,9 +1903,9 @@ export default function FilePanel() {
     
       <>
         <PanelContainer
-            onContextMenu={(e) => createContextMenu(e, undefined, undefined, 'filePanel', undefined, undefined, undefined)}
+            onContextMenu={(e) => createContextMenu(e, rootParentId!!, undefined, 'Panel', undefined, undefined, undefined, undefined)}
             onMouseUp={(e) => onFilePlace(e, rootParentId)}
-            onMouseMove = {(e) => {pickedUpFileGroup && observeMouseCoords.current ? setMouseCoords([e.clientX, e.clientY]) : undefined}}
+            //onMouseMove = {(e) => {pickedUpFileGroup && observeMouseCoords.current ? setMouseCoords({x: e.clientX, y: e.clientY}) : undefined}}
             onClick = {(e) => e.target == e.currentTarget ? setSelectedFileGroup(undefined) : undefined}
             onDrop={(e) => {
              if (!projectId || !userId || activeParentIds.length === 0) return;
@@ -1793,7 +1914,6 @@ export default function FilePanel() {
               activeParentIds.length > 0
                 ? activeParentIds[0].id
                 : `ROOT-${projectId}`;
-              console.log(currentParent)
                 const currentPath = currentParent?.filepath ?? "/";
                 
             
@@ -1845,14 +1965,14 @@ export default function FilePanel() {
                                         <File key={file.fileId}
                                               $depth={getDepth(file)}
                                               $pickedUp={(pickedUpFileGroup != undefined && (pickedUpFileGroup.includes(index)))} // || isParentPickedUp(file.fileId)
-                                              $mouseX={mouseCoords[0]}
-                                              $mouseY={mouseCoords[1]}
+                                              $mouseX={mouseCoords.x}
+                                              $mouseY={mouseCoords.y}
                                               $selected = {dragOverFileId == file.fileId || (selectedFileGroup != undefined && (selectedFileGroup.includes(index) ))} //|| isParentSelected(file.fileId)
                                               $indexDiff = {0}
                                               onMouseDown={(e) => onFilePickUp(e, file.fileId)}
                                               onMouseUp={(e) => (pickedUpFileGroup != undefined && !pickedUpFileGroup.includes(index) ? onFilePlace(e, file.fileId) : undefined)}
                                               onClick={(e) => e.altKey ? openCloseFolder(file.fileId) : e.shiftKey ? selectFileGroup(e, filesByFileId.current[file.fileId]) : e.ctrlKey ? appendToFileGroup(selectFile(e, index)) : selectFile(e, index)}
-                                              onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
+                                              onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'Folder' : 'File', file.ownerId, file.storageId, file.filename, file.versionId)}
                                               onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
                                               onDragLeave = {(e) => {handleDragOver(e, undefined)}}
                                               onDrop = {(e) => {handleDragOver(e, undefined); projectId && userId ?
@@ -1883,8 +2003,8 @@ export default function FilePanel() {
                                         <File key = {`${file.fileId}_loading`}
                                               $depth={getDepth(file)+1}
                                               $pickedUp={(pickedUpFileGroup != undefined && pickedUpFileGroup.includes(index))}
-                                              $mouseX={mouseCoords[0]}
-                                              $mouseY={mouseCoords[1]}
+                                              $mouseX={mouseCoords.x}
+                                              $mouseY={mouseCoords.y}
                                               $selected ={false}
                                               $indexDiff = {0}
                                         >
@@ -1906,14 +2026,14 @@ export default function FilePanel() {
                       <File key={file.fileId}
                             $depth={0}
                             $pickedUp={(pickedUpFileGroup != undefined && (pickedUpFileGroup.length == 2 && (pickedUpFileGroup[0] <= pickedUpFileGroup[1] && pickedUpFileGroup[0] <= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] >= filesByFileId.current[file.fileId]) || (pickedUpFileGroup[0] > pickedUpFileGroup[1] && pickedUpFileGroup[0] >= filesByFileId.current[file.fileId] && pickedUpFileGroup[1] <= filesByFileId.current[file.fileId])))}
-                            $mouseX={mouseCoords[0]}
-                            $mouseY={mouseCoords[1]}
+                            $mouseX={mouseCoords.x}
+                            $mouseY={mouseCoords.y}
                             $selected = {dragOverFileId == file.fileId || selectedFileGroup != undefined && selectedFileGroup.includes(index)}
                             $indexDiff = {selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] < selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[0] : selectedFileGroup != undefined && selectedFileGroup.length > 1 && selectedFileGroup[0] > selectedFileGroup[1] ? filesByFileId.current[file.fileId] - selectedFileGroup[1] : 0}
                             onMouseDown={(e) => onFilePickUp(e, file.fileId)}
                             onMouseUp={(e) => onFilePlace(e, file.fileId)}
                             onClick={(e: React.MouseEvent<HTMLButtonElement>) => e.detail == 2 ? reorientView(index) : undefined}
-                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename)}
+                            onContextMenu={(e) => createContextMenu(e, file.fileId, file.filepath, file.isDirectory ? 'fileFolder' : 'fileFile', file.ownerId, file.storageId, file.filename, file.versionId)}
                             onDragOver = {(e) => {handleDragOver(e, file.fileId)}}
                             onDragLeave = {(e) => {handleDragOver(e, undefined)}}>
                         <div style={{pointerEvents: "none", display: "inline-flex", alignItems: "center"}}>{file.isDirectory ? file.open ? <Image src={icon_folderopen} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>: <Image src={icon_folder} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/> : <Image src={return_file_icon(file.filename)} alt="" objectFit='contain' width='36' style={{pointerEvents: "none"}}/>} <div style={{marginLeft: '1em', pointerEvents:"none"}}>{file.filename}
@@ -1950,12 +2070,12 @@ export default function FilePanel() {
 
           {
 
-            contextMenu && contextMenuType=="filePanel" && contextMenuFilePath ? (
-                <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+            contextMenu && contextMenu.type == "Panel" ? (
+                <ContextMenuWrapper $x={contextMenu.x} $y={contextMenu.y}>
                   <ContextMenu>
                     <ContextMenuItem
                         onClick={() => {
-                          handleCreateFolder();
+                          handleCreateFolder(contextMenu.fileId, contextMenu.filePath);
                         }}
                     >
                       Create Folder
@@ -1968,9 +2088,9 @@ export default function FilePanel() {
 
                   </ContextMenu>
                 </ContextMenuWrapper>
-            ) : contextMenuFileId && contextMenu && contextMenuType=="fileFile" && contextMenuFilePath ? (
+            ) : contextMenu && contextMenu.type == "File" ? (
 
-                <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+                <ContextMenuWrapper $x={contextMenu.x} $y={contextMenu.y}>
                   <ContextMenu>
                     <ContextMenuItem>
                       Rename
@@ -1978,16 +2098,15 @@ export default function FilePanel() {
                     <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true)}}>
                       Tags
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={() => handleDownload(contextMenuStoragePath!, contextMenuFileName!,contextMenuFileId!)}>
+                    <ContextMenuItem onClick={() => handleDownload(contextMenu.storagePath!, contextMenu.fileName!,contextMenu.fileId!)}>
                       Download
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={() => setMessageThread({id: contextMenuFileId, label: contextMenuFilePath.split("/").pop()!!, path: projectName.current + contextMenuFilePath, type: 0})}>
+                    <ContextMenuItem onClick={() => setMessageThread({id: contextMenu.fileId!!, label: contextMenu.filePath!!.split("/").pop()!!, path: projectName.current!! + contextMenu.filePath!!, type: 0})}>
                       Open Chat
                     </ContextMenuItem>
                     <ContextMenuItem
                         onClick={() => {
-                          const file = files[filesByFileId.current[contextMenuFileId]]
-                          previewFile(file)
+                          previewFile(contextMenu.fileName!!, contextMenu.storagePath!!, contextMenu.versionId!!)
 
                         }}
                     >
@@ -2002,7 +2121,7 @@ export default function FilePanel() {
                     >
                       Versions
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={() => {handleDelete(contextMenuFileId!);}}>
+                    <ContextMenuItem onClick={() => {handleDelete(contextMenu.fileId!!);}}>
                       Delete File
                     </ContextMenuItem>
 
@@ -2020,7 +2139,7 @@ export default function FilePanel() {
                                       (tag, i) => (
                                           <ContextMenuItem key={i}>
                                             {tag == "" ? " " : tag}
-                                            <ContextMenuExitButton id = {"tag_button"} onClick = {() => deleteTag(contextMenuFileId as string, projectId, tag, contextMenuTags)}>
+                                            <ContextMenuExitButton id = {"tag_button"} onClick = {() => deleteTag(contextMenu.fileId!!, projectId, tag, contextMenuTags)}>
                                               X
                                             </ContextMenuExitButton>
                                           </ContextMenuItem>
@@ -2036,21 +2155,21 @@ export default function FilePanel() {
                       : <></>
                   }
                 </ContextMenuWrapper>
-            ) : contextMenu && contextMenuType=="fileFolder"  && contextMenuFileId && contextMenuFilePath ? (
-                <ContextMenuWrapper $x={contextMenuPosition[0]} $y={contextMenuPosition[1]}>
+            ) : contextMenu && contextMenu.type =="Folder" ? (
+                <ContextMenuWrapper $x={contextMenu.x} $y={contextMenu.y}>
                   <ContextMenu>
                     <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(true)}>
                       Tags
                     </ContextMenuItem>
                     <ContextMenuItem
-                      onClick={() => handleFolderDownload(contextMenuFileName as string, contextMenuFileId as string)}
+                      onClick={() => handleFolderDownload(contextMenu.fileName!!, contextMenu.fileId!!)}
                     >
                       Download
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={() => setMessageThread({id: contextMenuFileId, label: contextMenuFilePath.split("/").pop()!!, path: projectName.current + contextMenuFilePath, type: 0})}>
+                    <ContextMenuItem onClick={() => setMessageThread({id: contextMenu.fileId!!, label: contextMenu.filePath!!.split("/").pop()!!, path: projectName.current!! + contextMenu.filePath!!, type: 0})}>
                       Open Chat
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={() => handleDelete(contextMenuFileId!)}>
+                    <ContextMenuItem onClick={() => handleDelete(contextMenu.fileId!!)}>
                       Delete Folder
                     </ContextMenuItem>
                   </ContextMenu>
@@ -2064,7 +2183,7 @@ export default function FilePanel() {
                                     (tag, i) => (
                                         <ContextMenuItem key={i}>
                                           {tag == "" ? " " : tag}
-                                          <ContextMenuExitButton id = {"tag_button"} onClick = {() => deleteTag(contextMenuFileId as string, projectId, tag, contextMenuTags)}>
+                                          <ContextMenuExitButton id = {"tag_button"} onClick = {() => deleteTag(contextMenu.fileId!!, projectId, tag, contextMenuTags)}>
                                             X
                                           </ContextMenuExitButton>
                                         </ContextMenuItem>
@@ -2077,8 +2196,7 @@ export default function FilePanel() {
                   }
                 </ContextMenuWrapper>
             ) : (
-                <>
-                </>
+                <></>
             )
           }
 
@@ -2090,8 +2208,8 @@ export default function FilePanel() {
         {activeRecyclingBins.map((bin) => (
             <RecycleBinPanel
                 key={bin.projectId} // Use a unique value here
-                initialPosX={mouseCoords[0]}
-                initialPosY={mouseCoords[1]}
+                initialPosX={mouseCoords.x}
+                initialPosY={mouseCoords.y}
                 projectId={bin.projectId}
                 projectName={bin.projectName}
                 close={() =>
@@ -2119,8 +2237,8 @@ export default function FilePanel() {
             projectId={versionPanelData.projectId}
             versions={versionPanelData.versions ?? []}
             currentVersionId={versionPanelData.versionId}
-            initialX={contextMenuPosition[0]}
-            initialY={contextMenuPosition[1]}
+            initialX={mouseCoords.x}
+            initialY={mouseCoords.y}
             close={() => {
               setShowVersionPanel(false);
               setVersionPanelData(null);

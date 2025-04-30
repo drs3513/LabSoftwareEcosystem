@@ -447,6 +447,25 @@ export async function searchFiles(projectId: string, fileNames: string[], tagNam
     console.error("Error searching for files:", error)
   }
 }
+
+export async function getPathForFile(fileId: string, projectId: string){
+  try {
+    const file = await client.models.File.get({
+      fileId,
+      projectId
+    },
+    {
+      selectionSet: ["filepath"]
+    })
+
+    if(!file || !file.data || !file.data.filepath) return `ROOT-${projectId}`
+
+    return file.data.filepath
+  } catch (error){
+    console.error(`Error getting filepath for fileId ${fileId} and projectId ${projectId} :`, error)
+  }
+}
+
 //recursively calls itself to receive a path of parent fileIds from a given fileId, going all the way to root
 //TODO Dangerous?
 //TODO SLOW
