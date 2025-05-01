@@ -6,7 +6,13 @@ import React from "react";
 import { hardDeleteMessageforFiles } from "./message";
 const client = generateClient<Schema>();
 
-
+ /**
+ * Repeatedly attempts to retrieve the version ID of a file from storage.
+ * Used after uploading a file to ensure versioning is complete before proceeding.
+ *
+ * @param {string} key - The storage ID (S3 key) of the uploaded file.
+ * @returns {Promise<string | null>} - The resolved version ID or null if unsuccessful.
+ */
 
 export async function waitForVersionId(key: string): Promise<string | null> {
   const maxRetries = 1;
@@ -39,7 +45,16 @@ export async function waitForVersionId(key: string): Promise<string | null> {
 }
 
 
-
+/**
+ * Uploads a new version of an existing file and registers it as a new entry in the database.
+ *
+ * @param {File} file - The file to be uploaded.
+ * @param {string} logicalId - The logical ID shared across all versions of the file.
+ * @param {string} projectId - The current project ID.
+ * @param {string} ownerId - The user ID of the file owner.
+ * @param {string} parentId - The parent folder's ID.
+ * @param {string} filepath - Full filepath (e.g. `/Documents/Reports/file.txt`).
+ */
 
 export async function createNewVersion(
   file: File,
@@ -81,6 +96,14 @@ export async function createNewVersion(
   });
 }
 
+/**
+ * Fetches a file blob for preview or download from storage using the file’s storage path and version ID.
+ *
+ * @param {string} path - The storage ID (S3 key) of the file.
+ * @param {string} versionId - The version ID of the file.
+ * @returns {Promise<string>} - A blob URL that can be used as a source for previews.
+ */
+
 export async function fetchCachedUrl(path: string, versionId: string): Promise<string> {
   const res = await fetch(`/api/files?key=${encodeURIComponent(path)}&versionId=${encodeURIComponent(versionId)}`);
   if (!res.ok) throw new Error("Failed to fetch file preview");
@@ -88,8 +111,22 @@ export async function fetchCachedUrl(path: string, versionId: string): Promise<s
   return URL.createObjectURL(blob);
 }
 
-
-
+/**
+ * Recursively processes and uploads a nested directory structure of files to cloud storage and creates corresponding database entries.
+ *
+ * This function traverses a dictionary representing folders and files, uploads each file to S3 (or equivalent storage),
+ * creates file and folder records in the database, and supports cancellation and upload progress tracking.
+ *
+ * @param {Record<string, any>} dict - The nested directory object where keys are folder or file names and values are subfolders or `File` objects.
+ * @param {string} projectId - The ID of the project these files belong to.
+ * @param {string} ownerId - The ID of the user uploading the files.
+ * @param {string} parentId - The ID of the parent folder where the upload starts. If null, uses the root folder.
+ * @param {string} currentPath - The current path within the directory structure used to build full file paths.
+ * @param {React.MutableRefObject<{ isCanceled: boolean; uploadedFiles: { storageKey?: string, fileId?: string }[] }>} [uploadTaskRef] - A mutable ref to track cancellation and files uploaded so far.
+ * @param {(percent: number) => void} [setProgress] - Optional function to update the upload progress percentage.
+ *
+ * @returns {Promise<void>} A Promise that resolves when the upload is complete or rejects if canceled or an error occurs.
+ */
 
 export async function processAndUploadFiles(
   dict: Record<string, any>,
@@ -260,6 +297,13 @@ export async function processAndUploadFiles(
 }
 
 
+/**
+ * Restores a soft-deleted file by setting `isDeleted` to 0.
+ *
+ * @param {string} fileId - The file's unique identifier.
+ * @param {string} versionId - The version ID of the file.
+ * @param {string} projectId - The project ID the file belongs to.
+ */
 
 export async function Restorefile(fileId: string, versionId: string, projectId: string) {
   await client.models.File.update({
@@ -270,6 +314,13 @@ export async function Restorefile(fileId: string, versionId: string, projectId: 
     deletedAt: null
   });
 }
+
+/**
+ * Permanently deletes a file from both storage and the database, including its messages.
+ *
+ * @param {string} fileId - The unique ID of the file.
+ * @param {string} projectId - The project the file belongs to.
+ */
 
 
 export async function hardDeleteFile(fileId: string, projectId: string) {
@@ -307,11 +358,12 @@ export async function hardDeleteFile(fileId: string, projectId: string) {
   }
 }
 
-
-
-
-
-
+/**
+ * Cancels the current upload task and deletes all uploaded files from storage and the database.
+ *
+ * @param {{ storageKey?: string, fileId?: string }[]} uploadedFiles - The list of uploaded files to clean up.
+ * @param {string} projectId - The project ID the files belong to.
+ */
 
 export async function abortUpload(
   uploadedFiles: { storageKey?: string, fileId?: string }[],
@@ -341,12 +393,24 @@ export async function abortUpload(
   console.warn("[ABORT] Upload aborted. Cleaned up uploaded files in reverse order.");
 }
 
-
+/**
+ * Deletes a file entry from the database.
+ *
+ * @param {string} fileId - The file ID to delete.
+ * @param {string} projectId - The project the file belongs to.
+ * @returns {Promise<void>}
+ */
 
  export async function deleteFileFromDB(fileId: string, projectId: string): Promise<void> {
    await client.models.File.delete({fileId, projectId});
 }
 
+/**
+ * Retrieves all files for a specific project from the database.
+ *
+ * @param {string} projectId - The project ID to filter by.
+ * @returns {Promise<Schema["File"]["type"][]>} - A list of file records.
+ */
 
 //PD : I updated this function to use 'filter' attribute
 export async function listFilesForProject(projectId: string) {
@@ -361,8 +425,16 @@ export async function listFilesForProject(projectId: string) {
     console.error("Error fetching files for project:", error);
     return [];
   }
+
 }
 
+/**
+ * Lists files for a given project under specified parent IDs.
+ *
+ * @param {string} projectId - Project to search under.
+ * @param {string[]} parentIds - List of parent folder IDs to query.
+ * @returns {Promise<Schema["File"]["type"][]>}
+ */
 export async function listFilesForProjectAndParentIds(projectId: string, parentIds: string[]){
 
   try {
@@ -388,6 +460,14 @@ export async function listFilesForProjectAndParentIds(projectId: string, parentI
   }
 }
 
+/**
+ * Removes a tag from a file.
+ *
+ * @param {string} id - File ID.
+ * @param {string | undefined} projectId - Project ID.
+ * @param {string} name - Tag to remove.
+ * @param {Nullable<string>[] | null | undefined} currTags - Existing list of tags.
+ */
 export async function deleteTag(id: string, projectId: string | undefined, name: string, currTags: Nullable<string>[] | null | undefined) {
   try {
     ////console.log("Here!")
@@ -406,6 +486,16 @@ export async function deleteTag(id: string, projectId: string | undefined, name:
     console.error("Error removing tag for file:", error)
   }
 }
+
+
+/**
+ * Adds a tag to a file.
+ *
+ * @param {string} id - File ID.
+ * @param {string | undefined} projectId - Project ID.
+ * @param {Nullable<string>[] | null | undefined} currTags - Current tags on the file.
+ * @param {string} name - Tag name to add.
+ */
 
 export async function createTag(id: string, projectId: string | undefined, currTags: Nullable<string>[] | null | undefined, name: string){
   try {
@@ -436,7 +526,14 @@ export async function createTag(id: string, projectId: string | undefined, currT
 
 }
 
-
+/**
+ * Searches files by name and tag within a project.
+ *
+ * @param {string} projectId - Project scope.
+ * @param {string[]} fileNames - File names to search.
+ * @param {string[]} tagNames - Tags to match.
+ * @returns {Promise<Schema["File"]["type"][]>}
+ */
 
 export async function searchFiles(projectId: string, fileNames: string[], tagNames: string[]){
   try {
@@ -447,6 +544,15 @@ export async function searchFiles(projectId: string, fileNames: string[], tagNam
     console.error("Error searching for files:", error)
   }
 }
+
+/**
+ * Returns the filepath of a given file by ID.
+ *
+ * @param {string} fileId - File ID.
+ * @param {string} projectId - Project ID.
+ * @returns {Promise<string>} - The path or fallback root path.
+ */
+
 
 export async function getPathForFile(fileId: string, projectId: string){
   try {
@@ -466,6 +572,14 @@ export async function getPathForFile(fileId: string, projectId: string){
   }
 }
 
+
+/**
+ * Builds the full file ID path from a given file up to the root.
+ *
+ * @param {string} fileId - The file ID to trace from.
+ * @param {string} projectId - The project scope.
+ * @returns {Promise<{id: string, filepath: string}[] | undefined>}
+ */
 //recursively calls itself to receive a path of parent fileIds from a given fileId, going all the way to root
 //TODO Dangerous?
 //TODO SLOW
@@ -493,6 +607,16 @@ export async function getFileIdPath(fileId: string, projectId: string): Promise<
   }
 }
 
+
+
+/**
+ * Retrieves only the filepath for a given file ID.
+ *
+ * @param {string} fileId - The file ID.
+ * @param {string} projectId - The project ID.
+ * @returns {Promise<string | undefined>}
+ */
+
 export async function getFilePath(fileId: string, projectId: string){
   try {
     const filePath = await client.models.File.get({
@@ -513,6 +637,15 @@ export async function getFilePath(fileId: string, projectId: string){
 
 }
 
+/**
+ * Lists all files under a given filepath prefix.
+ *
+ * @param {string} projectId - Project ID.
+ * @param {string} filepath - The path prefix to search under.
+ * @returns {Promise<Schema["File"]["type"][]>}
+ */
+
+
 export async function getFileChildren(projectId: string, filepath: string){
   try {
     const files = await client.models.File.listFileByProjectIdAndFilepath({
@@ -525,6 +658,15 @@ export async function getFileChildren(projectId: string, filepath: string){
   }
 
 }
+
+/**
+ * Triggers a minimal update to refresh the file subscription.
+ *
+ * @param {string} fileId - File ID.
+ * @param {string} projectId - Project ID.
+ * @param {string} filepath - New or existing filepath.
+ */
+
 export async function pokeFile(fileId: string, projectId: string, filepath: string){
   try {
 
@@ -540,6 +682,17 @@ export async function pokeFile(fileId: string, projectId: string, filepath: stri
   }
 
 }
+
+/**
+ * Batch updates file paths and parents in the database.
+ *
+ * @param {string[]} fileIds - IDs of files to update.
+ * @param {string} projectId - Project scope.
+ * @param {string[]} parentIds - New parent IDs.
+ * @param {string[]} filepaths - New file paths.
+ * @returns {Promise<Schema["File"]["type"][]>}
+ */
+
 export async function batchUpdateFilePath(fileIds: string[], projectId: string, parentIds: string[], filepaths: string[]) {
   try {
     const filesBack = await client.mutations.batchUpdateFile({fileIds: fileIds, parentIds: parentIds, projectId: projectId, filepaths: filepaths})
@@ -553,6 +706,13 @@ export async function batchUpdateFilePath(fileIds: string[], projectId: string, 
     console.error(`Error performing batch update : `, error)
   }
 }
+
+/**
+ * Retrieves all soft-deleted files for a project.
+ *
+ * @param {string} projectId - The project to filter by.
+ * @returns {Promise<Schema["File"]["type"][]>}
+ */
 
 export async function getFilesByProjectIdAndIsDeleted(projectId: string){
   try {
@@ -571,6 +731,15 @@ export async function getFilesByProjectIdAndIsDeleted(projectId: string){
   }
 
 }
+
+/**
+ * Fetches the list of tags associated with a file.
+ *
+ * @param {string} id - File ID.
+ * @param {string} projectId - Project ID.
+ * @returns {Promise<Nullable<string>[] | undefined>}
+ */
+
 
 export async function getTags(id: string, projectId: string){
   try {
@@ -594,6 +763,12 @@ export async function getTags(id: string, projectId: string){
   }
 }
 
+/**
+ * Creates a new file or folder record in the database.
+ *
+ * @param {Object} params - File metadata and identifiers.
+ * @returns {Promise<any>} - The created record response.
+ */
 
 export async function createFile({
   projectId,
@@ -645,6 +820,16 @@ export async function createFile({
   });
 } // TODO The change I made here may have broken it
 
+
+/**
+ * Creates a new folder with default metadata.
+ *
+ * @param {string} projectId - Project ID.
+ * @param {string} name - Folder name.
+ * @param {string} ownerId - Owner/user ID.
+ * @param {string} parentId - Parent folder's ID.
+ * @param {string} filepath - Full folder path.
+ */
 export async function createFolder(
   projectId: string,
   name: string,
@@ -674,30 +859,13 @@ export async function createFolder(
 
 }
 
-// Retrieve the latest version of a file using the composite primary key
-//export async function getLatestFileVersion(fileId: string) {
-//  try {
-//    const response = await client.models.File.listFileByLogicalIdAndVersionId(
-//        {logicalId: fileId // Query all versions with the same fileId
-//    });
-//
-//    if (response.data.length === 0) {
-//      new Error("No versions found for this file.");
-//    }
-//
-//    //Sort by versionId in descending order
-//    const sortedVersions = response.data.sort((a, b) =>
-//      parseInt(b.versionId) - parseInt(a.versionId)
-//    );
-//
-//    return sortedVersions[0].versionId; // Return the latest version
-//  } catch (error) {
-//    console.error("Error retrieving the latest file version:", error);
-//    throw error;
-//  }
-//}
-
-
+/**
+ * Updates a file’s version ID and timestamp in the database.
+ *
+ * @param {string} id - File ID.
+ * @param {string} projectId - Project ID.
+ * @param {string} versionId - New version ID to set.
+ */
 
 export async function updatefile(id: string, projectId: string, versionId: string) {
   try{  
@@ -716,6 +884,14 @@ export async function updatefile(id: string, projectId: string, versionId: strin
     }
 }
 
+
+/**
+ * Marks a file as deleted by setting `isDeleted = 1` and recording the deletion time.
+ *
+ * @param {string} id - File ID.
+ * @param {string} version - Version ID.
+ * @param {string} projectId - Project ID.
+ */
 
 export async function deleteFile(id: string, version: string, projectId: string) {
   try {
@@ -743,41 +919,3 @@ export async function deleteFile(id: string, version: string, projectId: string)
     alert("An error occurred while deleting the file. Please try again.");
   }
 }
-
-//export async function displayFiles(files: Array<Schema["File"]["type"]>, showDeleted: boolean) {
-//    return files.filter((file) => file && (showDeleted || !file.isDeleted));
-//  }
-  
-
-//export async function checkAndDeleteExpiredFiles(
-//  files: Array<Schema["File"]["type"]>,
-//  timeSpan: number,
-//  unit: "days" | "hours"
-//) {
-//  try {
-//    const now = new Date();
-//
-//    const expiredFiles = files.filter((file) => {
-//      if (!file.isDeleted || !file.deletedAt) return false;
-//
-//      const deletedAt = new Date(file.deletedAt);
-//      const diffMs = now.getTime() - deletedAt.getTime();
-//
-//      const thresholdMs =
-//        unit === "days" ? timeSpan * 24 * 60 * 60 * 1000 : timeSpan * 60 * 60 * 1000;
-//
-//      return diffMs >= thresholdMs;
-//    });
-//
-//    for (const file of expiredFiles) {
-//      await client.models.File.delete({ fileId: file.fileId, projectId: file.projectId});
-//    }
-//
-//    if (expiredFiles.length > 0) {
-//      alert(`Deleted ${expiredFiles.length} expired files.`);
-//    }
-//  } catch (error) {
-//    console.error("Error checking and deleting expired files:", error);
-//  }
-//}
-//
