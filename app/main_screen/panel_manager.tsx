@@ -61,6 +61,12 @@ export default function PanelManager() {
     changeOverRight(false);
   }
 
+  /**
+   * Allows for the user to resize each of the three panels by clicking and dragging their mouse
+   * Converts percentages of the screen width to pixels, and then back to percentages, as to maintain continuity with 
+   * screen resizes
+   * @param e
+   */
   function resizePanels(e: React.MouseEvent<HTMLDivElement>) {
     if (e.clientX > 30) {
       if (over_left) {

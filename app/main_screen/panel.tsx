@@ -4,8 +4,9 @@ import FilePanel from '@/app/main_screen/[pid]/[id]/file_panel'
 import ProjectPanel from './[pid]/[id]/project_panel'
 
 
-
-
+/**
+ * Interface for any panel. Used to create projectPanel, filePanel, and chatPanel
+ */
 interface Props{
     type: number;
     backgroundColor: string;

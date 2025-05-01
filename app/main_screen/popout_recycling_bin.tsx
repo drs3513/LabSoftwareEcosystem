@@ -5,6 +5,8 @@ import {getFilesByProjectIdAndIsDeleted, hardDeleteFile, Restorefile} from "@/li
 import { formatBytes } from "@/app/main_screen/[pid]/[id]/file_panel";
 import PopoutPanel from "./popout_panel"
 import {Button} from "@aws-amplify/ui-react";
+import { generateClient } from "aws-amplify/api";
+import type { Schema } from "@/amplify/data/resource";
 
 interface props {
     initialPosX: number;
@@ -12,6 +14,7 @@ interface props {
     projectId: string | undefined;
     projectName: string | undefined;
     close: () => void;
+    poke: boolean
 }
 interface fileInfo{
     fileId: string,
@@ -25,12 +28,13 @@ interface fileInfo{
     isDirectory: boolean | null,
     versionId: string
 }
-
-export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, projectName, close}: props) {
+export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, projectName, close, poke}: props) {
     const {setFileId} = useGlobalState()
     const [files, setFiles] = useState<fileInfo[]>([])
 
-
+    /**
+     * Fetches all files for the recycling bin's projectId
+     */
     async function fetchFiles(){
         if(!projectId) return
         const temp_files = await getFilesByProjectIdAndIsDeleted(projectId)
@@ -51,15 +55,24 @@ export default function RecycleBinPanel({ initialPosX, initialPosY, projectId, p
 
     }
 
-
+    /**
+     * useEffect() which fetches files as soon as the popout panel is opened
+     */
     useEffect(() => {
         if(projectId){
             fetchFiles();
-        }
-    }, [projectId]);
 
+        }
+    }, [projectId, poke]);
+
+    /**
+     * Restores the provided file associated with the fileId and versionId passed in to have 
+     * @param fileId
+     * @param versionId
+     */
     async function handleRestore(fileId: string, versionId: string) {
         await Restorefile(fileId, versionId, projectId as string);
+        await fetchFiles()
     }
 
     async function handleHardDelete(fileId: string) {
@@ -151,9 +164,8 @@ const FileLite = styled.div`
 `
 const FileContainer = styled.div`
     width: 100%;
-    height: 100%;
+    height: calc(100% - 3rem);
     overflow: scroll;
-    
 `
 
 const FileContextItem = styled.div`

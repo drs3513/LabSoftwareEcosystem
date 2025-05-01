@@ -247,7 +247,7 @@ export async function processAndUploadFiles(
         }
       }
     } catch (error) {
-      console.error("[FATAL] Upload process exception caught:", error);
+      console.warn("[FATAL] Upload process exception caught:", error);
       await abortUpload(uploadedFiles, projectId);
       throw error;
     }
@@ -270,6 +270,10 @@ export async function Restorefile(fileId: string, versionId: string, projectId: 
     isDeleted: 0,
     deletedAt: null
   });
+
+  const fileToPoke = await getFile(fileId, projectId)
+  if(!fileToPoke) return
+  await pokeFile(fileId, projectId, fileToPoke.filepath)
 }
 
 
@@ -367,14 +371,12 @@ export async function listFilesForProject(projectId: string) {
 export async function listFilesForProjectAndParentIds(projectId: string, parentIds: string[]){
 
   try {
-    const pid2 = parentIds[0]
-
-
     const response = await Promise.all(
         parentIds.map((pid) =>
             client.models.File.listByProjectIdAndParentId({
               projectId,
-              parentId: {eq: pid}
+              parentId: {eq: pid},
+
             })
     ))
     let files = response.flatMap(result => result.data)
@@ -535,9 +537,10 @@ export async function getFileChildren(projectId: string, filepath: string){
       projectId,
       filepath: {beginsWith: filepath}
     })
-    return files.data
+    return files.data?? []
   } catch (error) {
     console.error(`Error retrieving files with filepath prefix : ${filepath} :`, error)
+    return []
   }
 
 }
@@ -588,17 +591,6 @@ export async function getFilesByProjectIdAndIsDeleted(projectId: string){
 
 }
 
-export async function getFilesByParentId(parentId: string){
-  try {
-    const files = await client.models.File.listFilesByParentId({
-      parentId
-    })
-    return files.data
-  } catch (error){
-    console.error(`Error getting files by parentId ${parentId} :`, error)
-  }
-
-}
 
 export async function getTags(id: string, projectId: string){
   try {

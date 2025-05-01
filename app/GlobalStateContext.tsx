@@ -2,6 +2,9 @@
 import React, {createContext, useContext, useState, useEffect, ReactNode, RefObject, useRef} from "react";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 
+/**
+ * Global accessible variables, prevents the need to cascade props needlessly
+ */
 
 interface GlobalStateContextType {
   role: string | null;
@@ -16,11 +19,6 @@ interface GlobalStateContextType {
   draggingFloatingWindow: RefObject<boolean>;
   messageThread: MessageThread | undefined;
   setMessageThread: (val: MessageThread) => void;
-}
-
-enum MessageThreadType {
-  Project,
-  File
 }
 
 interface MessageThread {

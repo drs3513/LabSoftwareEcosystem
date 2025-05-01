@@ -15,51 +15,45 @@ import WhitelistPanel from '@/app/main_screen/popout_whitelist_user_panel'
 import {ContextMenu, ContextMenuWrapper, ContextMenuItem} from '@/app/main_screen/context_menu_style'
 
 const client = generateClient<Schema>();
+/**
+ * Compares the names of two projects
+ * @param project_1 first project to compare
+ * @param project_2 second project to compare
+ * @returns project_1 > project_2
+ */
+function compare_project_name(project_1: project, project_2: project){
+  return project_1.projectName.localeCompare(project_2.projectName)
+}
 
+interface project {
+  projectId: string;
+  projectName: string
+}
 export default function ProjectPanel() {
   const { setRole, setProjectId, projectId, userId, setFileId, setMessageThread } = useGlobalState();
   const router = useRouter()
   const routerSearchParams = useSearchParams();
   const { user } = useAuthenticator();
-  const [projects, setProjects] = useState<Array<{ projectId: string; projectName: string }>>([]);
+  const [projects, setProjects] = useState<project[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [contextMenu, setContextMenu] = useState<{
-    visible: boolean;
     x: number;
     y: number;
     projectId: string | null;
     projectName: string | null
-  }>({
-    visible: false,
-    x: 0,
-    y: 0,
-    projectId: null,
-    projectName: null
-  });
-  const [contextMenuProjectId, setContextMenuProjectId] = useState<string | undefined>(undefined);
+  } | undefined>(undefined);
 
   const [displayedWhitelistPanels, setDisplayedWhitelistPanels] = useState<{projectId: string, projectName: string}[]>([])
 
-  function handleRightClick(event: React.MouseEvent, projectId: string, projectName: string) {
-    event.preventDefault();
-    setContextMenu({
-      visible: true,
-      x: event.clientX,
-      y: event.clientY,
-      projectId,
-      projectName
-    });
-  }
 
-  useEffect(() => {
-    const hideMenu = () => setContextMenu({ visible: false, x: 0, y: 0, projectId: null, projectName: null });
-    window.addEventListener("click", hideMenu);
-    return () => window.removeEventListener("click", hideMenu);
-  }, []);
-
+  /**
+   * Deletes project with given projectId.
+   * Ensures that the user must ensure that they would like to delete the project twice prior to the deletion going through
+   * @param projectId
+   */
   async function handleDeleteProject(projectId: string) {
     try {
-      console.log("deleting project:", projectId);
+      if(!confirm("Are you sure you would like to delete this project?") || !confirm("Are you especially sure you would like to delete this project?")) return
       await hardDeleteProject(projectId);
       setProjects((prev) => prev.filter((p) => p.projectId !== projectId));
       if (projectId === contextMenu?.projectId) {
@@ -69,7 +63,7 @@ export default function ProjectPanel() {
     } catch (err) {
       console.error("Failed to delete project:", err);
     } finally {
-      setContextMenu({ visible: false, x: 0, y: 0, projectId: null, projectName: null });
+      setContextMenu({ x: 0, y: 0, projectId: null, projectName: null });
     }
   }
   
@@ -130,6 +124,12 @@ export default function ProjectPanel() {
     router.push(`/main_screen/?pid=${projectId}&id=ROOT-${projectId}`, undefined);
   }
 
+  /**
+   * Observes changes to the Whitelist table on the userId of the current user
+   * Whenever a whitelist record is affected which contains the current user, updates the project view
+   * If the project which the user is currently viewing is not allowed by this whitelist query, kicks user out of page
+   */
+
   const observeProjects = async () => {
     if (!userId) return;
 
@@ -148,9 +148,7 @@ export default function ProjectPanel() {
             // Redirect user if they are removed from the current project
             
             const isWhitelisted = await isUserWhitelistedForProject(userId, projectId!);
-            //console.log("Is user whitelisted:", isWhitelisted);
-            //console.log("Project ID:", projectId);
-            //console.log("User ID:", userId);
+
             if (!isWhitelisted) {
               //console.log("rerouting the user to the main page!");
               setProjectId("");
@@ -173,10 +171,15 @@ export default function ProjectPanel() {
     return () => subscription.unsubscribe();
   };
 
+  /**
+   * Creates a context menu containing the information of the selected project
+   * @param e
+   * @param projectId
+   * @param projectName
+   */
   function createContextMenu(e: React.MouseEvent<HTMLDivElement>, projectId: string, projectName: string) {
     e.preventDefault()
     setContextMenu({
-      visible: true,
       x: e.clientX,
       y: e.clientY,
       projectId,
@@ -185,10 +188,16 @@ export default function ProjectPanel() {
 
 
   }
+  /***
+   useEffect() observing 'contextMenu'
 
+   Action : If the 'contextMenu' state is ever initiated on a project, then listen for any other mouse clicks, in the
+   case of one, close the contextMenu
+
+   ***/
   useEffect(() => {
     const handleClickOutside = () => {
-      setContextMenuProjectId(undefined);
+      setContextMenu(undefined);
     };
     document.addEventListener("click", handleClickOutside);
     document.addEventListener("contextmenu", handleClickOutside);
@@ -196,7 +205,7 @@ export default function ProjectPanel() {
       document.removeEventListener("click", handleClickOutside);
       document.removeEventListener("contextmenu", handleClickOutside);
     };
-  }, [contextMenuProjectId]);
+  }, [contextMenu]);
 
   return (
       <>
@@ -204,7 +213,7 @@ export default function ProjectPanel() {
         {loading ? (
           <LoadingText>Loading projects...</LoadingText>
         ) : projects.length > 0 ? (
-          projects.map((project) => (
+          projects.sort(compare_project_name).map((project) => (
                 <Project
                   key={project.projectId}
                   $selected={project.projectId === projectId}
@@ -234,15 +243,16 @@ export default function ProjectPanel() {
                         close={() => setDisplayedWhitelistPanels(displayedWhitelistPanels.filter(panel => panel.projectId != whitelistPanel.projectId))}
                         initialPosX = {50} initialPosY={50}/>
         ))}
-        {contextMenu.visible ?
+        {contextMenu ?
             <ContextMenuWrapper $x={contextMenu.x} $y={contextMenu.y}>
               <ContextMenu>
                 <ContextMenuItem onClick={() => setDisplayedWhitelistPanels([...displayedWhitelistPanels, {projectId: contextMenu.projectId!!, projectName: contextMenu.projectName!!}])}>
-                  Whitelist Users
+                  View Users
                 </ContextMenuItem>
                 <ContextMenuItem onClick={() => setMessageThread({id: contextMenu.projectId!!, label: contextMenu.projectName!!, path: undefined, type: 1})}>
                   Open Chat
                 </ContextMenuItem>
+                
                 <ContextMenuItem onClick={() => handleDeleteProject(contextMenu.projectId!!)}>
                   Delete Project
                 </ContextMenuItem>

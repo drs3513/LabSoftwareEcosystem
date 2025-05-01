@@ -11,6 +11,74 @@ import { useAuthenticator } from "@aws-amplify/ui-react";
 import Image from "next/image";
 import icon_signout from "/assets/icons/exit.svg";
 
+
+
+
+export default function TopBar() {
+  const { userId } = useGlobalState();
+  const [showOptions, setShowOptions] = useState(false);
+  const { signOut } = useAuthenticator();
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * useEffect() which removes dropdown menus whenever the mouse is clicked
+   */
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowOptions(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+
+  /**
+   * Creates a project with the provided name
+   */
+  async function handleCreateProject() {
+    const projectName = prompt("Enter Project Name:");
+    if (!projectName || !userId) return;
+    const project = await createProject(userId as string, projectName);
+    const initWhitelist = await whitelistUser(project.data!.projectId, userId, Role.HEAD);
+    if (!initWhitelist) {
+      alert("Error creating project, please try again later.");
+      return;
+    }
+  }
+
+
+  /**
+   * Ensures that only a single dropdown is active at a time
+   */
+  const toggleOptions = () => {
+    setShowOptions((prev) => !prev);
+  };
+
+
+
+
+  return (
+    <Top_Bar ref={dropdownRef}>
+      <Top_Bar_Group>
+        <Top_Bar_Item onClick={toggleOptions}>
+          Projects
+          {showOptions && (
+            <Dropdown>
+              <DropdownItem onClick={handleCreateProject}>Create Project</DropdownItem>
+            </Dropdown>
+          )}
+        </Top_Bar_Item>
+      </Top_Bar_Group>
+
+      <SignOutButton onClick={signOut}><Image src={icon_signout} alt="" height="36" objectPosition='fill'></Image></SignOutButton>
+    </Top_Bar>
+  );
+}
 const Top_Bar = styled.div`
   background-color: #AFC1D0;
   border-bottom: 2px solid #D7DADD;
@@ -77,65 +145,3 @@ const SignOutButton = styled.div`
     transition: 0.2s;
   }
 `;
-
-
-export default function TopBar() {
-  const { userId } = useGlobalState();
-  const [showOptions, setShowOptions] = useState(false);
-  const { signOut } = useAuthenticator();
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Handle clicks outside to close dropdowns
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowOptions(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
-
-
-
-  async function handleCreateProject() {
-    const projectName = prompt("Enter Project Name:");
-    if (!projectName || !userId) return;
-    const project = await createProject(userId as string, projectName);
-    const initWhitelist = await whitelistUser(project.data!.projectId, userId, Role.HEAD);
-    if (!initWhitelist) {
-      alert("Error creating project, please try again later.");
-      return;
-    }
-  }
-
-
-
-  // Ensure only one dropdown is open at a time
-  const toggleOptions = () => {
-    setShowOptions((prev) => !prev);
-  };
-
-
-
-
-  return (
-    <Top_Bar ref={dropdownRef}>
-      <Top_Bar_Group>
-        <Top_Bar_Item onClick={toggleOptions}>
-          Projects
-          {showOptions && (
-            <Dropdown>
-              <DropdownItem onClick={handleCreateProject}>Create Project</DropdownItem>
-            </Dropdown>
-          )}
-        </Top_Bar_Item>
-      </Top_Bar_Group>
-
-      <SignOutButton onClick={signOut}><Image src={icon_signout} alt="" height="36" objectPosition='fill'></Image></SignOutButton>
-    </Top_Bar>
-  );
-}

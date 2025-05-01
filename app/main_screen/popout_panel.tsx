@@ -10,7 +10,10 @@ interface props {
     children?: React.ReactNode;
 }
 
-
+/**
+ * Interface for any Popout Panel (also known as floating windows). Reusable, and removes complexity when maintaining multiple
+ * detailed popout panels.
+ */
 export default function PopoutPanel({ header, initialPosX, initialPosY, close, children}: props) {
     if (initialPosX + 400 > document.documentElement.offsetWidth) {
         initialPosX = document.documentElement.offsetWidth - 400;
@@ -31,7 +34,10 @@ export default function PopoutPanel({ header, initialPosX, initialPosY, close, c
     const initialResizeY = useRef(0);
 
 
-
+    /**
+     * Starts the drag of the panel's location
+     * @param e
+     */
     function handleStartDrag(e: React.DragEvent<HTMLDivElement>){
         const panel = e.currentTarget as HTMLDivElement
         const panelBoundingBox = panel.getBoundingClientRect()
@@ -41,12 +47,21 @@ export default function PopoutPanel({ header, initialPosX, initialPosY, close, c
 
     }
 
+    /**
+     * Places the panel at the location the drag ended
+     * @param e
+     */
     function handleEndDrag(e: React.DragEvent<HTMLDivElement>){
         setPosX(e.pageX - initialXDiff.current)
         setPosY(e.pageY - initialYDiff.current)
         draggingFloatingWindow.current = false
     }
 
+    /**
+     * Handles the resizement of the current panel
+     * If the panel is resized to a level below that which is 'acceptible' (400 x 400), prevents that resizement
+     * @param e
+     */
     function handleResize(e: React.DragEvent<HTMLDivElement>) {
         draggingFloatingWindow.current = false;
         const newWidth = panelWidth-((posX + panelWidth) - e.pageX)
@@ -130,6 +145,7 @@ const PanelContainer = styled.div.attrs<{$posX: number, $posY: number, $width: n
 const Header = styled.div`
     width: 100%;
     min-width: fit-content;
+    height: 3rem;
     padding: 10px;
     padding-right: 36px;
     background-color: #AFC1D0;

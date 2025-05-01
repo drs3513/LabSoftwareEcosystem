@@ -14,6 +14,10 @@ import {useRouter} from "next/navigation";
 
 const client = generateClient<Schema>();
 
+/**
+ * Sign in page
+ * @constructor
+ */
 export default function App() {
 
   const { user } = useAuthenticator();

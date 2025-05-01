@@ -1,4 +1,7 @@
 import styled from 'styled-components'
+/**
+ * Frequently reused styles for context menus
+ **/
 export const ContextMenuExitButton = styled.button`
   border: none;
   font: inherit;

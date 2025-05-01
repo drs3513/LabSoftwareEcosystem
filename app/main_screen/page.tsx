@@ -13,6 +13,10 @@ const Body = styled.div`
     overflow-y: hidden;
     margin: 0;
 `
+/**
+ * 'main_screen' page
+ * @constructor
+ */
 export default function Home() {
   return (
       <Body>

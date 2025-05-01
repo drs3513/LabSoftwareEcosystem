@@ -29,6 +29,21 @@ interface Props {
   ) => void;
 }
 
+/**
+ * Maps versions of a file to visible objects, any click action on a version downloads it
+ * @param fileName
+ * @param logicalId
+ * @param storageId
+ * @param ownerId
+ * @param projectId
+ * @param versions
+ * @param currentVersionId
+ * @param initialPosX
+ * @param initialPosY
+ * @param close
+ * @param onDownloadVersion
+ * @constructor
+ */
 export default function VersionPanel({
   fileName,
   logicalId,

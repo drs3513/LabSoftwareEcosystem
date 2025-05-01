@@ -35,34 +35,22 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
     const [users, setUsers] = useState<Array<{ userId: string; username: string; email: string }>>([]);
     const [potentialUsers, setPotentialUsers] = useState<Array<{ userId: string; username: string; email: string }>>([]);
     const client = generateClient<Schema>();
+
+    //Role of the right-clicked user
     const [contextMenuUser, setContextMenuUser] = useState<{ userId: string; username: string; email: string } | undefined>(undefined);
     const [contextMenuPosition, setContextMenuPosition] = useState<number[]>([0,0])
     const [contextMenuUserRole, setContextMenuUserRole] = useState<Role | undefined>(undefined)
     const [loadingDropDownUsers, setLoadingDropdownUsers] = useState<boolean>(false)
-    const role = useRef<Role | undefined>(undefined)
 
+    //Role of the current user
+    const [role, setRole] = useState<Role | undefined>(undefined)
+
+    /**
+     * Sets the currently right-clicked user to have the 'Admin' role
+     * *Only usable if the current user is atleast an admin*
+     **/
     async function handleMakeAdmin() {
-        if (!projectId) {
-            alert("No project selected.");
-            return;
-        }
-        const role = await getUserRole(projectId!, userId!);
-        if (role !== Role.HEAD) {
-            alert("Only the project head can elevate users to admin.");
-            return;
-        }
-        if (!contextMenuUser || !projectId) {
-            alert("No user selected or project ID is missing.");
-            return;
-        }
-        if (!role) {
-            alert("Error with current user's role.");
-            return;
-        }
-        if (contextMenuUserRole === Role.ADMIN) {
-            alert("User is already an admin.");
-            return;
-        }
+        if(!contextMenuUser) return
         const response = await elevateUserToAdmin(projectId, contextMenuUser.userId);
         if (!response) {
             alert("Error elevating user to admin. Please try again later.");
@@ -70,29 +58,12 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
         }
         setContextMenuUser(undefined);
     }
-
+    /**
+     * Sets the currently right-clicked user to have the 'User' role
+     * *Only usable if the current user is atleast an admin*
+     **/
     async function handleRevokeAdmin() {
-        if (!projectId) {
-            alert("No project selected.");
-            return;
-        }
-        const role = await getUserRole(projectId!, userId!);
-        if (role !== Role.HEAD) {
-            alert("Only the project head can revoke admin rights.");
-            return;
-        }
-        if (!contextMenuUser || !projectId) {
-            alert("No user selected or project ID is missing.");
-            return;
-        }
-        if (!role) {
-            alert("Error with current user's role.");
-            return;
-        }
-        if (contextMenuUserRole !== Role.ADMIN) {
-            alert("User is not an admin.");
-            return;
-        }
+        if(!contextMenuUser) return
         const response = await revokeUserAdmin(projectId, contextMenuUser.userId);
         if (!response) {
             alert("Error revoking admin rights. Please try again later.");
@@ -100,25 +71,13 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
         }
         setContextMenuUser(undefined);
     }
-
+    /**
+     * Removes the currently right-clicked user from the project
+     * *Only usable if the current user is atleast an admin*
+     **/
     async function handleRemoveUser() {
-        if (!projectId) {
-            alert("No project selected.");
-            return;
-        }
-        const role = await getUserRole(projectId!, userId!);
-        if (role !== Role.HEAD && role !== Role.ADMIN) {
-            alert("Only the project head or admins can remove users.");
-            return;
-        }
-        if (!contextMenuUser || !projectId) {
-            alert("No user selected or project ID is missing.");
-            return;
-        }
-        if (!role) {
-            alert("Error with current user's role.");
-            return;
-        }
+        if(!contextMenuUser) return
+        if(!role) return
         const success = await removeWhitelistedUser(projectId, contextMenuUser.userId, role);
         if (success) {
             alert("User removed from whitelist successfully!");
@@ -127,16 +86,15 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
         }
     }
 
-
+    /**
+     * Retrieves all users whitelisted for the panel's associated projectId
+     * If the current user's role in the project is not already known, retrieves that as well
+     **/
     const fetchUsers = async () => {
         if(!userId) return
         try {
-            if(!role.current){
-                role.current = await getUserRole(projectId, userId);
-            }
-            if (!role.current) {
-                //console.log("User " + userId + " does not have a role for project " + props.projectId);
-                return;
+            if(!role){
+                setRole(await getUserRole(projectId, userId))
             }
             const response = await listUsersInProject(projectId, true);
             if (response) {
@@ -147,7 +105,9 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
             console.error("Error fetching users:", error);
         }
     };
-
+    /**
+     * Subscription to the whitelisted users of the panel's associated projectId
+     **/
     const observeWhitelistedUsers = () => {
         const subscription = client.models.Whitelist.observeQuery({
             filter: {
@@ -165,6 +125,11 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
 
         return () => subscription.unsubscribe();
     };
+
+    /**
+     * useEffect() which fetches users as soon as the panel is displayed, as well as creating a subscription on the
+     * currently whitelisted users
+     **/
     useEffect(() => {
         if (displayed && userId) {
             fetchUsers();
@@ -176,13 +141,11 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
 
 
 
-
+    /**
+     * Whitelists a user to the project to have the role "User"
+     * *Only usable if the user is atleast an admin*
+     **/
     async function handleWhitelistUser(addingUserId: string, addingUserEmail: string) {
-        const role = await getUserRole(projectId, userId!)
-        if (role !== Role.HEAD && role !== Role.ADMIN) {
-            alert("Only the project head or admins can whitelist users.");
-            return;
-        }
         const success = await whitelistUser(projectId, addingUserId , Role.USER);
         if (success) {
             alert(addingUserEmail + " successfully whitelisted to project");
@@ -193,6 +156,9 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
 
     }
 
+    /**
+     * Retrieves all users which are not whitelisted for the project
+     **/
     async function handleGetWhitelistableUsers() {
         if(potentialUsers.length > 0){
             setPotentialUsers([])
@@ -207,6 +173,9 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
         setPotentialUsers(usersFound.map(user => ({userId: user.userId, username: user.username, email: user.email})))
     }
 
+    /**
+     * Creates a context menu with the associated information required
+     **/
     async function createContextMenu(e: React.MouseEvent<HTMLDivElement>, user: { userId: string; username: string; email: string }){
         e.preventDefault()
         setContextMenuUser(user)
@@ -216,19 +185,27 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
 
         return
     }
-
+    /**
+     * Compares whether or not the current user has a greater role than the selected user in a contextMenu
+     *
+     * Head > Admin > User > None
+     **/
     function compareRoles() {
-        if(role.current == Role.USER || role.current == Role.NONE){
+        if(role == Role.USER || role == Role.NONE){
             return false
         }
-        if(role.current == Role.ADMIN){
+        if(role == Role.ADMIN){
             return contextMenuUserRole == Role.USER || contextMenuUserRole == Role.NONE
         }
-        return role.current == Role.HEAD;
+        return role == Role.HEAD;
 
 
     }
 
+    /**
+     * Converts a "Role" enum to camelCase
+     * @param toConvertRole
+     **/
     function roleToCamelCase(toConvertRole: Role) {
         if(toConvertRole == Role.HEAD){
             return "Head"
@@ -239,8 +216,12 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
         if(toConvertRole == Role.USER) {
             return "User"
         }
-        return "None?"
+        return "None"
     }
+
+    /**
+     * useEffect() which observes clicks by the mouse, If the contextMenu is open, then closes the contextMenu
+     **/
     useEffect(() => {
         const handleClickOutside = () => {
             setContextMenuUser(undefined);
@@ -263,36 +244,40 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
             header={`Whitelist | ${projectName}`}
         >
             <ViewContainer>
-                <UserButton onClick={handleGetWhitelistableUsers}>Add User
-                    {
-                        potentialUsers.length > 0 ? (
-                                <Dropdown>
-                                    {
-                                        potentialUsers.map((user) => ((
-                                            <UserItem
-                                                key={user.userId}
-                                                onClick={(e) => {
-                                                    e.stopPropagation(); // Prevent the click from closing the panel
-                                                    handleWhitelistUser(user.userId, user.email)
-                                                }}
+                {
+                    (role == Role.ADMIN || role == Role.HEAD) && (
+                        <UserButton onClick={handleGetWhitelistableUsers}>Add User
+                            {
+                                potentialUsers.length > 0 ? (
+                                    <Dropdown>
+                                        {
+                                            potentialUsers.map((user) => ((
+                                                <UserItem
+                                                    key={user.userId}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation(); // Prevent the click from closing the panel
+                                                        handleWhitelistUser(user.userId, user.email)
+                                                    }}
 
-                                            >
-                                                <strong>{user.username}</strong> ({user.email})
-                                            </UserItem>
-                                        )))
-                                    }
-                                </Dropdown>
-                            ): loadingDropDownUsers && (
-                            <Dropdown>
-                                <UserItem>
-                                    Loading...
-                                </UserItem>
-                            </Dropdown>
-                            )
+                                                >
+                                                    <strong>{user.username}</strong> ({user.email})
+                                                </UserItem>
+                                            )))
+                                        }
+                                    </Dropdown>
+                                ): loadingDropDownUsers && (
+                                    <Dropdown>
+                                        <UserItem>
+                                            Loading...
+                                        </UserItem>
+                                    </Dropdown>
+                                )
 
-                    }
+                            }
 
-                </UserButton>
+                        </UserButton>
+                    )
+                }
                 <UserList>
 
                      {users.length > 0 ? users.map((user) => (
@@ -340,7 +325,7 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
                                             (
                                                 <>
                                                     {
-                                                        role.current == Role.HEAD && (
+                                                        role == Role.HEAD && (
                                                             <>
                                                                 <ContextMenuItem onClick={handleMakeAdmin}>
                                                                     Make Admin
@@ -355,7 +340,7 @@ export default function WhitelistPanel({projectId, projectName, displayed, close
                                                         )
                                                     }
                                                     {
-                                                        role.current == Role.ADMIN && compareRoles() && (
+                                                        role == Role.ADMIN && compareRoles() && (
                                                             <>
                                                                 <ContextMenuItem onClick={handleMakeAdmin}>
                                                                     Make Admin

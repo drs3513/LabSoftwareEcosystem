@@ -15,7 +15,11 @@ const Body = styled.body`
     padding: 0;
 `
 
-
+/**
+ * Default page layout
+ * @param children
+ * @constructor
+ */
 export default function RootLayout({
   children,
 }: {

@@ -279,7 +279,7 @@ export default function FilePanel() {
   const [selectedFileGroup, setSelectedFileGroup] = useState<number[] | undefined>(undefined)
 
 
-  const timer = useRef(setTimeout(() => {}, 500));
+  const longPressTimer = useRef(setTimeout(() => {}, 500));
 
   const timerGetFiles = useRef(setTimeout(() => {}, 500))
 
@@ -290,7 +290,7 @@ export default function FilePanel() {
 
   const [displayConflictModal, setDisplayConflictModel] = useState(false);
 
-  const conflictModalData = useRef<{fileName: string, onResolve: (choice: "overwrite" | "version" | "cancel" | null, all: boolean) => void} | undefined>(undefined)
+  const conflictModalData = useRef<{fileName: string, onResolve: (choice: "rename" | "overwrite" | "version" | "cancel" | null, all: boolean) => void} | undefined>(undefined)
 
 
   const shiftKey = useRef(false)
@@ -298,7 +298,7 @@ export default function FilePanel() {
 
   const [dragOverFileId, setDragOverFileId] = useState<string | undefined>(undefined);
 
-  const [activeRecyclingBins, setActiveRecyclingBins] = useState<{projectId: string, projectName: string}[]>([])
+  const [activeRecyclingBins, setActiveRecyclingBins] = useState<{projectId: string, projectName: string, poke: boolean}[]>([])
 
   /**
    * Returns the associated .svg file for a given file, if file type is within the set of file types which an icon has
@@ -551,6 +551,7 @@ export default function FilePanel() {
           toRemoveLoadingParents.push(file.parentId)
         }
       }
+
       setLoadingParentIds([...loadingParentIds].filter(loadingParent => !toRemoveLoadingParents.includes(loadingParent.id)))
       return groupedFiles;
     }, 600)
@@ -625,7 +626,6 @@ export default function FilePanel() {
       setRootParentId(root_id);
       setActiveParentIds([{ id: root_id, depth: 0 }]);
       const file = await getFile(root_id, proj_id)
-      console.log(file)
 
       if(file) {
         setCurrentParent({
@@ -696,7 +696,7 @@ export default function FilePanel() {
    *
    * Solution : Check to see if the query observes even a single file which is different than what is saved
    * If the above is true, then create a timer which waits 400ms, and then fetches all open files
-   * The timer is to prevent multiple observeQuery() invocations in quick successions from creating multiple fetches
+   * The timer is to prevent multiple () invocations in quick successions from creating multiple fetches
    */
   const observeFiles = () => {
     const subscription = client.models.File.observeQuery({
@@ -937,7 +937,7 @@ export default function FilePanel() {
         task.isCanceled = true;
       },
     };
-    const allChildren = await getFileChildren(projectId, contextMenu.filePath!!);
+    const allChildren = (await getFileChildren(projectId, contextMenu.filePath!!)).filter(f=>f.isDeleted === 0);
     const validFiles = allChildren?.filter(f => !f.isDirectory && f.storageId && f.filepath);
   
     const fileList = validFiles?.map(file => ({
@@ -1012,31 +1012,64 @@ export default function FilePanel() {
   const handleDownloadSelected = async () => {
     if (!projectId || !selectedFileGroup) return;
 
-    const task: ZipTask = {
-      isCanceled: false,
-      cancel() {
-        task.isCanceled = true;
-      },
-    };
+    let parentsToDownload: fileInfo[] = []
+    let initialParentsToDownload = selectedFileGroup.map((index) => (files[index]))
+    for(let file of initialParentsToDownload) {
+      if(!initialParentsToDownload.some(f => f.fileId == file.parentId)){
+        parentsToDownload.push(file)
+      }
+    }
+    console.log(parentsToDownload)
+    for (const file of parentsToDownload) {
+      if (!file.isDirectory && file.storageId) {
+        const task = startDownloadTask(file.storageId, (percent) => {
+          setDownloadProgressMap(prev => ({...prev, [file.filename]: percent}));
+        });
 
-    const fileList: { path: string; filename: string }[] = [];
+        activeDownloads.set(file.fileId, task);
 
-    for (const index of selectedFileGroup) {
-      if (!files[index].storageId || files[index].isDirectory) continue;
+        try {
+          const {body} = await task.result;
+          const blob = await body.blob();
 
-      fileList.push({
-        path: files[index].storageId,
-        filename: files[index].filepath.startsWith("/") ? files[index].filepath.slice(1) : files[index].filepath, // Preserve structure
-      });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = file.storageId.split('/').pop() || "download";
+          a.click();
+          URL.revokeObjectURL(url);
+
+        } catch (error) {
+          if (isCancelError(error)) {
+            console.warn(`[CANCELLED] Download cancelled: ${file.fileId}`);
+          } else {
+            console.error(`[ERROR] Download failed: ${file.fileId}`, error);
+          }
+        } finally {
+          activeDownloads.delete(file.fileId);
+        }
+
+      } else {
+
+        const task: ZipTask = {
+          isCanceled: false,
+          cancel() {
+            task.isCanceled = true;
+          },
+        };
+        const allChildren = (await getFileChildren(projectId, file.filepath)).filter(f => f.isDeleted === 0);
+        const validFiles = allChildren?.filter(f => !f.isDirectory && f.storageId && f.filepath);
+
+        const fileList = validFiles?.map(file => ({
+          filepath: file.filepath,         // This is how it appears to the user
+          storageId: file.storageId!,      // This is how we fetch it
+        }));
+
+        await downloadFolderAsZip(file.filename, fileList as [], task);
+
+      }
     }
 
-    if (fileList.length === 0) {
-      console.warn("No downloadable files in current view.");
-      return;
-    }
-
-    const rootName = projectName.current || "project-files";
-    await downloadFolderAsZip(rootName, fileList as [], task);
 
   }
 
@@ -1091,15 +1124,6 @@ export default function FilePanel() {
 
       items.push({ index, item, entry, file });
 
-      //const entryType = entry
-      //    ? entry.isDirectory
-      //        ? "directory"
-      //        : entry.isFile
-      //            ? "file"
-      //            : "unknown"
-      //    : "null";
-
-      //const name = file?.name || "(no fallback file)";
     });
 
     const files: File[] = [];
@@ -1178,20 +1202,21 @@ export default function FilePanel() {
 
   
   /** Processes files and uploads them */
+  /** Processes files and uploads them */
   const handleCreateFile = async (
-    isDirectory: boolean,
-    projectId: string,
-    ownerId: string,
-    parentId: string,
-    files: File[],
-    rootFilePath: string
+      isDirectory: boolean,
+      projectId: string,
+      ownerId: string,
+      parentId: string,
+      files: File[],
+      rootFilePath: string
   ) => {
 
-    let globalDecision: 'overwrite' | 'version' | 'cancel' | null = null;
+    let globalDecision: 'rename' | 'overwrite' | 'version' | 'cancel' | null = null;
     let applyToAll = false;
 
     const showConflictModal = (filename: string) => {
-      return new Promise<'overwrite' | 'version' | 'cancel'>(resolve => {
+      return new Promise<'rename' | 'overwrite' | 'version' | 'cancel'>(resolve => {
         const cleanup = () => {
           setDisplayConflictModel(false);
           conflictModalData.current = undefined;
@@ -1208,17 +1233,17 @@ export default function FilePanel() {
         setDisplayConflictModel(true);
       });
     };
-  
+
     if (!files || files.length === 0) {
       console.error("[ERROR] No files received.");
       return;
     }
-  
+
     const actualRoot = rootFilePath === "/"? "": rootFilePath;
     const currentViewPath = actualRoot.replace(/\/+$/, "");
-  
-    const filePathMap = new Map<string, { fileId: string; logicalId: string }>();
 
+    const filePathMap = new Map<string, { fileId: string; logicalId: string }>();
+    let viewedFolderNames: {initial: string, final: string}[] = []
     // Use the full filepath as-is, no need to start from currentViewPath
     filesRef.current?.forEach((f) => {
       if (f.isDeleted) return;
@@ -1229,8 +1254,19 @@ export default function FilePanel() {
       });
     });
 
-  
+    const retrievedFiles = await listFilesForProjectAndParentIds(projectId, [parentId])
+    retrievedFiles.forEach((f) => {
+      if (f.isDeleted) return;
+      const normalizedPath = f.filepath.replace(/\/+/g, "/");
+      filePathMap.set(normalizedPath, {
+        fileId: f.fileId,
+        logicalId: f.logicalId,
+      });
+    })
+
+
     const folderDict: Record<string, any> = {};
+
     uploadTask.current = {
       isCanceled: false,
       uploadedFiles: [],
@@ -1239,12 +1275,11 @@ export default function FilePanel() {
       },
     };
     setShowProgressPanel(true);
-  
-    for (const file of files) {
+
+    for (let file of files) {
       if (uploadTask.current.isCanceled) {
         break;
       }
-  
       const relativePath = file.webkitRelativePath || file.name;
       const parts = relativePath.split("/").filter(Boolean);
       const fileName = parts.pop()!;
@@ -1252,22 +1287,29 @@ export default function FilePanel() {
       let currentPath = actualRoot;
       let adjustedParts = [...parts];
 
-  
+
       // Rename top-level folder if needed
       if (adjustedParts.length > 0) {
         let baseName = adjustedParts[0];
         let testPath = `${currentPath}/${baseName}`.replace(/\/+/g, "/");
-  
-        while (filePathMap.has(testPath)) {
-          baseName += "-copy";
+        let newNameIndex = 1
+        while (filePathMap.has(testPath) || viewedFolderNames.some(viewedFolderName => viewedFolderName.final == baseName && viewedFolderName.initial != adjustedParts[0])) {
+          baseName = `${adjustedParts[0]}(${newNameIndex})`;
           testPath = `${currentPath}/${baseName}`.replace(/\/+/g, "/");
+          newNameIndex += 1
         }
-  
+        if(!viewedFolderNames.some(viewedFolderName => viewedFolderName.initial == adjustedParts[0])){
+          viewedFolderNames.push({initial: adjustedParts[0], final: baseName})
+        }
         adjustedParts[0] = baseName;
+
+
+
       }
-  
+
       // Traverse folders and build folderDict
       for (const folder of adjustedParts) {
+
         const testPath = `${currentPath}/${folder}`.replace(/\/+/g, "/");
         if (!filePathMap.has(testPath)) {
           if (!currentDict[folder]) currentDict[folder] = { files: {} };
@@ -1276,35 +1318,72 @@ export default function FilePanel() {
           currentPath = testPath;
         }
       }
-      const normalizedFullPath = currentPath
-  ? `${currentPath}/${relativePath}`.replace(/\/+/g, "/")
-    : `/${relativePath}`.replace(/\/+/g, "/");
 
-    // Log the path being checked
-    console.log(`[DEBUG] Checking for conflict at path: "${normalizedFullPath}"`);
+      let normalizedFullPath = currentPath
+          ? `${currentPath}/${relativePath}`.replace(/\/+/g, "/")
+          : `/${relativePath}`.replace(/\/+/g, "/");
 
-    // Log all existing paths in filePathMap
-    //console.log("[DEBUG] Existing paths in filePathMap:");
-    //for (const [key, val] of filePathMap.entries()) {
-    //  console.log(`  → ${key}`);
-    //}
+      // Log the path being checked
+      console.log(`[DEBUG] Checking for conflict at path: "${normalizedFullPath}"`);
 
-    const conflict = filePathMap.get(normalizedFullPath);
+      // Log all existing paths in filePathMap
+      //console.log("[DEBUG] Existing paths in filePathMap:");
+      //for (const [key, val] of filePathMap.entries()) {
+      //  console.log(`  → ${key}`);
+      //}
 
-    // Final result of conflict check
-    if (conflict) {
-      console.log(`[CONFLICT FOUND] "${fileName}" at path "${normalizedFullPath}" matches existing key.`);
-    } else {
-      console.log(`[NO CONFLICT] "${fileName}" at path "${normalizedFullPath}" not found in filePathMap.`);
-    }
+      const conflict = filePathMap.get(normalizedFullPath);
+
+      // Final result of conflict check
+      if (conflict) {
+        console.log(`[CONFLICT FOUND] "${fileName}" at path "${normalizedFullPath}" matches existing key.`);
+      } else {
+        console.log(`[NO CONFLICT] "${fileName}" at path "${normalizedFullPath}" not found in filePathMap.`);
+      }
 
       setShowProgressPanel(false);
-      let decision: 'overwrite' | 'version' | 'cancel' = 'overwrite';
+      let decision: 'rename' | 'overwrite' | 'version' | 'cancel' = 'overwrite';
       if (conflict && !applyToAll) {
         decision = await showConflictModal(file.name);
         if (decision === "cancel") return;
       }
       setShowProgressPanel(true)
+      if (decision == "rename" && conflict) {
+        console.log(files)
+        let newName = fileName
+        let replacementNameIndex = 1
+        let newNameFound = false
+        while(!newNameFound){
+          newNameFound = true
+          if(file.name.includes(".")){
+            newName = file.name.split(".").slice(0,-1).join("") + `(${replacementNameIndex}).` + file.name.split(".").pop()
+          } else {
+            newName = file.name + `(${replacementNameIndex})`
+          }
+          if(parentId in filesByParentId.current){
+            for(let searchingFile of filesByParentId.current[parentId]){
+              if(filesRef.current[searchingFile].filename == newName){
+                newNameFound = false
+              }
+            }
+          } else {
+            for(let searchingFile of retrievedFiles){
+              if(searchingFile.filename == newName){
+                newNameFound = false
+              }
+            }
+          }
+          if(currentDict.files && newName in currentDict.files){
+            newNameFound = false
+          }
+
+          replacementNameIndex += 1
+        }
+        if (!currentDict.files) currentDict.files = {};
+        currentDict.files[newName] = file
+        continue;
+      }
+
       if (decision === "overwrite" && conflict) {
         setUploadProgress(0)
         uploadQueue.current = [{ folderDict, ownerId, projectId, parentId }];
@@ -1325,7 +1404,7 @@ export default function FilePanel() {
         setShowProgressPanel(false);
         continue;
       }
-  
+
       if (decision === "version" && conflict) {
         setUploadProgress(0)
         uploadQueue.current = [{ folderDict, ownerId, projectId, parentId }];
@@ -1339,23 +1418,24 @@ export default function FilePanel() {
         setShowProgressPanel(false);
         continue;
       }
-  
+
       if (!currentDict.files) currentDict.files = {};
       currentDict.files[fileName] = file;
     }
 
     uploadQueue.current?.push({ folderDict, ownerId, projectId, parentId });
-  
+    console.log(folderDict)
+    console.log(uploadTask)
     await processAndUploadFiles(
-      folderDict,
-      projectId,
-      ownerId,
-      parentId,
-      rootFilePath,
-      uploadTask,
-      (percent: number) => {
-        setUploadProgress(percent);
-      }
+        folderDict,
+        projectId,
+        ownerId,
+        parentId,
+        rootFilePath,
+        uploadTask,
+        (percent: number) => {
+          setUploadProgress(percent);
+        }
     );
     uploadQueue.current?.shift();
     setCompletedUploads((prev) => [...prev, 0]);
@@ -1486,8 +1566,24 @@ export default function FilePanel() {
     } else {
       await deleteFile(fileId, file.versionId, projectId);
     }
+    setActiveRecyclingBins([...activeRecyclingBins].map(bin => bin.projectId == projectId ? {projectId: bin.projectId, projectName: bin.projectName, poke: !bin.poke} : bin))
   }
 
+  /**
+   * Deletes all files / folders in the selected file group
+   * @param {number[]} fileGroup - the list of fileIndex's that must be deleted
+   */
+  async function handleDeleteSelected(fileGroup: number[]){
+    setSelectedFileGroup([])
+    let toDeleteFileIds: string[] = []
+
+    for(let index of fileGroup){
+      toDeleteFileIds.push(files[index].fileId)
+    }
+    for(let fileId of toDeleteFileIds){
+      handleDelete(fileId)
+    }
+  }
 
   /**
  * Handles drop logic when a file or folder is released over another folder.
@@ -1507,7 +1603,7 @@ export default function FilePanel() {
     if(!overFileId) return
     observeMouseCoords.current = false
 
-    clearTimeout(timer.current);
+    clearTimeout(longPressTimer.current);
 
     if(pickedUpFileGroup){
 
@@ -1614,8 +1710,8 @@ export default function FilePanel() {
     }
     //console.log(files[filesByFileId.current[currFileId]].filename)
     isLongPress.current = true
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => {
+    clearTimeout(longPressTimer.current)
+    longPressTimer.current = setTimeout(() => {
       if(isLongPress.current){
         observeMouseCoords.current = true
         setMouseCoords({x: e.clientX, y: e.clientY})
@@ -1631,7 +1727,7 @@ export default function FilePanel() {
           setPickedUpFileGroup(appendToFileGroup(selectFile(e, filesByFileId.current[currFileId])))
         }
         isLongPress.current = false
-        clearTimeout(timer.current)
+        clearTimeout(longPressTimer.current)
 
       }}, 400)
 
@@ -1684,7 +1780,7 @@ export default function FilePanel() {
  */
 
   function selectFile(e: React.MouseEvent<HTMLButtonElement>, index: number){
-    clearTimeout(timer.current)
+    clearTimeout(longPressTimer.current)
     isLongPress.current = false
     if(e.detail == 2){
       reorientView(index)
@@ -1740,7 +1836,7 @@ export default function FilePanel() {
  * @param {number} index - The index of the file clicked.
  */
   function selectFileGroup(e: React.MouseEvent<HTMLButtonElement>, index: number){
-    clearTimeout(timer.current)
+    clearTimeout(longPressTimer.current)
     isLongPress.current = false
     if(!selectedFileGroup){
       selectFile(e, index)
@@ -1882,7 +1978,7 @@ export default function FilePanel() {
   async function openCloseFolder(openFileId: string) {
     setSelectedFileGroup(undefined)
     isLongPress.current = false
-    clearTimeout(timer.current)
+    clearTimeout(longPressTimer.current)
     if(search) return
     if(!files[filesByFileId.current[openFileId]].isDirectory) return
     //if openFileId in activeParentIds
@@ -1899,8 +1995,7 @@ export default function FilePanel() {
       const found_active_parent = activeParentIds.find(parent => parent.id === files[filesByFileId.current[openFileId]].parentId)
 
       setActiveParentIds([...activeParentIds, {id: openFileId, depth: found_active_parent? found_active_parent.depth + 1 : 0}])
-
-      if(!files.some(file => file.parentId == openFileId)){
+      if(!files.some(file => file.parentId == openFileId) && (await listFilesForProjectAndParentIds(projectId!!, [openFileId])).some(file=>file.isDeleted==0)){
         setLoadingParentIds([...loadingParentIds, {id: openFileId, depth: found_active_parent? found_active_parent.depth + 1 : 0}])
       }
 
@@ -1998,7 +2093,7 @@ export default function FilePanel() {
     //console.log("This was called")
     isLongPress.current = false;
 
-    clearTimeout(timer.current);
+    clearTimeout(longPressTimer.current);
     e.preventDefault();
 
     setContextMenu({
@@ -2087,7 +2182,7 @@ export default function FilePanel() {
       setActiveRecyclingBins(activeRecyclingBins.filter((bin) => bin.projectId !== projectId))
     } else {
       if(!projectId || !projectName.current) return
-      setActiveRecyclingBins([...activeRecyclingBins, {projectId: projectId, projectName: projectName.current}])
+      setActiveRecyclingBins([...activeRecyclingBins, {projectId: projectId, projectName: projectName.current, poke: false}])
     }
 
   }
@@ -2097,12 +2192,11 @@ export default function FilePanel() {
    * Evaluates whether or not any of the file's parents have been picked up. Works recursively, in the case that only a
    * higher-order parent has been picked up.
   **/
-  //TODO FIX THIS FOR WHEN YOU ARE NOT ON THE ROOT
   function isParentPickedUp(fileId : string): boolean {
     if(!pickedUpFileGroup) return false
-    if(activeParentIds.some(parent => parent.id == files[filesByFileId.current[fileId]].parentId)){
+    if(activeParentIds.some(parent => parent.id === files[filesByFileId.current[fileId]].parentId)){
       if(pickedUpFileGroup.some(pickedUpFileIndex => files[pickedUpFileIndex].fileId === fileId)) return true
-      return !files[filesByFileId.current[fileId]].parentId.startsWith("ROOT") && isParentPickedUp(files[filesByFileId.current[fileId]].parentId)
+      return !(files[filesByFileId.current[fileId]].parentId === rootParentId)!! && isParentPickedUp(files[filesByFileId.current[fileId]].parentId)
     } else {
       return false
     }
@@ -2113,12 +2207,11 @@ export default function FilePanel() {
    * Evaluates whether or not any of the file's parents have been selected. Works recursively, in the case that only a
    * higher-order parent has been picked up.
    **/
-  //TODO FIX THIS FOR WHEN YOU ARE NOT ON THE ROOT
   function isParentSelected(fileId : string): boolean {
     if(!selectedFileGroup) return false
     if(activeParentIds.some(parent => parent.id == files[filesByFileId.current[fileId]].parentId)){
-      if(selectedFileGroup.some(selectedFileIndex => files[selectedFileIndex].fileId === fileId)) return true
-      return !files[filesByFileId.current[fileId]].parentId.startsWith("ROOT") && isParentSelected(files[filesByFileId.current[fileId]].parentId)
+      if(selectedFileGroup.some(selectedFileIndex => selectedFileIndex < files.length && files[selectedFileIndex].fileId === fileId)) return true
+      return !(files[filesByFileId.current[fileId]].parentId === rootParentId)!! && isParentSelected(files[filesByFileId.current[fileId]].parentId)
     } else {
       return false
     }
@@ -2130,7 +2223,6 @@ export default function FilePanel() {
         <PanelContainer
             onContextMenu={(e) => createContextMenu(e, rootParentId!!, undefined, 'Panel', undefined, undefined, undefined, undefined)}
             onMouseUp={(e) => onFilePlace(e, rootParentId)}
-            //onMouseMove = {(e) => {pickedUpFileGroup && observeMouseCoords.current ? setMouseCoords({x: e.clientX, y: e.clientY}) : undefined}}
             onClick = {(e) => e.target == e.currentTarget ? setSelectedFileGroup(undefined) : undefined}
             onDrop={(e) => {
              if (!projectId || !userId || activeParentIds.length === 0) return;
@@ -2280,8 +2372,25 @@ export default function FilePanel() {
           )}
 
           {
+            contextMenu && selectedFileGroup && selectedFileGroup.length > 1 ? (
+                <ContextMenuWrapper $x={contextMenu.x} $y={contextMenu.y}>
+                  <ContextMenu>
+                    <ContextMenuItem
+                        onClick={() => handleDownloadSelected()}>
+                      Download Selected
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                        onClick={() => {
+                          handleDeleteSelected(selectedFileGroup);
+                        }}>
+                      Delete Selected
+                    </ContextMenuItem>
 
-            contextMenu && contextMenu.type == "Panel" ? (
+
+                  </ContextMenu>
+                </ContextMenuWrapper>
+
+                ) : contextMenu && contextMenu.type == "Panel" ? (
                 <ContextMenuWrapper $x={contextMenu.x} $y={contextMenu.y}>
                   <ContextMenu>
                     <ContextMenuItem
@@ -2303,9 +2412,6 @@ export default function FilePanel() {
 
                 <ContextMenuWrapper $x={contextMenu.x} $y={contextMenu.y}>
                   <ContextMenu>
-                    <ContextMenuItem>
-                      Rename
-                    </ContextMenuItem>
                     <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true)}}>
                       Tags
                     </ContextMenuItem>
@@ -2428,6 +2534,7 @@ export default function FilePanel() {
                         activeRecyclingBins.filter((obj) => obj.projectId !== bin.projectId)
                     )
                 }
+                poke={bin.poke}
             />
         ))}
       </>

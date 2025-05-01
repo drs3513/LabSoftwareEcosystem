@@ -7,6 +7,13 @@ import {
 import programmingLanguageExtensions from "@/assets/extensions/programming_languages.json"
 
 
+/**
+ * Compares the extension of the previewed file with a list of known, working extensions
+ * Opens a new page which contains the contents of the file
+ * @param fileName - the name of the file which is being previewed
+ * @param storageId - the storageId of the file which is being previewed
+ * @param versionId - the versionId of the file which is being previewed
+ **/
 export default async function previewFile (fileName: string, storageId: string, versionId: string)  {
     const ext = fileName.split(".").pop()?.toLowerCase();
     if(!ext) return
@@ -96,16 +103,14 @@ export default async function previewFile (fileName: string, storageId: string, 
                             <div class="preview">
                               ${previewContent}
                             </div>
-                            ${
-            isTextLike 
-                ? `<script>
-                                     fetch("${cachedUrl}")
-                                       .then(res => res.text())
-                                       .then(code => {
-                                         document.getElementById("code-block").textContent = code;
-                                       });
-                                   </script>`
-                : `<script> console.log("HERE"); document.getElementById("message").textContent = "Unsupported File Type: " + {ext.length > 0 ? ext : "\"Unknown\""}</script>`
+                            ${isTextLike ? `<script>
+                                                fetch("${cachedUrl}")
+                                                  .then(res => res.text())
+                                                  .then(code => {
+                                                    document.getElementById("code-block").textContent = code;
+                                                  });
+                                            </script>`
+                                    : `<script> console.log("HERE"); document.getElementById("message").textContent = "Unsupported File Type: " + {ext.length > 0 ? ext : "\"Unknown\""}</script>`
         }
                           </body>
                           </html>
