@@ -4,19 +4,26 @@ import styled from "styled-components";
 import { useState, useEffect, useRef } from "react";
 import { whitelistUser, Role } from "@/lib/whitelist";
 import { createProject } from "@/lib/project";
+import { getCurrentUser } from "@/lib/user"
 import { useGlobalState } from "../GlobalStateContext";
 import { useAuthenticator } from "@aws-amplify/ui-react";
+import UserInfoPanel from "./popout_user_info_panel"
 
 //SVG imports
 import Image from "next/image";
 import icon_signout from "/assets/icons/exit.svg";
 
-
+interface userInfoPopoutPanelType{
+  x: number;
+  y: number;
+  userId: string;
+}
 
 
 export default function TopBar() {
   const { userId } = useGlobalState();
-  const [showOptions, setShowOptions] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | undefined>(undefined);
+  const [userInfoPopoutPanel, setUserInfoPopoutPanel] = useState<userInfoPopoutPanelType | undefined>(undefined)
   const { signOut } = useAuthenticator();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -26,7 +33,7 @@ export default function TopBar() {
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowOptions(false);
+        setOpenDropdown(undefined);
       }
     }
 
@@ -36,6 +43,10 @@ export default function TopBar() {
     };
   }, []);
 
+  async function fetchUserInfo(){
+    const user = await getCurrentUser()
+
+  }
 
   /**
    * Creates a project with the provided name
@@ -52,31 +63,38 @@ export default function TopBar() {
   }
 
 
-  /**
-   * Ensures that only a single dropdown is active at a time
-   */
-  const toggleOptions = () => {
-    setShowOptions((prev) => !prev);
-  };
-
-
-
 
   return (
-    <Top_Bar ref={dropdownRef}>
-      <Top_Bar_Group>
-        <Top_Bar_Item onClick={toggleOptions}>
-          Projects
-          {showOptions && (
-            <Dropdown>
-              <DropdownItem onClick={handleCreateProject}>Create Project</DropdownItem>
-            </Dropdown>
-          )}
-        </Top_Bar_Item>
-      </Top_Bar_Group>
+      <>
+        <Top_Bar ref={dropdownRef}>
+          <Top_Bar_Group>
+            <Top_Bar_Item onClick={() => setOpenDropdown("Projects")}>
+              Projects
+              {openDropdown == "Projects" && (
+                <Dropdown>
+                  <DropdownItem onClick={handleCreateProject}>Create Project</DropdownItem>
+                </Dropdown>
+              )}
+            </Top_Bar_Item>
+            {
+              userId && (
+                    <Top_Bar_Item onClick={(e) => {setUserInfoPopoutPanel({x: e.clientX, y: e.clientY, userId: userId});}}>
+                      User
+                    </Top_Bar_Item>
+                )
+            }
 
-      <SignOutButton onClick={signOut}><Image src={icon_signout} alt="" height="36" objectPosition='fill'></Image></SignOutButton>
-    </Top_Bar>
+          </Top_Bar_Group>
+
+          <SignOutButton onClick={signOut}><Image src={icon_signout} alt="" height="36" objectPosition='fill'></Image></SignOutButton>
+        </Top_Bar>
+        {userInfoPopoutPanel && (
+            <UserInfoPanel initialPosX = {userInfoPopoutPanel.x}
+                           initialPosY = {userInfoPopoutPanel.y}
+                           userId = {userInfoPopoutPanel.userId}
+                           close = {() => setUserInfoPopoutPanel(undefined)}/>
+        )}
+      </>
   );
 }
 const Top_Bar = styled.div`

@@ -65,6 +65,22 @@ export async function getCurrentUser() {
     return null;
   }
 }
+
+export async function getUserByUserId(userId: string){
+  try {
+    const userAttributes = await client.models.User.get({
+      userId
+    },
+    {
+      selectionSet: ["userId", "username", "email"]
+    })
+    if(!userAttributes) return
+    return userAttributes.data
+  } catch (error) {
+    console.error(`Error fetching user with userId: ${userId}:`, error)
+  }
+
+}
 /*                    *
  *    Future Work     *
  *                    */
