@@ -54,6 +54,10 @@ export default function ChatPanel() {
   const [hasPreviousPage, setHasPreviousPage] = useState(false);
   const [refreshSearch, setRefreshSearch] = useState(false);
   const routerSearchParams = useSearchParams()
+  //for updating messages
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState<string>("");
+
 
   useEffect(() => {
       //setLoading(true);
@@ -359,13 +363,13 @@ export default function ChatPanel() {
     setContextMenu({ x: e.clientX, y: e.clientY, messageId, msguserId });
   };
 
-  const handleUpdateMessage = async (messageId: string, messageuserId: string)=> {
+  const handleUpdateMessage = async (messageId: string, newContent: string, messageuserId: string)=> {
     setContextMenuTagPopout(false); // Close the tag popout if it's open
     if(messageuserId != userId){
       alert("You do not have acces to this message");
       return;
     }
-    const newContent = prompt("Enter new message content:");
+    //const newContent = prompt("Enter new message content:");
     if (newContent) {
       try {
         await updateMessage(messageId, newContent);
@@ -530,6 +534,17 @@ export default function ChatPanel() {
   }, [contextMenuMessageId]);
 
 
+  const handleEditSubmit = (id: string, newContent: string, messageuserId: string) => {
+    setContextMenuTagPopout(false); // Close the tag popout if it's open
+    if(messageuserId != userId){
+      alert("You do not have acces to this message");
+      return;
+    }
+    setContextMenu(null); // Close the context menu
+    // call your backend or update messages state
+    handleUpdateMessage(id, newContent, messageuserId); 
+  };
+
 
 
   // Function to handle deleting a tag
@@ -579,16 +594,45 @@ export default function ChatPanel() {
                     onContextMenu={msg.deleted ? undefined : (e) => {handleContextMenu(e, msg.messageId, msg.userId); setContextMenuMessageId(msg.messageId); setContextMenuTagPopout(false);}
                     }
                 >
-                  {msg.deleted ? (
-                      <DeletedMessageBox>Message deleted</DeletedMessageBox>
-                  ) : (
-                      <Chat_Body $sender={msg.userId === userId}>
-                        <div>{msg.content}</div>
-                        <ChatSender>{msg.userId === userId ? "You" : msg.email}</ChatSender>
-                        <ChatTimeStamp>{new Date(msg.createdAt).toLocaleDateString()}{" "}{new Date(msg.createdAt).toLocaleTimeString()}</ChatTimeStamp>
-                        {msg.edited && <ChatUpdateStatus>Edited</ChatUpdateStatus>}
-                      </Chat_Body>
-                  )}
+                  {!msg.deleted ? (
+              <Chat_Body $sender={msg.userId === userId}>
+                {editingMessageId === msg.messageId ? (
+                  <ChatEditInput
+                    value={editContent}
+                    autoFocus
+                    onChange={(e) => {setEditContent(e.target.value); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleEditSubmit(msg.messageId, editContent, msg.userId); // You implement this
+                        setEditingMessageId(null);
+                      } else if (e.key === "Escape") {
+                        setEditingMessageId(null);
+                      }
+                    }}
+                    onBlur={() => setEditingMessageId(null)}
+                    style={{
+                      padding: "0.5rem",
+                      borderRadius: "0.375rem",
+                      width: "100%",
+                      border: "1px solid #ccc",
+                    }}
+                  />
+                ) : (
+                  <>
+                    <div>{msg.content}</div>
+                    <ChatSender>{msg.userId === userId ? "You" : msg.email}</ChatSender>
+                    <ChatTimeStamp>
+                      {new Date(msg.createdAt).toLocaleDateString()}{" "}
+                      {new Date(msg.createdAt).toLocaleTimeString()}
+                    </ChatTimeStamp>
+                    {msg.edited && <ChatUpdateStatus>Edited</ChatUpdateStatus>}
+                  </>
+                )}
+              </Chat_Body>
+            ) : (
+              <DeletedMessageBox>Message deleted</DeletedMessageBox>
+            )}
+
                 </ChatMessage>
             ))}
             <div ref={chatEndRef} />
@@ -600,7 +644,11 @@ export default function ChatPanel() {
               <RightContextMenuWrapper $x={window.innerWidth - contextMenu.x} $y={contextMenu.y}>
                 <ContextMenu
                     ref={contextMenuRef}>
-                  <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)} onClick={() => handleUpdateMessage(contextMenu.messageId, contextMenu.msguserId)}>
+                  <ContextMenuItem onClick={() => {
+                    setEditingMessageId(contextMenu.messageId); 
+                    const targetMsg = messages.find((m) => m.messageId === contextMenu.messageId);
+                    setContextMenu(null); // Close the context menu
+                    setEditContent(targetMsg?.content || "")}}>
                     Update
                   </ContextMenuItem>
                   <ContextMenuItem onMouseOver={() => setContextMenuTagPopout(false)} onClick={() => handleDeleteMessage(contextMenu.messageId, contextMenu.msguserId)}>
@@ -779,4 +827,18 @@ const MessagePanelPath = styled.div`
   font-weight: normal;
   color: gray;
   
+`;
+
+const ChatEditInput = styled.input`
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  width: 100%;
+  border: 1px solid #ccc;
+  font-size: 1rem;
+  outline: none;
+
+  &:focus {
+    border-color: #888;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+  }
 `;
