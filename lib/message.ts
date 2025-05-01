@@ -16,6 +16,15 @@ interface Message {
   email?: string;
 }
 
+/**
+ * Creates a new message associated with either a file or a project.
+ *
+ * @param {string} id - The fileId or projectId depending on the type.
+ * @param {string} userId - ID of the user creating the message.
+ * @param {string} content - Message content.
+ * @param {number} type - 0 = file message, 1 = project message.
+ * @returns {Promise<any>} A Promise resolving to the created message.
+ */
 
 export async function createMessage(id: string, userId: string, content: string, type: number) {
   try {
@@ -47,6 +56,13 @@ export async function createMessage(id: string, userId: string, content: string,
   }
 }
 
+/**
+ * Fetches all messages linked to a specific fileId.
+ * (No pagination – use only for non-chat scenarios.)
+ *
+ * @param {string} fileId
+ * @returns {Promise<Message[]>} A list of matching messages.
+ */
 
 export async function getMessagesForFile(fileId: string) {
   try {
@@ -64,22 +80,14 @@ interface PaginatedMessages {
   nextToken: string | null;
 }
 
-
-// export async function getMessagesByFileIdAndPagination(fileId: string, nextToken: string) {
-//   try {
-//     const results = await client.queries.getMessagesByFileId({
-//       fileId: fileId,
-//       nextToken: nextToken,
-//       limit: 10,
-//     });
-//     //console.log("Messages by fileId and pagination:", results);
-//     return results as PaginatedMessages;
-
-//   }catch (error) {
-//     console.error("Error fetching messages by fileId and pagination:", error);
-//     return null;
-//   }
-// }
+/**
+ * Retrieves paginated messages for a file or project using custom AppSync query.
+ *
+ * @param {string | undefined} fileId - The target file ID.
+ * @param {string | undefined} projectId - The target project ID.
+ * @param {string | null} nextToken - The pagination token.
+ * @returns {Promise<{ data: Message[]; nextToken: string | null }>} Paginated result.
+ */
 
 export async function getMessagesByFileIdAndPagination(
   fileId: string | undefined,
@@ -143,7 +151,17 @@ export async function getMessagesByFileIdAndPagination(
     return { data: [], nextToken: null };
   }
 }
-//searchMessages
+
+/**
+ * Performs a search query for messages by content and tags.
+ *
+ * @param {string | undefined} fileId - Optional file ID.
+ * @param {string | undefined} projectId - Optional project ID.
+ * @param {string[]} messageContents - List of keywords to match.
+ * @param {string[]} tagNames - List of tags to filter by.
+ * @returns {Promise<Message[] | undefined>} Matching messages.
+ */
+
 export async function searchMessages(fileId: string | undefined, projectId: string | undefined, messageContents: string[], tagNames: string[]) {
   if(!fileId && !projectId) return
   try{
@@ -169,6 +187,13 @@ export async function searchMessages(fileId: string | undefined, projectId: stri
   }
 }
 
+/**
+ * Updates the content of an existing message.
+ *
+ * @param {string} messageId - The message to update.
+ * @param {string} content - New content.
+ * @returns {Promise<any>}
+ */
 export async function updateMessage(messageId: string, content: string) {
   try {
     const now = new Date().toISOString();
@@ -184,6 +209,14 @@ export async function updateMessage(messageId: string, content: string) {
   }
 }
 
+/**
+ * Updates the tags for a message.
+ *
+ * @param {string} messageId - The message to update.
+ * @param {Nullable<string>[]} tags - New tag list.
+ * @returns {Promise<any>}
+ */
+
 export async function updateMessageTags(messageId: string, tags: Nullable<string>[]){
   try {
     return await client.models.Message.update({
@@ -196,6 +229,13 @@ export async function updateMessageTags(messageId: string, tags: Nullable<string
   }
 
 }
+
+/**
+ * Fetches tags for a given message.
+ *
+ * @param {string} messageId
+ * @returns {Promise<Nullable<string>[]>}
+ */
 
 export async function getTagsForMessage (messageId: string) {
   try {
@@ -212,6 +252,12 @@ export async function getTagsForMessage (messageId: string) {
   }
 }
 
+/**
+ * Soft-deletes a message by setting `isDeleted = true`.
+ *
+ * @param {string} messageId
+ * @returns {Promise<void>}
+ */
 
 export async function deleteMessage(messageId: string) {
   try {
@@ -221,6 +267,13 @@ export async function deleteMessage(messageId: string) {
   }
 }
 
+/**
+ * Permanently deletes all messages linked to a specific file.
+ * Intended to run during file hard deletion.
+ *
+ * @param {string} fileId
+ * @returns {Promise<boolean>} True if successful, false otherwise.
+ */
 
 export async function hardDeleteMessageforFiles(fileId: string) {
   try {

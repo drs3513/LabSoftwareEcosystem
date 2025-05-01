@@ -5,6 +5,16 @@ import JSZip from "jszip";
 
 //const s3Client = new S3Client({ region: "us-east-1" });
 
+/**
+ * Retrieves the latest version ID for a given S3 object key by querying a secure server route
+ * that fetches version data from S3 using temporary credentials.
+ *
+ * Implements exponential backoff on retries.
+ *
+ * @param {string} key - The full S3 key (path) of the file.
+ * @returns {Promise<string | null>} - The latest version ID, or null if not found.
+ */
+
 export async function getFileVersions(key: string): Promise<string | null> {
   const maxRetries = 10;
 
@@ -64,7 +74,15 @@ export async function getFileVersions(key: string): Promise<string | null> {
 
 
 
-// Upload file and return S3 key
+/**
+ * Uploads a file to S3 under the specified user and project directory using Amplify Storage.
+ *
+ * @param {File} file - The file to upload.
+ * @param {string} userId - The user ID (used to generate the upload path).
+ * @param {string} projectId - The project ID (used to generate the upload path).
+ * @param {string} filePath - The full logical file path within the project directory.
+ * @returns {Promise<{ key: string }>} - The resulting S3 storage key.
+ */
 export async function uploadFile(
     file: File,
     userId: string,
@@ -117,6 +135,14 @@ export type ZipTask = {
   isCanceled: boolean;
 };
 
+/**
+ * Downloads multiple files and packages them into a ZIP archive using JSZip, then triggers a browser download.
+ *
+ * @param {string} folderName - The name of the zip file to be generated.
+ * @param {{ filepath: string; storageId: string }[]} fileList - Array of file descriptors.
+ * @param {ZipTask} task - A cancelable task object to interrupt the download process.
+ * @returns {Promise<void>}
+ */
 export async function downloadFolderAsZip(
   folderName: string,
   fileList: { filepath: string; storageId: string }[],
@@ -160,6 +186,14 @@ export async function downloadFolderAsZip(
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Begins a single file download with progress tracking support.
+ *
+ * @param {string} fileKey - The full S3 storage key of the file.
+ * @param {(percent: number) => void} onProgress - Callback function receiving percent progress (0–100).
+ * @returns {ReturnType<typeof downloadData>} - A task-like object for controlling the download.
+ */
+
 export function startDownloadTask(fileKey: string, onProgress: (percent: number) => void) {
   return downloadData({
     path: fileKey,
@@ -177,7 +211,14 @@ export function startDownloadTask(fileKey: string, onProgress: (percent: number)
   });
 }
 
-
+/**
+ * Deletes a file from S3 using Amplify Storage API.
+ *
+ * @param {string} fileKey - The full S3 storage key of the file to delete.
+ * @returns {Promise<void>}
+ *
+ * @throws Will throw an error if deletion fails.
+ */
 export async function deleteFileFromStorage(fileKey: string): Promise<void> {
   try {
     await remove({ path: fileKey });

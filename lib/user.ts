@@ -4,6 +4,12 @@ import {fetchUserAttributes} from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
+/**
+ * Creates a new user in the database using attributes fetched from the authenticated Cognito user.
+ * If the user already exists, this function should not be called.
+ *
+ * @returns {Promise<Schema["User"]["type"] | undefined>} - The newly created user record, or undefined on error.
+ */
 
 export async function createUserFromCognito() {
   try {
@@ -28,13 +34,23 @@ export async function createUserFromCognito() {
   }
 }
 
+/**
+ * Retrieves a list of all users from the User model.
+ *
+ * @returns {Promise<Schema["User"]["type"][]>} - An array of user records from the database.
+ */
 export async function getUsers() {
   const user_list = await client.models.User.list();
   //console.log(user_list);
   return user_list;
 }
 
-
+/**
+ * Fetches the currently authenticated user's attributes from Cognito.
+ *
+ * @returns {Promise<{ userId: string; username: string; email: string; administrator?: string } | null>}
+ *          - The authenticated user's basic attributes, or null on error.
+ */
 export async function getCurrentUser() {
   try {
     const userAttributes = await fetchUserAttributes();
@@ -49,7 +65,9 @@ export async function getCurrentUser() {
     return null;
   }
 }
-
+/*                    *
+ *    Future Work     *
+ *                    */
 //export async function isUserAdmin(userId: string) {
 //  try {
 //    const response = await client.models.User.get({ userId });

@@ -6,6 +6,33 @@ import { NextRequest, NextResponse } from "next/server";
 const s3 = new S3Client({});
 const BUCKET_NAME = output.storage.bucket_name;
 
+
+/**
+ * API endpoint to generate a signed download URL for a specific version of an S3 object.
+ * 
+ * - Uses AWS S3 and `@aws-sdk/s3-request-presigner` to create a presigned URL
+ * - Supports versioned S3 downloads using `VersionId`
+ * - Forces the browser to download the file via `Content-Disposition: attachment`
+ *
+ * @param {NextRequest} req - A Next.js request containing `key` and `versionId` as URL search params.
+ * @returns {Promise<NextResponse>} A redirect to the S3 signed URL or a JSON error response.
+ *
+ * Query Parameters:
+ * - `key` (string): The S3 object key (e.g., `uploads/user123/file.txt`)
+ * - `versionId` (string): The specific S3 version ID to download
+ *
+ * Example:
+ * ```http
+ * GET /api/files?key=uploads/user123/test.txt&versionId=abc123
+ * ```
+ *
+ * Success Response:
+ * - 302 Redirect to signed S3 URL
+ *
+ * Error Responses:
+ * - 400 Bad Request: If key or versionId is missing
+ * - 500 Internal Server Error: If URL signing fails
+ */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const key = searchParams.get("key");

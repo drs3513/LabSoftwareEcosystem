@@ -3,7 +3,17 @@ import type { Schema } from "@/amplify/data/resource";
 import { hardDeleteFile } from "./file";
 
 const client = generateClient<Schema>();
-//console.log(client)
+
+
+/**
+ * Creates a new project with the given name and associates it with the specified user.
+ *
+ * @param {string} userId - The user who owns the project.
+ * @param {string} projectName - The name of the project.
+ * @returns {Promise<Schema["Project"]["create"]>} The created project record.
+ *
+ * @throws Will log and rethrow an error if creation fails.
+ */
 
 export async function createProject(userId: string, projectName: string) {
   try {
@@ -28,6 +38,14 @@ export async function createProject(userId: string, projectName: string) {
 
 
 
+/**
+ * Lists all projects that the user is whitelisted for.
+ *
+ * @param {string} userId - The ID of the user whose projects are being fetched.
+ * @returns {Promise<Schema["Project"]["type"][]>} An array of projects the user can access.
+ *
+ * @throws Will log and rethrow an error if the query fails.
+ */
 
 export async function listProjectsForUser(userId: string) {
   try {
@@ -55,6 +73,12 @@ export async function listProjectsForUser(userId: string) {
 
 
 
+/**
+ * Fetches the name of a project given its project ID.
+ *
+ * @param {string} projectId - The ID of the project.
+ * @returns {Promise<string | undefined>} The project name, or `undefined` if not found.
+ */
 
 export async function getProjectName(projectId: string){
   try {
@@ -70,19 +94,15 @@ export async function getProjectName(projectId: string){
   }
 }
 
-//export async function updateProject(projectId: string, updates: Partial<Schema["Project"]["type"]>) {
-//  try {
-//    return await client.models.Project.update({
-//      projectId,
-//      ...updates,
-//      updatedAt: new Date().toISOString(),
-//    });
-//  } catch (error) {
-//    console.error("Error updating project:", error);
-//    throw error;
-//  }
-//}
-
+/**
+ * Soft-deletes a project by setting `isDeleted` to true and recording the deletion timestamp.
+ * This prompts the user for confirmation via `window.confirm`.
+ *
+ * @param {string} projectId - The ID of the project to delete.
+ * @returns {Promise<void>}
+ *
+ * @throws Will log and rethrow any error encountered during update.
+ */
 
 export async function deleteProject(projectId: string) {
   try {
@@ -99,6 +119,17 @@ export async function deleteProject(projectId: string) {
     throw error;
   }
 }
+
+/**
+ * Permanently deletes a project and all files associated with it.
+ * This function:
+ * 1. Lists all files in the project.
+ * 2. Calls `hardDeleteFile` for each file.
+ * 3. Deletes the project record itself.
+ *
+ * @param {string} projectId - The ID of the project to permanently remove.
+ * @returns {Promise<void>}
+ */
 
 export async function hardDeleteProject(projectId:string){
   const files = await client.models.File.listFileByProjectId({projectId});
