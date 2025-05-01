@@ -18,7 +18,8 @@ import {
   waitForVersionId,
   createFolder,
   fetchCachedUrl,
-    getPathForFile
+    getPathForFile,
+    getFile
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
@@ -32,6 +33,10 @@ import ConflictModal from '../../conflictModal';
 import VersionPanel from "@/app/main_screen/popout_version_panel";
 import { isUserWhitelistedForProject } from '@/lib/whitelist';
 import previewFile from "@/app/main_screen/file_preview"
+import {isCancelError} from "aws-amplify/storage";
+import RecycleBinPanel from "@/app/main_screen/popout_recycling_bin";
+import {ContextMenu, ContextMenuWrapper, ContextMenuItem, ContextMenuPopout, ContextMenuTagInput, ContextMenuExitButton} from '@/app/main_screen/context_menu_style'
+
 //SVG imports
 import Image from "next/image";
 import icon_sort0 from "/assets/icons/sort-alphabetical-outlined-rounded.svg";
@@ -62,9 +67,6 @@ import icon_filewebp from "/assets/icons/file-icon-24x24-webp.svg";
 import icon_filexml from "/assets/icons/file-icon-24x24-xml.svg";
 import icon_filezip from "/assets/icons/file-icon-24x24-zip.svg";
 
-
-import {isCancelError} from "aws-amplify/storage";
-import RecycleBinPanel from "@/app/main_screen/popout_recycling_bin";
 
 
 const client = generateClient<Schema>();
@@ -363,17 +365,52 @@ export default function FilePanel() {
   }
 
   /**
+   * Whenever a contextMenu is opened, creates eventListeners which wait until the user clicks anywhere other than the limited
+   * set of locations which do not immediately close the contextMenu. If the user clicks on this outside region, then the contextMenu is closed.
+   */
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if(!(e.target && ((e.target as HTMLInputElement).id == "tag_input") || (e.target as HTMLDivElement).id == "tag_button") && contextMenu){
+        setContextMenu(undefined);
+        setContextMenuTags([])
+        observeMouseCoords.current = false;
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    document.addEventListener("contextmenu", handleClickOutside);
+    return () => {
+      document.removeEventListener("click", handleClickOutside);
+      document.removeEventListener("contextmenu", handleClickOutside);
+    };
+  }, [contextMenu]);
+
+
+  /**
+   * When the component is currently listening to mouse movements (denoted by observeMouseCoords.current), listen for any mouse movements by the client.
+   */
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setMouseCoords({x: e.clientX, y: e.clientY})
+    }
+    if (observeMouseCoords.current) {
+
+
+      document.addEventListener("mousemove", handleMouseMove)
+    }
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove)
+    }
+
+  }, [observeMouseCoords.current])
+
+  /**
    * Sorts the files that the user sees. Files are sorted within each parent directory.
    * @param {fileInfo} files - An array of fileInfo objects
    * @param {string} sortStyle - String which designates the sorting style to utilize. Each valid sorting style has a
    * corresponding comparison function.
    */
-
-
-  //sorts files to be displayed by the user
   function sort_files_with_path(files: Array<fileInfo>, sortStyle: string = "alphanumeric"){
     if (activeParentIds.length === 0) {
-      //console.log("Active Parent IDs are empty. Returning files without sorting.");
       return files;
     }
     //console.log(files)
@@ -388,10 +425,7 @@ export default function FilePanel() {
 
     //concatenates files together in the same order as the parent
     function concatenateFiles(curr_parent: string, files_by_parentId: any, file_list: any) {
-      ////console.log(curr_parent)
-
       for (let i = 0; i < files_by_parentId[curr_parent].length; i++) {
-        ////console.log(files_by_parentId[curr_parent][i])
         file_list.push(files_by_parentId[curr_parent][i])
         if (files_by_parentId[curr_parent][i].fileId in files_by_parentId) {
           file_list = concatenateFiles(files_by_parentId[curr_parent][i].fileId, files_by_parentId, file_list)
@@ -400,7 +434,7 @@ export default function FilePanel() {
       return file_list
     }
 
-    //put each file into its own 'bucket', which designates which parentId it belongs to, allows for separate sorting
+    //Put each file into its own 'bucket', which designates which parentId it belongs to, allows for separate sorting
     //within subdirectories
     filesByParentId.current = {}
 
@@ -510,8 +544,7 @@ export default function FilePanel() {
       }
       setLoading(false);
       setFiles(sort_files_with_path(groupedFiles));
-      console.log("HERE")
-      console.log(loadingParentIds)
+
       let toRemoveLoadingParents = []
       for(let file of groupedFiles){
         if(loadingParentIds.some(loadingParent => loadingParent.id == file.parentId)){
@@ -591,63 +624,67 @@ export default function FilePanel() {
 
       setRootParentId(root_id);
       setActiveParentIds([{ id: root_id, depth: 0 }]);
+      const file = await getFile(root_id, proj_id)
+      console.log(file)
+
+      if(file) {
+        setCurrentParent({
+          fileId: file.fileId,
+          filename: file.filename,
+          filepath: file.filepath,
+          logicalId: file.logicalId,
+          storageId: file.storageId,
+          parentId: file.parentId,
+          size: file.size,
+          versionId: file.versionId,
+          ownerId: file.ownerId,
+          isDeleted: file.isDeleted,
+          projectId: file.projectId,
+          createdAt: file.createdAt,
+          updatedAt: file.updatedAt,
+          visible: true,
+          open: false,
+          isDirectory: file.isDirectory ?? true,
+        });
+      } else {
+        setCurrentParent(null)
+      }
       await fetchRootInfo(root_id, proj_id);
     };
 
     initializeProject();
   }, [routerSearchParams, userId]);
 
+  /**
+   * Fetches detailed filepath for the current file which the view is oriented upon, including the fileId of all files
+   * in the filepath. Used for the filepath display at the top of the view
+   * @param root_id rootParentId of the current view
+   * @param proj_id projectId of the current view
+   */
+
   async function fetchRootInfo(root_id: string, proj_id: string){
     const activeFilePath = await getFilePath(root_id, proj_id)
     //console.log(activeFilePath)
     projectName.current = await getProjectName(proj_id)
 
-    const { data: file } = await client.models.File.get({ fileId: root_id, projectId: proj_id });
-
-    if (file) {
-      setCurrentParent({
-        fileId: file.fileId,
-        filename: file.filename,
-        filepath: file.filepath,
-        logicalId: file.logicalId,
-        storageId: file.storageId,
-        parentId: file.parentId,
-        size: file.size,
-        versionId: file.versionId,
-        ownerId: file.ownerId,
-        projectId: file.projectId,
-        createdAt: file.createdAt,
-        updatedAt: file.updatedAt,
-        isDeleted: file.isDeleted,
-        visible: true,
-        open: false,
-        isDirectory: file.isDirectory,
-      });      
-    }
-
     if(activeFilePath) {
-      await createFileIdMapping(root_id, proj_id, activeFilePath, projectName.current)
+      let fileIdPath = await getFileIdPath(root_id, proj_id)
+      if(!fileIdPath) {
+        setFilePathElement([])
+        return
+      }
+      const filePathEnd = await getFilePath(root_id, proj_id)
 
+      if(!filePathEnd) return
+      fileIdPath.push({id: root_id, filepath: filePathEnd})
+
+      setFilePathElement([projectName.current, ...activeFilePath.split("/").splice(1)].map((fileName, i) => ({fileName: `${fileName}/`, href: `/main_screen?pid=${proj_id}&id=${fileIdPath[i].id}`, fileId: fileIdPath[i].id, filepath: fileIdPath[i].filepath})))
+
+      setLoading(false)
     } else {
       setFilePathElement([{fileName: `${projectName.current}/`, href: `/main_screen?pid=${proj_id}&id=ROOT-${proj_id}`,fileId: `ROOT-${proj_id}`,filepath: ""}])
       setLoading(false)
     }
-  }
-
-  async function createFileIdMapping(root_id: string, proj_id: string, activeFilePath: string, projectName: string | undefined){
-    let fileIdPath = await getFileIdPath(root_id, proj_id)
-    if(!fileIdPath) {
-      setFilePathElement([])
-      return
-    }
-    const filePathEnd = await getFilePath(root_id, proj_id)
-    if(!filePathEnd) return
-    fileIdPath.push({id: root_id, filepath: filePathEnd})
-
-    setFilePathElement([projectName, ...activeFilePath.split("/").splice(1)].map((fileName, i) => ({fileName: `${fileName}/`, href: `/main_screen?pid=${proj_id}&id=${fileIdPath[i].id}`, fileId: fileIdPath[i].id, filepath: fileIdPath[i].filepath})))
-    setLoading(false)
-    return
-
   }
 
   /**
@@ -755,44 +792,7 @@ export default function FilePanel() {
   }, [searchTerm, tagSearchTerm, authorSearchTerm, search])
 
 
-  /**
-   * Whenever a contextMenu is opened, creates eventListeners which wait until the user clicks anywhere other than the limited
-   * set of locations which do not immediately close the contextMenu. If the user clicks on this outside region, then the contextMenu is closed.
-   */
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if(!(e.target && ((e.target as HTMLInputElement).id == "tag_input") || (e.target as HTMLDivElement).id == "tag_button") && contextMenu){
-        setContextMenu(undefined);
-        setContextMenuTags([])
-        observeMouseCoords.current = false;
-      }
-    };
-    document.addEventListener("click", handleClickOutside);
-    document.addEventListener("contextmenu", handleClickOutside);
-    return () => {
-      document.removeEventListener("click", handleClickOutside);
-      document.removeEventListener("contextmenu", handleClickOutside);
-    };
-  }, [contextMenu]);
 
-
-  /**
-   * When the component is currently listening to mouse movements (denoted by observeMouseCoords.current), listen for any mouse movements by the client.
-   */
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMouseCoords({x: e.clientX, y: e.clientY})
-    }
-    if (observeMouseCoords.current) {
-
-
-      document.addEventListener("mousemove", handleMouseMove)
-    }
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove)
-    }
-
-  }, [observeMouseCoords.current])
 
 
   useEffect(() => {
@@ -854,7 +854,6 @@ export default function FilePanel() {
    Action: Subscribes to a very limited subset of the file table (only on the active fileId opened in the context menu).
    If any changes are made to that file with a matching fileId, then set the visible tags to be equal to that which is
    observed.
-
    ***/
   const observeTags = () => {
     if(!contextMenu) return () => {};
@@ -1992,7 +1991,6 @@ export default function FilePanel() {
  */
 
   function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, type: string, userId: string | undefined, storagePath: Nullable<string> |undefined, fileName: string |undefined, versionId: string | undefined){
-    //console.log("Here!")
     if(e.target != e.currentTarget){
       return
     }
@@ -2191,10 +2189,10 @@ export default function FilePanel() {
                                     activeParentIds.some(parent => parent.id == file.parentId) && (
                                         <File key={file.fileId}
                                               $depth={getDepth(file)}
-                                              $pickedUp={(pickedUpFileGroup != undefined && (pickedUpFileGroup.includes(index)))} // || isParentPickedUp(file.fileId)
+                                              $pickedUp={(pickedUpFileGroup !== undefined && (pickedUpFileGroup.includes(index) || isParentPickedUp(file.fileId)))} // || isParentPickedUp(file.fileId)
                                               $mouseX={mouseCoords.x}
                                               $mouseY={mouseCoords.y}
-                                              $selected = {dragOverFileId == file.fileId || (selectedFileGroup != undefined && (selectedFileGroup.includes(index) ))} //|| isParentSelected(file.fileId)
+                                              $selected = {dragOverFileId == file.fileId || (selectedFileGroup !== undefined && (selectedFileGroup.includes(index) || isParentSelected(file.fileId) ))} //|| isParentSelected(file.fileId)
                                               $indexDiff = {0}
                                               onMouseDown={(e) => onFilePickUp(e, file.fileId)}
                                               onMouseUp={(e) => (pickedUpFileGroup != undefined && !pickedUpFileGroup.includes(index) ? onFilePlace(e, file.fileId) : undefined)}
@@ -2450,8 +2448,8 @@ export default function FilePanel() {
             projectId={versionPanelData.projectId}
             versions={versionPanelData.versions ?? []}
             currentVersionId={versionPanelData.versionId}
-            initialX={mouseCoords.x}
-            initialY={mouseCoords.y}
+            initialPosX={mouseCoords.x}
+            initialPosY={mouseCoords.y}
             close={() => {
               setShowVersionPanel(false);
               setVersionPanelData(null);
@@ -2500,113 +2498,7 @@ const SortSelector = styled.button`
     transition: 0.2s;
   }
 `
-const ContextMenuExitButton = styled.button`
-  border: none;
-  font: inherit;
-  outline: inherit;
-  height: inherit;
-  position: absolute;
-  text-align: center;
-  
-  padding: .2rem .3rem;
-  top: 0;
-  right: 0;
-  visibility: hidden;
-  background-color: lightgray;
 
-  &:hover {
-    cursor: pointer;
-    background-color: gray !important;
-  }
-
-`;
-const ContextMenuItem = styled.div`
-  position: relative;
-  text-align: left;
-  border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-bottom-color: gray;
-  font-size: 14px;
-
-  &:hover {
-    transition: background-color 250ms linear;
-    background-color: darkgray;
-    
-  }
-  &:hover > ${ContextMenuExitButton}{
-    visibility: visible;
-    background-color: darkgray;
-    transition: background-color 250ms linear;
-  }
-
-  &:last-child {
-    border-bottom-style: none;
-  }
-
-  padding: 0.2rem 0.5rem 0.2rem 0.2rem;
-`
-
-const ContextMenuTagInput = styled.input`
-  background-color: lightgray;
-  border-width: 0;
-
-  margin: 0;
-  text-align: left;
-  border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-bottom-color: gray;
-  font-size: 14px;
-  width: 100%;
-  
-  &:hover {
-    transition: background-color 250ms linear;
-    background-color: darkgray;
-  }
-
-  &:last-child {
-    border-bottom-style: none;
-  }
-  &:focus {
-    outline: none;
-    background-color: darkgray;
-    
-  }
-  padding: 0.2rem 0.5rem 0.2rem 0.2rem;
-`
-
-const ContextMenu = styled.div`
-    
-    background-color: lightgray;
-    border-color: dimgray;
-    border-style: solid;
-    border-width: 1px;
-    display: flex;
-    flex-direction: column;
-    height: max-content;
-    max-height: 300px; /* Add this */
-    overflow-y: auto;   /* Add this */
-`;
-const ContextMenuPopout = styled.div<{$index: number}>`
-    margin-top: ${(props) => "calc(" + props.$index + "* calc(21px + 0.4rem) + 1px)"};
-    
-    background-color: lightgray;
-    border-color: dimgray;
-    border-style: solid;
-    border-width: 1px;
-    height: max-content;
-    width: min-content;
-    min-width: 150px;
-    
-`;
-
-const ContextMenuWrapper = styled.div<{$x: number, $y: number}>`
-    position: fixed;
-    z-index: 9999;
-    left: ${(props) => props.$x}px;
-    top: ${(props) => props.$y}px;
-    display: flex;
-    flex-direction: row;
-`;
 
 const FileContextItem = styled.div`
 
