@@ -19,7 +19,8 @@ import {
   createFolder,
   fetchCachedUrl,
     getPathForFile,
-    getFile
+    getFile,
+    renamefile
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
@@ -66,6 +67,7 @@ import icon_filetxt from "/assets/icons/file-icon-24x24-txt.svg";
 import icon_filewebp from "/assets/icons/file-icon-24x24-webp.svg";
 import icon_filexml from "/assets/icons/file-icon-24x24-xml.svg";
 import icon_filezip from "/assets/icons/file-icon-24x24-zip.svg";
+import FilePropertiesPanel from '../../popout_properties';
 
 
 
@@ -163,6 +165,8 @@ type FileVersion = Pick<
   "size" | "versionId" | "ownerId" | "projectId" | "createdAt" | "updatedAt"
 >;
 
+
+
 /**
  * Data required for a file object
  */
@@ -214,6 +218,18 @@ interface activeParent{
 
 export default function FilePanel() {
 
+
+  const [filePropertiesPanel, setFilePropertiesPanel] = useState<{
+    fileId: string;
+    filename: string;
+    size: number;
+    filepath: string;
+    ownerId: string;
+    createdAt: string;
+    updatedAt: string;
+    posX: number;
+    posY: number;
+  } | null>(null);
 
   const routerSearchParams = useSearchParams()
   const router = useRouter()
@@ -2186,6 +2202,63 @@ export default function FilePanel() {
     }
 
   }
+
+  async function handleProperties(fileId: string, e: React.MouseEvent) {
+    e.preventDefault();
+    const file = files.find(f => f.fileId === fileId);
+    if (!file) return;
+  
+    const userData = await client.models.User.get({ userId: file.ownerId });
+    const username = userData?.data?.username ?? file.ownerId;
+    setFilePropertiesPanel({
+      fileId: file.fileId,
+      filename: file.filename,
+      size: file.size,
+      filepath: file.filepath,
+      ownerId: username,
+      createdAt: file.createdAt,
+      updatedAt: file.updatedAt,
+      posX: e.clientX + 10,
+      posY: e.clientY + 10
+    });
+  }
+  
+  
+  
+
+  /**
+ * Prompts the user to rename a file and triggers a backend update with the new path and filename.
+ * Preserves the original file extension and updates the full file path accordingly.
+ *
+ * @param {string} fileId - The unique ID of the file being renamed.
+ * @param {string} versionId - The version ID associated with the file.
+ * @param {string} path - The current full file path (including the filename).
+ *
+ * @remarks
+ * - The function parses the filename and retains its original extension.
+ * - The user is prompted for a new name (excluding the extension).
+ * - The file path and filename are updated via the `renamefile` function.
+ */
+
+  function handleRename(fileId: string, versionId: string, path: string) {
+    const originalname = path.split("/").pop() || "";
+    const extension = originalname.includes(".") ? originalname.substring(originalname.lastIndexOf(".")) : "";
+    const nameOnly = originalname.replace(/\.[^/.]+$/, ""); // remove extension
+  
+    const input = window.prompt("Enter new file name:", nameOnly);
+    if (!input) return;
+  
+    const newFilename = input + extension;
+  
+    const pathParts = path.split("/");
+    pathParts.pop(); // Remove old filename
+    pathParts.push(newFilename); // Add new filename
+    const newPath = pathParts.join("/");
+  
+    renamefile(fileId, projectId as string, versionId, newPath, newFilename);
+  }
+  
+  
   /**
    * Function: isParentPickedUp
    * Returns: boolean
@@ -2415,6 +2488,12 @@ export default function FilePanel() {
                     <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true)}}>
                       Tags
                     </ContextMenuItem>
+                    <ContextMenuItem onClick={ (e)=> handleProperties(contextMenu.fileId!, e)}>
+                      Properties
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={ ()=> handleRename(contextMenu.fileId!, contextMenu.versionId!, contextMenu.filePath!)}>
+                      Rename
+                    </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDownload(contextMenu.storagePath!, contextMenu.fileName!,contextMenu.fileId!)}>
                       Download
                     </ContextMenuItem>
@@ -2485,6 +2564,12 @@ export default function FilePanel() {
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => setMessageThread({id: contextMenu.fileId!!, label: contextMenu.filePath!!.split("/").pop()!!, path: projectName.current!! + contextMenu.filePath!!, type: 0})}>
                       Open Chat
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={ (e)=> handleProperties(contextMenu.fileId!,e)}>
+                      Properties
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={ ()=> handleRename(contextMenu.fileId!, contextMenu.versionId!, contextMenu.filePath!)}>
+                      Rename
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDelete(contextMenu.fileId!!)}>
                       Delete Folder
@@ -2565,7 +2650,20 @@ export default function FilePanel() {
             onDownloadVersion={handleDownloadVersion}
           />
         )}
-
+    {filePropertiesPanel && (
+      <FilePropertiesPanel
+        fileId={filePropertiesPanel.fileId}
+        filename={filePropertiesPanel.filename}
+        size={filePropertiesPanel.size}
+        filepath={filePropertiesPanel.filepath}
+        ownerId={filePropertiesPanel.ownerId}
+        createdAt={filePropertiesPanel.createdAt}
+        updatedAt={filePropertiesPanel.updatedAt}
+        posX={filePropertiesPanel.posX}
+        posY={filePropertiesPanel.posY}
+        close={() => setFilePropertiesPanel(null)}
+      />
+    )}
 
   </>
   );

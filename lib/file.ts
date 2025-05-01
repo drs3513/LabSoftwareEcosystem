@@ -694,30 +694,23 @@ export async function createFolder(
 
 }
 
-// Retrieve the latest version of a file using the composite primary key
-//export async function getLatestFileVersion(fileId: string) {
-//  try {
-//    const response = await client.models.File.listFileByLogicalIdAndVersionId(
-//        {logicalId: fileId // Query all versions with the same fileId
-//    });
-//
-//    if (response.data.length === 0) {
-//      new Error("No versions found for this file.");
-//    }
-//
-//    //Sort by versionId in descending order
-//    const sortedVersions = response.data.sort((a, b) =>
-//      parseInt(b.versionId) - parseInt(a.versionId)
-//    );
-//
-//    return sortedVersions[0].versionId; // Return the latest version
-//  } catch (error) {
-//    console.error("Error retrieving the latest file version:", error);
-//    throw error;
-//  }
-//}
-
-
+export async function renamefile(id: string, projectId: string, versionId: string, path: string, name: string) {
+  try{  
+    
+    const now = new Date().toISOString();
+    await client.models.File.update({
+        fileId: id,
+        filename: name,
+        projectId,
+        versionId: versionId,
+        filepath: path,
+        updatedAt: now,
+      });
+    } catch (error) {
+      console.error("Error updating file:", error);
+      alert("An error occurred while updating the file. Please try again.");
+    }
+}
 
 export async function updatefile(id: string, projectId: string, versionId: string) {
   try{  
