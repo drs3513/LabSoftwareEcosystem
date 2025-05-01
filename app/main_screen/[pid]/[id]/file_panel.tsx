@@ -886,6 +886,13 @@ export default function FilePanel() {
 
   const activeDownloads = new Map<string, ReturnType<typeof startDownloadTask>>();
 
+  /**
+ * Downloads a single file from storage and triggers a local download in the browser.
+ *
+ * @param {string} storagePath - The storage key (S3 path) of the file.
+ * @param {string} filename - The display name of the file.
+ * @param {string} fileId - The unique ID of the file (used for cancel tracking).
+ */
   const handleDownload = async (storagePath: string, filename: string, fileId: string) => {
     const task = startDownloadTask(storagePath, (percent) => {
       setDownloadProgressMap(prev => ({ ...prev, [filename]: percent }));
@@ -915,6 +922,13 @@ export default function FilePanel() {
     }
   };
 
+  /**
+ * Downloads all files within a folder as a ZIP archive.
+ *
+ * @param {string} folderName - The name of the folder (used as ZIP filename).
+ * @param {string} folderLogicalId - Logical ID of the folder (not directly used here).
+ */
+
   const handleFolderDownload = async (folderName: string, folderLogicalId: string) => {
     if (!projectId) return;
     if (!contextMenu) return
@@ -934,6 +948,12 @@ export default function FilePanel() {
   
     await downloadFolderAsZip(folderName, fileList as [], task);
   };
+
+  /**
+ * Downloads all visible and undeleted files in the current directory view as a ZIP archive.
+ *
+ * Combines files retrieved via `getFileChildren` and those stored in `filesRef` to build the ZIP.
+ */
 
   const handleDownloadCurrentView = async () => {
     if (!projectId) return;
@@ -984,7 +1004,12 @@ export default function FilePanel() {
   };
   
   
-  
+  /**
+ * Downloads all selected files (from checkbox or multi-select UI) as a ZIP archive.
+ *
+ * Filters out directories and builds a list of valid files to preserve structure.
+ */
+
   const handleDownloadSelected = async () => {
     if (!projectId || !selectedFileGroup) return;
 
@@ -1015,6 +1040,12 @@ export default function FilePanel() {
     await downloadFolderAsZip(rootName, fileList as [], task);
 
   }
+
+  /**
+ * Cancels an ongoing file download based on the file ID.
+ *
+ * @param {string} fileId - The ID of the file whose download should be canceled.
+ */
 
   const cancelDownload = (fileId: string) => {
     const task = activeDownloads.get(fileId);
@@ -1338,8 +1369,28 @@ export default function FilePanel() {
     setShowProgressPanel(false);
   };
   
+  /**
+ * React effect that updates the `currentParent` state based on the current project ID
+ * and the top-most item in the active parent directory stack (`activeParentIds`).
+ *
+ * It fetches the full file metadata from the backend and maps it to the UI format for use
+ * in file navigation, upload path building, and breadcrumb display.
+ *
+ * Dependencies:
+ * - `projectId`: ensures the fetch is scoped to the current project.
+ * - `activeParentIds`: determines the currently active folder in the directory stack.
+ */
+
 
   useEffect(() => {
+          /**
+       * Internal async function used to fetch the file metadata for the currently active parent directory.
+       *
+       * If no project ID or no active folder is selected, `currentParent` is cleared.
+       * Otherwise, the file is retrieved from the backend and mapped to a UI-ready object.
+       *
+       * @returns {Promise<void>}
+       */
     const updateCurrentParent = async () => {
       if (!projectId || activeParentIds.length === 0) {
         setCurrentParent(null);
@@ -1382,12 +1433,15 @@ export default function FilePanel() {
   }, [projectId, activeParentIds]);
   
 
-  //const cancelUpload = () => {
-  //  if (uploadTask.current) {
-  //    uploadTask.current.cancel();
-  //    console.warn("[CANCEL] Upload cancel requested.");
-  //  }
-  //};
+  /**
+ * Recursively soft-deletes a folder and all of its children from the database.
+ *
+ * This function looks up all child file IDs from `filesByParentId`, and for each child,
+ * if it is a directory, it performs a recursive delete. Finally, it deletes the parent itself.
+ *
+ * @param {string} fileId - The ID of the folder to recursively delete.
+ * @returns {Promise<void>}
+ */
   async function recursiveDeleteFolder(fileId: string) {
     if (!fileId || !projectId) return;
 
@@ -1405,6 +1459,16 @@ export default function FilePanel() {
     await deleteFile(file.fileId, file.versionId, projectId);
   }
 
+  /**
+ * Handles deletion of a file or folder, including recursive deletion for folders.
+ *
+ * - Skips if file not found or project ID is not set.
+ * - For folders, triggers a recursive delete using `recursiveDeleteFolder`.
+ * - For files, directly calls `deleteFile`.
+ *
+ * @param {string} fileId - The ID of the file or folder to delete.
+ * @returns {Promise<void>}
+ */
   async function handleDelete(fileId: string) {
     const file = files.find(f => f.fileId === fileId);
     if (!file || !projectId) return;
@@ -1425,6 +1489,15 @@ export default function FilePanel() {
     }
   }
 
+
+  /**
+ * Handles drop logic when a file or folder is released over another folder.
+ * Moves selected files or a single picked-up file into a new parent, recursively updates paths for all descendants,
+ * and syncs changes to the database.
+ *
+ * @param {React.MouseEvent<HTMLElement>} e - Mouse event triggering the drop.
+ * @param {Nullable<string>} overFileId - ID of the target folder receiving the file.
+ */
 
   async function onFilePlace(e: React.MouseEvent<HTMLElement>, overFileId: Nullable<string>) {
     isLongPress.current = false;
@@ -1528,6 +1601,13 @@ export default function FilePanel() {
     observeMouseCoords.current = true
   }
 
+  /**
+ * Triggered on long-press of a file or folder. Initializes drag mode and sets up selection state.
+ * Allows picking up one or multiple files/folders for drag-and-drop reorganization.
+ *
+ * @param {React.MouseEvent<HTMLButtonElement>} e - Mouse event triggering the pickup.
+ * @param {string} currFileId - The ID of the file/folder being picked up.
+ */
   //If the user holds down left-click on a file / folder, all subdirectories are closed, and
   function onFilePickUp(e: React.MouseEvent<HTMLButtonElement>, currFileId : string) {
     if(search){
@@ -1558,21 +1638,11 @@ export default function FilePanel() {
 
   }
 
-  //Recursively generates new 'path' values for all subdirectories of that which was placed
-  //function recursiveGeneratePaths(currFileId: Nullable<string>, pathAppend: string) {
-  //  let newPathAppend: string = pathAppend
-//
-  //  if (currFileId && projectId) {
-  //    files[filesByFileId.current[currFileId]].filepath = pathAppend + files[filesByFileId.current[currFileId]].filename
-  //    updateFileLocation(currFileId, pathAppend + files[filesByFileId.current[currFileId]].filename, files[filesByFileId.current[currFileId]].parentId, projectId)
-  //    newPathAppend = pathAppend + files[filesByFileId.current[currFileId]].filename + "/"
-  //    if (currFileId in filesByParentId.current) {
-  //      for (let i of filesByParentId.current[currFileId]) {
-  //        recursiveGeneratePaths(files[i].fileId, newPathAppend)
-  //      }
-  //    }
-  //  }
-  //}
+/**
+ * Navigates to the parent or subdirectory view when a file or folder is double-clicked.
+ *
+ * @param {number} index - The index of the file/folder in the `files` array.
+ */
 
   function reorientView(index: number){
     setSelectedFileGroup([])
@@ -1587,6 +1657,14 @@ export default function FilePanel() {
     setSearch(false)
   }
 
+
+/**
+ * Recursively selects a folder and all of its children by index.
+ *
+ * @param {number} index - The index of the root file/folder to begin selection.
+ * @returns {number[]} - List of indexes to include in the selection group.
+ */
+
   function recursiveSelectFile(index: number){
     let to_append = [index]
     if(files[index].fileId in filesByParentId.current){
@@ -1596,6 +1674,15 @@ export default function FilePanel() {
     }
     return to_append
   }
+
+  /**
+ * Handles selection behavior for a single file/folder based on click type.
+ * On double-click, navigates into folder or its parent. On single-click, selects the file and its descendants.
+ *
+ * @param {React.MouseEvent<HTMLButtonElement>} e - The click event.
+ * @param {number} index - Index of the file in the current view.
+ * @returns {number[]} - The full selection group.
+ */
 
   function selectFile(e: React.MouseEvent<HTMLButtonElement>, index: number){
     clearTimeout(timer.current)
@@ -1614,6 +1701,13 @@ export default function FilePanel() {
     }
   }
 
+  /**
+ * Appends a new group of selected files to the current group, ensuring no duplicates and maintaining order.
+ *
+ * @param {number[] | undefined} selection - The new selection to merge.
+ * @returns {number[]} - The updated and deduplicated selection group.
+ */
+
   function appendToFileGroup(selection: number[] | undefined){
     if(!selection) return
     if(!selectedFileGroup){
@@ -1626,11 +1720,26 @@ export default function FilePanel() {
     return [...selectedFileGroup, ...selection].sort((a,b)=>a>b?1:-1).filter((item,pos,array)=>  !pos || item != array[pos-1])
   }
 
+  /**
+ * Returns an inclusive range of numbers from `start` to `end`.
+ *
+ * @param {number} start - Starting number.
+ * @param {number} end - Ending number.
+ * @returns {number[]} - Array of numbers.
+ */
+
   function range(start:number, end:number): number[]{
 
     if(start >= end) return []
     return [start, ...range(start+1, end)]
   }
+
+  /**
+ * Handles selection of a file range by determining start and end bounds based on user input.
+ *
+ * @param {React.MouseEvent<HTMLButtonElement>} e - Click event.
+ * @param {number} index - The index of the file clicked.
+ */
   function selectFileGroup(e: React.MouseEvent<HTMLButtonElement>, index: number){
     clearTimeout(timer.current)
     isLongPress.current = false
@@ -1650,9 +1759,24 @@ export default function FilePanel() {
       //setSelectedFileGroup([...selectedFileGroup.filter((val, i) => i < 1), index])
     }
   }
+  
+  /**
+ * Placeholder function for placing a picked-up file/folder.
+ */
+
   function placeHeldFile(){
     return
   }
+
+  /**
+ * Parses and triggers a search query on `Enter` keypress.
+ * Supports file name search as well as tag and author filtering using special prefixes:
+ * - `#tag` for tags
+ * - `&author` for authors
+ *
+ * @param {React.KeyboardEvent<HTMLInputElement>} e - The keyboard event.
+ */
+
   //search query parser
   function handleSearch(e: React.KeyboardEvent<HTMLInputElement>){
     if((e.target as HTMLInputElement).value.length == 0){
@@ -1691,18 +1815,33 @@ export default function FilePanel() {
     //searchFiles(e.target.value).then()
   }
 
+  /**
+ * Sets the active sort style and re-sorts the current file view.
+ *
+ * @param {string} sortStyle - Sorting style (e.g., "name", "date", etc.).
+ */
+
   function handleSwitchSort(sortStyle: string){
     setSort(sortStyle)
     setFiles(sort_files_with_path(files, sortStyle))
 
   }
 
+  /**
+ * Cycles through available sort modes when the sort button is clicked.
+ * Applies the selected sort order to the visible file list.
+ */
+
   function sortButtonClicked(){
     sort_number = (sort_number+1)%4;
     handleSwitchSort(number_to_sort[sort_number]);
   }
 
-
+/**
+ * Adds a new tag to the currently selected file from the context menu when `Enter` is pressed.
+ *
+ * @param {React.KeyboardEvent<HTMLInputElement>} e - The keyboard event containing the tag input.
+ */
 
   async function handleTagInput(e: React.KeyboardEvent<HTMLInputElement>){
     if(e.key == "Enter"){
@@ -1715,7 +1854,14 @@ export default function FilePanel() {
     }
   }
 
-  // generates list of parentId's to remove from ActiveParentIds
+
+ /**
+ * Recursively builds a list of all child folder IDs under a given folder that are currently open.
+ * Used to collapse directory trees.
+ *
+ * @param {string} openFileId - File ID of the folder being closed.
+ * @returns {string[]} - List of all folder IDs to be removed from `activeParentIds`.
+ */
   function recursiveCloseFolder(openFileId: string){
     let to_remove: string[] = []
     if(!(openFileId in filesByParentId.current)) return []
@@ -1728,7 +1874,12 @@ export default function FilePanel() {
     return to_remove
   }
 
-  // opens / closes a folder that is clicked
+/**
+ * Toggles a folder open or closed in the directory tree. Adds or removes from `activeParentIds`.
+ * If opening a folder and its children haven't been loaded yet, triggers loading indicator.
+ *
+ * @param {string} openFileId - The ID of the folder to open or close.
+ */
   async function openCloseFolder(openFileId: string) {
     setSelectedFileGroup(undefined)
     isLongPress.current = false
@@ -1757,6 +1908,20 @@ export default function FilePanel() {
     }
   }
 
+
+  /**
+ * Downloads a specific version of a file by constructing a URL to the backend download API.
+ *
+ * This method triggers a download by programmatically clicking an anchor element
+ * with a `download` attribute, allowing users to retrieve specific file versions.
+ *
+ * @param {string} versionId - The version ID of the file to download.
+ * @param {string} logicalId - The logical ID (shared across versions) of the file.
+ * @param {string} filename - The filename used for the downloaded file.
+ * @param {Nullable<string> | undefined} filepath - The full storage path of the file.
+ * @param {string} ownerId - The user ID of the file owner.
+ * @param {string} projectId - The project ID the file belongs to.
+ */
   const handleDownloadVersion = async (
     versionId: string,
     logicalId: string,
@@ -1781,6 +1946,16 @@ export default function FilePanel() {
     a.click();
   };
 
+  /**
+ * Prompts the user for a folder name and creates a new folder at the selected directory location.
+ *
+ * This function determines the full path of the new folder based on the selected context menu path.
+ * If no path is available, it falls back to retrieving the parent path from the backend.
+ *
+ * @param {string | undefined} contextMenuFileId - The ID of the selected parent folder (or undefined for root).
+ * @param {string | undefined} contextMenuFilePath - The filepath of the parent folder (if available).
+ * @returns {Promise<void>}
+ */
   async function handleCreateFolder(contextMenuFileId: string | undefined, contextMenuFilePath: string | undefined) {
     if (!projectId || !userId) return;
   
@@ -1799,6 +1974,22 @@ export default function FilePanel() {
     createFolder(projectId, name, userId, parentId, fullPath);
   }  
 
+
+  /**
+ * Opens a custom context menu at the cursor location with metadata about the clicked file or folder.
+ *
+ * Prevents default browser context behavior and stops event bubbling when the target isn't the intended one.
+ * This method also sets up state needed to control context-based actions like tagging, downloading, etc.
+ *
+ * @param {React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>} e - The mouse event triggering the context menu.
+ * @param {string | undefined} fileId - The ID of the file or folder the menu relates to.
+ * @param {string | undefined} filepath - The file's full path.
+ * @param {string} type - The type of the item (e.g., `"file"` or `"folder"`).
+ * @param {string | undefined} userId - The current user's ID.
+ * @param {Nullable<string> | undefined} storagePath - The storage ID (S3 path) of the file.
+ * @param {string | undefined} fileName - The name of the file or folder.
+ * @param {string | undefined} versionId - The version ID if applicable.
+ */
 
   function createContextMenu(e: React.MouseEvent<HTMLDivElement> | React.MouseEvent<HTMLButtonElement>, fileId: string | undefined, filepath: string | undefined, type: string, userId: string | undefined, storagePath: Nullable<string> |undefined, fileName: string |undefined, versionId: string | undefined){
     //console.log("Here!")
@@ -1828,7 +2019,12 @@ export default function FilePanel() {
 
   }
 
-
+/**
+ * Returns the depth level of a file relative to the current active parent stack.
+ *
+ * @param {fileInfo} file - The file metadata object being checked.
+ * @returns {number} - The depth index if found, or -1 if the file isn't in the current hierarchy.
+ */
   function getDepth(file: fileInfo){
     ////console.log(file)
     const found_parent_id = activeParentIds.find(parent => parent.id === file.parentId)
@@ -1836,6 +2032,15 @@ export default function FilePanel() {
     return found_parent_id? found_parent_id.depth : -1
   }
 
+  /**
+ * Handles drag-over events for file elements to visually indicate where files are being dragged.
+ *
+ * Ignores the event if it originates from a floating draggable element or if the event
+ * isn't directly targeting the container (to avoid nested propagation).
+ *
+ * @param {React.DragEvent<HTMLDivElement> | React.DragEvent<HTMLButtonElement>} e - The drag event.
+ * @param {string | undefined} fileId - The ID of the file/folder currently hovered.
+ */
   function handleDragOver(e: React.DragEvent<HTMLDivElement> | React.DragEvent<HTMLButtonElement>, fileId: string | undefined){
     e.preventDefault();
     if(draggingFloatingWindow.current) return
@@ -1844,11 +2049,24 @@ export default function FilePanel() {
     setDragOverFileId(fileId)
   }
 
+  /**
+ * Memoized value that finds the file object corresponding to the currently opened context menu.
+ *
+ * Recomputes when either the file list or context menu state changes.
+ *
+ * @type {fileInfo | undefined}
+ */
+
   const contextFile = useMemo(() => {
     if(!contextMenu) return undefined
     return files.find(f => f.fileId === contextMenu.fileId);
   }, [files, contextMenu]);
 
+  /**
+ * Opens the version panel when the version popout state is triggered and a context file is present.
+ *
+ * Watches for changes in the `contextMenuVersionPopout` state and the resolved `contextFile`.
+ */
   useEffect(() => {
     if (contextMenuVersionPopout && contextFile) {
       setShowVersionPanel(true);
@@ -1856,6 +2074,15 @@ export default function FilePanel() {
     }
   }, [contextMenuVersionPopout, contextFile]);
   
+  /**
+ * Toggles the visibility of the recycling bin for the current project.
+ *
+ * If the bin is already active for the current project, it removes it from view;
+ * otherwise, it adds it to the active list using the current project's ID and name.
+ *
+ * @param {React.MouseEvent<HTMLButtonElement>} e - The button click event triggering the toggle.
+ */
+
   function handleShowRecycleBin(e: React.MouseEvent<HTMLButtonElement>){
     setMouseCoords({x: e.clientX, y: e.clientY})
     if(activeRecyclingBins.some(bin => bin.projectId === projectId)){
@@ -2053,20 +2280,6 @@ export default function FilePanel() {
               (
               <NoFiles>No files available.</NoFiles>
           )}
-
-          {//createFilePanelUp ? (
-           //   <CreateFilePanel
-           // initialPosX={createFilePanelInitX.current}
-           // initialPosY={createFilePanelInitY.current}
-           // parentFileId={contextMenuFileId}
-           // parentFilePath={contextMenuFilePath}
-           // isDirectory={createFileOrFolder.current}
-           // inputFile={handleFileInput}
-           // dragFile={handleFileDrag}
-           // close={closeCreateFilePanel}
-           // />
-           // ) : <></>
-          }
 
           {
 
