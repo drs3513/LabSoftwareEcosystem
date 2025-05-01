@@ -100,7 +100,9 @@ export default function TopBar() {
   }, []);
 
 
-
+  // Function to handle project creation
+  // It will also whitelist the user as the head of the project
+  // If the project creation fails, it will alert the user
   async function handleCreateProject() {
     const projectName = prompt("Enter Project Name:");
     if (!projectName || !userId) return;

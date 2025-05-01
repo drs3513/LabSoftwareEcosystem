@@ -91,6 +91,7 @@ export async function elevateUserToAdmin(projectId: string, userId: string) {
 }
 
 // Check User Role
+
 export async function getUserRole(projectId: string, userId: string): Promise<Role> {
   try {
     const whitelistId = `${projectId}-${userId}`;
@@ -148,6 +149,8 @@ export async function getUserRole(projectId: string, userId: string): Promise<Ro
 //  }
 //}
 //
+
+// Function to check if a user is whitelisted for a project
 export async function isUserWhitelistedForProject(userId: string, projectId: string): Promise<boolean> {
   try {
     const whitelistId = `${projectId}-${userId}`;
@@ -162,6 +165,7 @@ export async function isUserWhitelistedForProject(userId: string, projectId: str
   }
 }
 
+// List all users in a project based on their whitelist status
 export async function listUsersInProject(projectId: string, inProject: boolean) {
   try {
     const currentUsers =  await client.models.Whitelist.list({

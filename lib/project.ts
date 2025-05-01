@@ -28,7 +28,7 @@ export async function createProject(userId: string, projectName: string) {
 
 
 
-
+// Fetch all projects for a user
 export async function listProjectsForUser(userId: string) {
   try {
     const whitelistResponse = await client.models.Whitelist.list({

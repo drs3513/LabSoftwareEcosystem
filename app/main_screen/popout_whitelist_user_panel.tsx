@@ -118,6 +118,10 @@ export default function WhitelistPanel(props: props) {
     const [contextMenuUserRole, setContextMenuUserRole] = useState<Role | undefined>(undefined)
     const role = useRef<Role | undefined>(undefined)
 
+    // Function to handle making user an admin
+    // Makes sure project/user is selected, current user is the project head, and user is not already an admin
+    // Calls elevateUserToAdmin function to make the user an admin
+    // Displays an alert if any of the checks fail
     async function handleMakeAdmin() {
         if (!props.projectId) {
             alert("No project selected.");
@@ -149,6 +153,10 @@ export default function WhitelistPanel(props: props) {
         setContextMenuUser(undefined);
     }
 
+    // Function to handle revoking admin rights
+    // Makes sure project/user is selected, current user is the project head, and user is an admin
+    // Calls revokeUserAdmin function to revoke admin rights
+    // Displays an alert if any of the checks fail
     async function handleRevokeAdmin() {
         if (!props.projectId) {
             alert("No project selected.");
@@ -180,6 +188,10 @@ export default function WhitelistPanel(props: props) {
         setContextMenuUser(undefined);
     }
 
+    // Function to handle removing user from whitelist
+    // Makes sure project/user is selected, current user is the project head or admin
+    // Calls removeWhitelistedUser function to remove the user from the whitelist
+    // Displays an alert if any of the checks fail
     async function handleRemoveUser() {
         if (!props.projectId) {
             alert("No project selected.");
@@ -206,6 +218,7 @@ export default function WhitelistPanel(props: props) {
         }
     }
 
+    // This set of functions handles the drag and drop functionality of the floating panel
     function handleStartDrag(e: React.DragEvent<HTMLDivElement>){
         const panel = e.currentTarget as HTMLDivElement
         const panelBoundingBox = panel.getBoundingClientRect()
@@ -234,6 +247,9 @@ export default function WhitelistPanel(props: props) {
         }
     }
 
+    // Function to fetch users from the project
+    // Calls listUsersInProject function to get the users
+    // Sets the users state with the fetched users
     const fetchUsers = async () => {
         if(!userId) return
         try {
@@ -254,6 +270,9 @@ export default function WhitelistPanel(props: props) {
         }
     };
 
+    // Function to observe changes in the whitelist
+    // Calls the observeQuery function to listen for changes to the whitelist
+    // When a change is detected, it fetches the users again
     const observeWhitelistedUsers = () => {
         const subscription = client.models.Whitelist.observeQuery({
             filter: {
@@ -271,6 +290,8 @@ export default function WhitelistPanel(props: props) {
 
         return () => subscription.unsubscribe();
     };
+
+    // Effect to fetch users when the component mounts or when the projectId changes
     useEffect(() => {
         if (props.displayed && userId) {
             fetchUsers();
@@ -282,7 +303,11 @@ export default function WhitelistPanel(props: props) {
 
 
 
-
+    // Function to handle whitelisting a user
+    // Makes sure project/user is selected, current user is the project head or admin
+    // Calls whitelistUser function to whitelist the user
+    // Displays an alert if any of the checks fail
+    // Also removes the user from the potential users list
     async function handleWhitelistUser(addingUserId: string, addingUserEmail: string) {
         const role = await getUserRole(props.projectId, userId!)
         if (role !== Role.HEAD && role !== Role.ADMIN) {
@@ -299,6 +324,11 @@ export default function WhitelistPanel(props: props) {
 
     }
 
+    // Function to handle getting the list of users that can be whitelisted
+    // Calls listUsersInProject function to get the users
+    // If there are potential users, it clears the potential users state
+    // Sets the potential users state with the fetched users
+    // Displays an alert if any of the checks fail
     async function handleGetWhitelistableUsers() {
         if(potentialUsers.length > 0){
             setPotentialUsers([])
@@ -322,6 +352,7 @@ export default function WhitelistPanel(props: props) {
         return
     }
 
+    // Function to compare the roles of the current user and the context menu user
     function compareRoles() {
         if(role.current == Role.USER || role.current == Role.NONE){
             return false

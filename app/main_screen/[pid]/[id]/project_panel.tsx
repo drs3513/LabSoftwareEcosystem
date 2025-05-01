@@ -130,6 +130,11 @@ export default function ProjectPanel() {
     router.push(`/main_screen/?pid=${projectId}&id=ROOT-${projectId}`, undefined);
   }
 
+  // This function will be called whenever the whitelist changes
+  // and will update the projects accordingly
+  // It will also check if the user is still whitelisted for the current project
+  // If not, it will redirect the user to the main screen
+  // and set the projectId and fileId to null
   const observeProjects = async () => {
     if (!userId) return;
 
@@ -138,21 +143,14 @@ export default function ProjectPanel() {
     }).subscribe({
       next: async () => {
         try {
-          //console.log("next")
           const userProjects = await listProjectsForUser(userId);
-          //console.log("User projects:", userProjects);
           if (Array.isArray(userProjects)) {
-            //console.log("hi")
             setProjects(userProjects);
 
             // Redirect user if they are removed from the current project
             
             const isWhitelisted = await isUserWhitelistedForProject(userId, projectId!);
-            //console.log("Is user whitelisted:", isWhitelisted);
-            //console.log("Project ID:", projectId);
-            //console.log("User ID:", userId);
             if (!isWhitelisted) {
-              //console.log("rerouting the user to the main page!");
               setProjectId("");
               setFileId("");
               setRole("NONE");
