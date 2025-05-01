@@ -10,6 +10,7 @@ const Body = styled.div`
     height: 100vh;
     width: 100vw;
     overflow: hidden;
+    overflow-y: hidden;
     margin: 0;
 `
 export default function Home() {

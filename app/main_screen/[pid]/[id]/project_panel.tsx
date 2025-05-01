@@ -12,6 +12,8 @@ import {useRouter, useSearchParams} from 'next/navigation'
 import { hardDeleteProject } from "@/lib/project";
 import WhitelistPanel from '@/app/main_screen/popout_whitelist_user_panel'
 
+import {ContextMenu, ContextMenuWrapper, ContextMenuItem} from '@/app/main_screen/context_menu_style'
+
 const client = generateClient<Schema>();
 
 export default function ProjectPanel() {
@@ -34,7 +36,10 @@ export default function ProjectPanel() {
     projectId: null,
     projectName: null
   });
-  
+  const [contextMenuProjectId, setContextMenuProjectId] = useState<string | undefined>(undefined);
+
+  const [displayedWhitelistPanels, setDisplayedWhitelistPanels] = useState<{projectId: string, projectName: string}[]>([])
+
   function handleRightClick(event: React.MouseEvent, projectId: string, projectName: string) {
     event.preventDefault();
     setContextMenu({
@@ -68,12 +73,7 @@ export default function ProjectPanel() {
     }
   }
   
-  const [contextMenuProjectId, setContextMenuProjectId] = useState<string | undefined>(undefined);
-  const [contextMenuProjectName, setContextMenuProjectName] = useState<string | undefined>(undefined);
 
-  const [displayedWhitelistPanels, setDisplayedWhitelistPanels] = useState<string[]>([])
-
-  const [contextMenuPosition, setContextMenuPosition] = useState<number[]>([0,0])
 
   useEffect(() => {
     if (!user?.signInDetails?.loginId) return;
@@ -183,15 +183,12 @@ export default function ProjectPanel() {
       projectName
     })
 
-    //setContextMenuProjectId(projectId)
-    //setContextMenuPosition([e.pageX, e.pageY])
 
   }
 
   useEffect(() => {
     const handleClickOutside = () => {
       setContextMenuProjectId(undefined);
-      setContextMenuPosition([0,0])
     };
     document.addEventListener("click", handleClickOutside);
     document.addEventListener("contextmenu", handleClickOutside);
@@ -229,17 +226,18 @@ export default function ProjectPanel() {
             )}
           </PanelContainer>
 
-        {displayedWhitelistPanels.map((projectId) => (
-        <WhitelistPanel key={projectId}
-                        projectId={projectId}
+        {displayedWhitelistPanels.map((whitelistPanel) => (
+        <WhitelistPanel key={whitelistPanel.projectId}
+                        projectId={whitelistPanel.projectId}
+                        projectName={whitelistPanel.projectName}
                         displayed={true}
-                        close={() => setDisplayedWhitelistPanels(displayedWhitelistPanels.filter(id => id != projectId))}
+                        close={() => setDisplayedWhitelistPanels(displayedWhitelistPanels.filter(panel => panel.projectId != whitelistPanel.projectId))}
                         initialPosX = {50} initialPosY={50}/>
         ))}
         {contextMenu.visible ?
             <ContextMenuWrapper $x={contextMenu.x} $y={contextMenu.y}>
               <ContextMenu>
-                <ContextMenuItem onClick={() => setDisplayedWhitelistPanels([...displayedWhitelistPanels, contextMenu.projectId!!])}>
+                <ContextMenuItem onClick={() => setDisplayedWhitelistPanels([...displayedWhitelistPanels, {projectId: contextMenu.projectId!!, projectName: contextMenu.projectName!!}])}>
                   Whitelist Users
                 </ContextMenuItem>
                 <ContextMenuItem onClick={() => setMessageThread({id: contextMenu.projectId!!, label: contextMenu.projectName!!, path: undefined, type: 1})}>
@@ -297,73 +295,4 @@ const NoProjects = styled.div`
 const LoadingText = styled.div`
   color: gray;
   text-align: center;
-`;
-const ContextMenuExitButton = styled.button`
-  border: none;
-  font: inherit;
-  outline: inherit;
-  height: inherit;
-  position: absolute;
-  text-align: center;
-  
-  padding: .2rem .3rem;
-  top: 0;
-  right: 0;
-  visibility: hidden;
-  background-color: lightgray;
-
-  &:hover {
-    cursor: pointer;
-    background-color: gray !important;
-  }
-
-`;
-const ContextMenuItem = styled.div`
-  position: relative;
-  text-align: left;
-  border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-bottom-color: gray;
-  font-size: 14px;
-
-  &:hover {
-    transition: background-color 250ms linear;
-    background-color: darkgray;
-    
-  }
-  &:hover > ${ContextMenuExitButton}{
-    visibility: visible;
-    background-color: darkgray;
-    transition: background-color 250ms linear;
-  }
-
-  &:last-child {
-    border-bottom-style: none;
-  }
-
-  padding: 0.2rem 0.5rem 0.2rem 0.2rem;
-`
-
-
-const ContextMenu = styled.div`
-    
-    background-color: lightgray;
-    border-color: dimgray;
-    border-style: solid;
-    border-width: 1px;
-    display: flex;
-    flex-direction: column;
-    height: max-content;
-    max-height: 300px; /* Add this */
-    overflow-y: auto;   /* Add this */
-`;
-
-
-const ContextMenuWrapper = styled.div<{$x: number, $y: number}>`
-    position: fixed;
-    z-index: 20;
-    left: ${(props) => props.$x}px;
-    top: ${(props) => props.$y}px;
-    display: flex;
-    flex-direction: row;
 `;

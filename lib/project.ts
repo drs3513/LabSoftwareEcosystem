@@ -60,6 +60,8 @@ export async function getProjectName(projectId: string){
   try {
     const project = await client.models.Project.get({
       projectId
+    }, {
+      selectionSet: ["projectName"]
     })
     if(!project || !project.data || !project.data || !project.data.projectName) return undefined
     return project.data.projectName

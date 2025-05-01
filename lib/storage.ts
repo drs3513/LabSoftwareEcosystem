@@ -81,6 +81,7 @@ export async function uploadFile(
         try {
           //console.log(event)
           // Upload the file
+          console.log(event.target?.result)
           uploadData({
             data: event.target?.result as ArrayBuffer,
             path: key,
@@ -102,6 +103,7 @@ export async function uploadFile(
       };
 
       fileReader.readAsArrayBuffer(file);
+
     });
   } catch (error) {
     console.error("Error starting upload:", error);

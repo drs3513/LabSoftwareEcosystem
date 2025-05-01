@@ -3,12 +3,9 @@ import ChatPanel from './chat_panel'
 import FilePanel from '@/app/main_screen/[pid]/[id]/file_panel'
 import ProjectPanel from './[pid]/[id]/project_panel'
 
-const Body = styled.div<{$background?:string; $width:string}>`
-        width: ${props => props.$width};
-        height: 100%;
-        background-color: ${props => props.$background || 'black'}
-        
-    `
+
+
+
 interface Props{
     type: number;
     backgroundColor: string;
@@ -45,4 +42,11 @@ export default function Panel(props: Props ) {
 
 }
 
-
+const Body = styled.div.attrs<{$background:string, $width:string}>(props => ({
+    style: {
+        width: props.$width,
+        backgroundColor: props.$background
+    }
+}))`
+        height: 100%;
+    `
