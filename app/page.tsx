@@ -5,7 +5,6 @@ import { useAuthenticator } from "@aws-amplify/ui-react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import MainScreen from "./main_screen/page";
-import { createUserFromCognito, getCurrentUser } from "@/lib/user";
 
 import "@aws-amplify/ui-react/styles.css";
 import { fetchUserAttributes } from "aws-amplify/auth";

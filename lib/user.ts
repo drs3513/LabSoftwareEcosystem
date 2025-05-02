@@ -1,6 +1,6 @@
 import {generateClient} from "aws-amplify/data";
 import type {Schema} from "@/amplify/data/resource";
-import {fetchUserAttributes, getCurrentUser, fetchAuthSession} from "aws-amplify/auth";
+import {fetchUserAttributes, fetchAuthSession} from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
@@ -52,12 +52,12 @@ export async function getUsers() {
  * @returns {Promise<{ userId: string; username: string; email: string; administrator?: string } | null>}
  *          - The authenticated user's basic attributes, or null on error.
  */
-export async function getActiveUser() {
+export async function getActiveUser(userId: string) {
   try {
 
-    const user = await getCurrentUser()
+
     const userAttributes = (await client.models.User.get({
-      userId: user.userId
+      userId: userId
     })).data;
     if(!userAttributes) return
     return {

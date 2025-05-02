@@ -51,7 +51,7 @@ export default function UserInfoPanel({ initialPosX, initialPosY, userId, close}
         };
     }, [deletableUsers]);
     async function fetchUser(){
-        const user = await getActiveUser()
+        const user = await getActiveUser(userId)
 
         setUserInfo({
             userId: user!!.userId!!,

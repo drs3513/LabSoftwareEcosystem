@@ -18,10 +18,10 @@ export const auth = defineAuth({
     customMessage,
     postAuthentication
   },
-  access: (allow) => [
+  access: (allow) => ([
     allow.resource(postAuthentication).to(["addUserToGroup", "listGroupsForUser"]),
     allow.resource(deleteUser).to(["disableUser", "deleteUser"]),
     allow.resource(createUserInCognito).to(["createUser"])
-  ],
+  ])
 
 });
