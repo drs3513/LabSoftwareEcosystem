@@ -2,6 +2,9 @@
 import React, {createContext, useContext, useState, useEffect, ReactNode, RefObject, useRef} from "react";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 
+/**
+ * Global accessible variables, prevents the need to cascade props needlessly
+ */
 
 interface GlobalStateContextType {
   role: string | null;
@@ -11,20 +14,11 @@ interface GlobalStateContextType {
   fileId: string | undefined;
   setFileId: (id: string | undefined) => void;
   userId: string | null;
-  contextMenu: boolean;
-  setContextMenu: (val: boolean) => void;
-  contextMenuType: string;
-  setContextMenuType: (val: string) => void;
   heldKeys: string[];
   setHeldKeys: (val: string[]) => void;
   draggingFloatingWindow: RefObject<boolean>;
   messageThread: MessageThread | undefined;
   setMessageThread: (val: MessageThread) => void;
-}
-
-enum MessageThreadType {
-  Project,
-  File
 }
 
 interface MessageThread {
@@ -44,8 +38,6 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
   const [fileId, setFileId] = useState<string | undefined>(undefined);
   const [messageThread, setMessageThread] = useState<MessageThread | undefined>(undefined)
   const [userId, setUserId] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<boolean>(false);
-  const [contextMenuType, setContextMenuType] = useState<string>("file");
   const [heldKeys, setHeldKeys] = useState<Array<string>>([]);
   const draggingFloatingWindow = useRef<boolean>(false)
   useEffect(() => {
@@ -55,8 +47,8 @@ export function GlobalStateProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   return (
-    <GlobalStateContext.Provider value={{ role, setRole, projectId, setProjectId, fileId, setFileId, userId, contextMenu, setContextMenu,
-      contextMenuType, setContextMenuType, heldKeys, setHeldKeys, draggingFloatingWindow, messageThread, setMessageThread}}>
+    <GlobalStateContext.Provider value={{ role, setRole, projectId, setProjectId, fileId, setFileId, userId,
+      heldKeys, setHeldKeys, draggingFloatingWindow, messageThread, setMessageThread}}>
       {children}
     </GlobalStateContext.Provider>
   )

@@ -4,6 +4,7 @@ import {deleteFileFromStorage, getFileVersions, uploadFile} from "./storage";
 import {Nullable} from "@aws-amplify/data-schema";
 import React from "react";
 import { hardDeleteMessageforFiles } from "./message";
+import { getProjectName } from "./project"
 const client = generateClient<Schema>();
 
 
@@ -246,7 +247,7 @@ export async function processAndUploadFiles(
         }
       }
     } catch (error) {
-      console.error("[FATAL] Upload process exception caught:", error);
+      console.warn("[FATAL] Upload process exception caught:", error);
       await abortUpload(uploadedFiles, projectId);
       throw error;
     }
@@ -269,6 +270,10 @@ export async function Restorefile(fileId: string, versionId: string, projectId: 
     isDeleted: 0,
     deletedAt: null
   });
+
+  const fileToPoke = await getFile(fileId, projectId)
+  if(!fileToPoke) return
+  await pokeFile(fileId, projectId, fileToPoke.filepath)
 }
 
 
@@ -366,14 +371,12 @@ export async function listFilesForProject(projectId: string) {
 export async function listFilesForProjectAndParentIds(projectId: string, parentIds: string[]){
 
   try {
-    const pid2 = parentIds[0]
-
-
     const response = await Promise.all(
         parentIds.map((pid) =>
             client.models.File.listByProjectIdAndParentId({
               projectId,
-              parentId: {eq: pid}
+              parentId: {eq: pid},
+
             })
     ))
     let files = response.flatMap(result => result.data)
@@ -447,6 +450,25 @@ export async function searchFiles(projectId: string, fileNames: string[], tagNam
     console.error("Error searching for files:", error)
   }
 }
+
+export async function getPathForFile(fileId: string, projectId: string){
+  try {
+    const file = await client.models.File.get({
+      fileId,
+      projectId
+    },
+    {
+      selectionSet: ["filepath"]
+    })
+
+    if(!file || !file.data || !file.data.filepath) return ""
+
+    return file.data.filepath
+  } catch (error){
+    console.error(`Error getting filepath for fileId ${fileId} and projectId ${projectId} :`, error)
+  }
+}
+
 //recursively calls itself to receive a path of parent fileIds from a given fileId, going all the way to root
 //TODO Dangerous?
 //TODO SLOW
@@ -494,15 +516,31 @@ export async function getFilePath(fileId: string, projectId: string){
 
 }
 
+export async function getFile(fileId: string, projectId: string){
+  try {
+    const file = await client.models.File.get({
+      fileId,
+      projectId
+    })
+
+    return file.data
+  } catch (error) {
+    console.error(`Error getting file for fileId ${fileId} and projectId ${projectId} : `, error)
+  }
+}
+
+
+
 export async function getFileChildren(projectId: string, filepath: string){
   try {
     const files = await client.models.File.listFileByProjectIdAndFilepath({
       projectId,
       filepath: {beginsWith: filepath}
     })
-    return files.data
+    return files.data?? []
   } catch (error) {
     console.error(`Error retrieving files with filepath prefix : ${filepath} :`, error)
+    return []
   }
 
 }
@@ -552,6 +590,7 @@ export async function getFilesByProjectIdAndIsDeleted(projectId: string){
   }
 
 }
+
 
 export async function getTags(id: string, projectId: string){
   try {
@@ -618,13 +657,13 @@ export async function createFile({
     parentId,
     size,
     versionId,
-    storageId, 
+    storageId,
     ownerId,
     isDeleted,
     createdAt,
     updatedAt,
   });
-} // TODO The change I made here may have broken it
+}
 
 export async function createFolder(
   projectId: string,
@@ -655,30 +694,23 @@ export async function createFolder(
 
 }
 
-// Retrieve the latest version of a file using the composite primary key
-//export async function getLatestFileVersion(fileId: string) {
-//  try {
-//    const response = await client.models.File.listFileByLogicalIdAndVersionId(
-//        {logicalId: fileId // Query all versions with the same fileId
-//    });
-//
-//    if (response.data.length === 0) {
-//      new Error("No versions found for this file.");
-//    }
-//
-//    //Sort by versionId in descending order
-//    const sortedVersions = response.data.sort((a, b) =>
-//      parseInt(b.versionId) - parseInt(a.versionId)
-//    );
-//
-//    return sortedVersions[0].versionId; // Return the latest version
-//  } catch (error) {
-//    console.error("Error retrieving the latest file version:", error);
-//    throw error;
-//  }
-//}
-
-
+export async function renamefile(id: string, projectId: string, versionId: string, path: string, name: string) {
+  try{  
+    
+    const now = new Date().toISOString();
+    await client.models.File.update({
+        fileId: id,
+        filename: name,
+        projectId,
+        versionId: versionId,
+        filepath: path,
+        updatedAt: now,
+      });
+    } catch (error) {
+      console.error("Error updating file:", error);
+      alert("An error occurred while updating the file. Please try again.");
+    }
+}
 
 export async function updatefile(id: string, projectId: string, versionId: string) {
   try{  

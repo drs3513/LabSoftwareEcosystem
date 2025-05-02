@@ -12,49 +12,48 @@ import {useRouter, useSearchParams} from 'next/navigation'
 import { hardDeleteProject } from "@/lib/project";
 import WhitelistPanel from '@/app/main_screen/popout_whitelist_user_panel'
 
-const client = generateClient<Schema>();
+import {ContextMenu, ContextMenuWrapper, ContextMenuItem} from '@/app/main_screen/context_menu_style'
 
+const client = generateClient<Schema>();
+/**
+ * Compares the names of two projects
+ * @param project_1 first project to compare
+ * @param project_2 second project to compare
+ * @returns project_1 > project_2
+ */
+function compare_project_name(project_1: project, project_2: project){
+  return project_1.projectName.localeCompare(project_2.projectName)
+}
+
+interface project {
+  projectId: string;
+  projectName: string
+}
 export default function ProjectPanel() {
   const { setRole, setProjectId, projectId, userId, setFileId, setMessageThread } = useGlobalState();
   const router = useRouter()
   const routerSearchParams = useSearchParams();
   const { user } = useAuthenticator();
-  const [projects, setProjects] = useState<Array<{ projectId: string; projectName: string }>>([]);
+  const [projects, setProjects] = useState<project[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [contextMenu, setContextMenu] = useState<{
-    visible: boolean;
     x: number;
     y: number;
     projectId: string | null;
     projectName: string | null
-  }>({
-    visible: false,
-    x: 0,
-    y: 0,
-    projectId: null,
-    projectName: null
-  });
-  
-  function handleRightClick(event: React.MouseEvent, projectId: string, projectName: string) {
-    event.preventDefault();
-    setContextMenu({
-      visible: true,
-      x: event.clientX,
-      y: event.clientY,
-      projectId,
-      projectName
-    });
-  }
+  } | undefined>(undefined);
 
-  useEffect(() => {
-    const hideMenu = () => setContextMenu({ visible: false, x: 0, y: 0, projectId: null, projectName: null });
-    window.addEventListener("click", hideMenu);
-    return () => window.removeEventListener("click", hideMenu);
-  }, []);
+  const [displayedWhitelistPanels, setDisplayedWhitelistPanels] = useState<{projectId: string, projectName: string}[]>([])
 
+
+  /**
+   * Deletes project with given projectId.
+   * Ensures that the user must ensure that they would like to delete the project twice prior to the deletion going through
+   * @param projectId
+   */
   async function handleDeleteProject(projectId: string) {
     try {
-      console.log("deleting project:", projectId);
+      if(!confirm("Are you sure you would like to delete this project?") || !confirm("Are you especially sure you would like to delete this project?")) return
       await hardDeleteProject(projectId);
       setProjects((prev) => prev.filter((p) => p.projectId !== projectId));
       if (projectId === contextMenu?.projectId) {
@@ -64,16 +63,11 @@ export default function ProjectPanel() {
     } catch (err) {
       console.error("Failed to delete project:", err);
     } finally {
-      setContextMenu({ visible: false, x: 0, y: 0, projectId: null, projectName: null });
+      setContextMenu({ x: 0, y: 0, projectId: null, projectName: null });
     }
   }
   
-  const [contextMenuProjectId, setContextMenuProjectId] = useState<string | undefined>(undefined);
-  const [contextMenuProjectName, setContextMenuProjectName] = useState<string | undefined>(undefined);
 
-  const [displayedWhitelistPanels, setDisplayedWhitelistPanels] = useState<string[]>([])
-
-  const [contextMenuPosition, setContextMenuPosition] = useState<number[]>([0,0])
 
   useEffect(() => {
     if (!user?.signInDetails?.loginId) return;
@@ -130,11 +124,12 @@ export default function ProjectPanel() {
     router.push(`/main_screen/?pid=${projectId}&id=ROOT-${projectId}`, undefined);
   }
 
-  // This function will be called whenever the whitelist changes
-  // and will update the projects accordingly
-  // It will also check if the user is still whitelisted for the current project
-  // If not, it will redirect the user to the main screen
-  // and set the projectId and fileId to null
+  /**
+   * Observes changes to the Whitelist table on the userId of the current user
+   * Whenever a whitelist record is affected which contains the current user, updates the project view
+   * If the project which the user is currently viewing is not allowed by this whitelist query, kicks user out of page
+   */
+
   const observeProjects = async () => {
     if (!userId) return;
 
@@ -143,14 +138,19 @@ export default function ProjectPanel() {
     }).subscribe({
       next: async () => {
         try {
+          //console.log("next")
           const userProjects = await listProjectsForUser(userId);
+          //console.log("User projects:", userProjects);
           if (Array.isArray(userProjects)) {
+            //console.log("hi")
             setProjects(userProjects);
 
             // Redirect user if they are removed from the current project
             
             const isWhitelisted = await isUserWhitelistedForProject(userId, projectId!);
+
             if (!isWhitelisted) {
+              //console.log("rerouting the user to the main page!");
               setProjectId("");
               setFileId("");
               setRole("NONE");
@@ -171,25 +171,33 @@ export default function ProjectPanel() {
     return () => subscription.unsubscribe();
   };
 
+  /**
+   * Creates a context menu containing the information of the selected project
+   * @param e
+   * @param projectId
+   * @param projectName
+   */
   function createContextMenu(e: React.MouseEvent<HTMLDivElement>, projectId: string, projectName: string) {
     e.preventDefault()
     setContextMenu({
-      visible: true,
       x: e.clientX,
       y: e.clientY,
       projectId,
       projectName
     })
 
-    //setContextMenuProjectId(projectId)
-    //setContextMenuPosition([e.pageX, e.pageY])
 
   }
+  /***
+   useEffect() observing 'contextMenu'
 
+   Action : If the 'contextMenu' state is ever initiated on a project, then listen for any other mouse clicks, in the
+   case of one, close the contextMenu
+
+   ***/
   useEffect(() => {
     const handleClickOutside = () => {
-      setContextMenuProjectId(undefined);
-      setContextMenuPosition([0,0])
+      setContextMenu(undefined);
     };
     document.addEventListener("click", handleClickOutside);
     document.addEventListener("contextmenu", handleClickOutside);
@@ -197,7 +205,7 @@ export default function ProjectPanel() {
       document.removeEventListener("click", handleClickOutside);
       document.removeEventListener("contextmenu", handleClickOutside);
     };
-  }, [contextMenuProjectId]);
+  }, [contextMenu]);
 
   return (
       <>
@@ -205,7 +213,7 @@ export default function ProjectPanel() {
         {loading ? (
           <LoadingText>Loading projects...</LoadingText>
         ) : projects.length > 0 ? (
-          projects.map((project) => (
+          projects.sort(compare_project_name).map((project) => (
                 <Project
                   key={project.projectId}
                   $selected={project.projectId === projectId}
@@ -227,22 +235,24 @@ export default function ProjectPanel() {
             )}
           </PanelContainer>
 
-        {displayedWhitelistPanels.map((projectId) => (
-        <WhitelistPanel key={projectId}
-                        projectId={projectId}
+        {displayedWhitelistPanels.map((whitelistPanel) => (
+        <WhitelistPanel key={whitelistPanel.projectId}
+                        projectId={whitelistPanel.projectId}
+                        projectName={whitelistPanel.projectName}
                         displayed={true}
-                        close={() => setDisplayedWhitelistPanels(displayedWhitelistPanels.filter(id => id != projectId))}
+                        close={() => setDisplayedWhitelistPanels(displayedWhitelistPanels.filter(panel => panel.projectId != whitelistPanel.projectId))}
                         initialPosX = {50} initialPosY={50}/>
         ))}
-        {contextMenu.visible ?
+        {contextMenu ?
             <ContextMenuWrapper $x={contextMenu.x} $y={contextMenu.y}>
               <ContextMenu>
-                <ContextMenuItem onClick={() => setDisplayedWhitelistPanels([...displayedWhitelistPanels, contextMenu.projectId!!])}>
-                  Whitelist Users
+                <ContextMenuItem onClick={() => setDisplayedWhitelistPanels([...displayedWhitelistPanels, {projectId: contextMenu.projectId!!, projectName: contextMenu.projectName!!}])}>
+                  View Users
                 </ContextMenuItem>
                 <ContextMenuItem onClick={() => setMessageThread({id: contextMenu.projectId!!, label: contextMenu.projectName!!, path: undefined, type: 1})}>
                   Open Chat
                 </ContextMenuItem>
+                
                 <ContextMenuItem onClick={() => handleDeleteProject(contextMenu.projectId!!)}>
                   Delete Project
                 </ContextMenuItem>
@@ -295,73 +305,4 @@ const NoProjects = styled.div`
 const LoadingText = styled.div`
   color: gray;
   text-align: center;
-`;
-const ContextMenuExitButton = styled.button`
-  border: none;
-  font: inherit;
-  outline: inherit;
-  height: inherit;
-  position: absolute;
-  text-align: center;
-  
-  padding: .2rem .3rem;
-  top: 0;
-  right: 0;
-  visibility: hidden;
-  background-color: lightgray;
-
-  &:hover {
-    cursor: pointer;
-    background-color: gray !important;
-  }
-
-`;
-const ContextMenuItem = styled.div`
-  position: relative;
-  text-align: left;
-  border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-bottom-color: gray;
-  font-size: 14px;
-
-  &:hover {
-    transition: background-color 250ms linear;
-    background-color: darkgray;
-    
-  }
-  &:hover > ${ContextMenuExitButton}{
-    visibility: visible;
-    background-color: darkgray;
-    transition: background-color 250ms linear;
-  }
-
-  &:last-child {
-    border-bottom-style: none;
-  }
-
-  padding: 0.2rem 0.5rem 0.2rem 0.2rem;
-`
-
-
-const ContextMenu = styled.div`
-    
-    background-color: lightgray;
-    border-color: dimgray;
-    border-style: solid;
-    border-width: 1px;
-    display: flex;
-    flex-direction: column;
-    height: max-content;
-    max-height: 300px; /* Add this */
-    overflow-y: auto;   /* Add this */
-`;
-
-
-const ContextMenuWrapper = styled.div<{$x: number, $y: number}>`
-    position: fixed;
-    z-index: 20;
-    left: ${(props) => props.$x}px;
-    top: ${(props) => props.$y}px;
-    display: flex;
-    flex-direction: row;
 `;

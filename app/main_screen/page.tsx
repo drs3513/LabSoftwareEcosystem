@@ -10,8 +10,13 @@ const Body = styled.div`
     height: 100vh;
     width: 100vw;
     overflow: hidden;
+    overflow-y: hidden;
     margin: 0;
 `
+/**
+ * 'main_screen' page
+ * @constructor
+ */
 export default function Home() {
   return (
       <Body>

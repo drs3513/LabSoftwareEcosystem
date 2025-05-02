@@ -1,60 +1,21 @@
 
 import '@aws-amplify/ui-react/styles.css';
 import React, { useEffect, useMemo, useRef, useState} from "react";
-import { useGlobalState } from "@/app/GlobalStateContext";
-import { useNotificationState } from "@/app/NotificationStateContext";
 import {
-    listFilesForProjectAndParentIds,
-    searchFiles,
-    createTag,
-    deleteTag,
-    getTags,
-    getFilePath,
-    getFileIdPath,
-    processAndUploadFiles, deleteFile,
-    getFileChildren, batchUpdateFilePath, pokeFile,
-    updatefile,
-    createNewVersion,
-    waitForVersionId,
-    createFolder,
     fetchCachedUrl,
 } from "@/lib/file";
-import styled from "styled-components";
-import {Nullable} from "@aws-amplify/data-schema";
-import { startDownloadTask, downloadFolderAsZip, uploadFile, ZipTask } from "@/lib/storage";
-import {useRouter, useSearchParams} from "next/navigation"
-import type { Schema } from "@/amplify/data/resource";
 import programmingLanguageExtensions from "@/assets/extensions/programming_languages.json"
 
 
-interface fileInfo{
-    fileId: string,
-    filename: string,
-    filepath: string,
-    logicalId: string,
-    storageId: Nullable<string> |undefined,
-    size: number,
-    versionId: string,
-    ownerId: string,
-    projectId: string,
-    parentId: string,
-    createdAt: string,
-    updatedAt: string,
-    visible: boolean,
-    open: boolean,
-    isDeleted: number,
-    isDirectory: boolean | null
-    versions?: FileVersion[];
-}
-type FileVersion = Pick<
-    Schema["File"]["type"],
-    "fileId" | "logicalId" | "filename" | "filepath" | "parentId" |
-    "size" | "versionId" | "ownerId" | "projectId" | "createdAt" | "updatedAt"
->;
-
-export default async function previewFile (file: fileInfo)  {
-    if(!file) return
-    const ext = file.filename.split(".").pop()?.toLowerCase();
+/**
+ * Compares the extension of the previewed file with a list of known, working extensions
+ * Opens a new page which contains the contents of the file
+ * @param fileName - the name of the file which is being previewed
+ * @param storageId - the storageId of the file which is being previewed
+ * @param versionId - the versionId of the file which is being previewed
+ **/
+export default async function previewFile (fileName: string, storageId: string, versionId: string)  {
+    const ext = fileName.split(".").pop()?.toLowerCase();
     if(!ext) return
 
     const isTextLike = ["txt", "md", "log", "csv", "json", "xml", "tds", "tdp"].includes(ext) || programmingLanguageExtensions.some(language => language.extensions !== undefined && language.extensions.includes(`.${ext}`))
@@ -63,8 +24,7 @@ export default async function previewFile (file: fileInfo)  {
     const isImage = ["png", "jpg", "jpeg"].includes(ext);
 
 
-    const path = file.storageId as string;
-    const versionId = file.versionId;
+    const path = storageId;
 
     try {
         const cachedUrl = await fetchCachedUrl(path, versionId);
@@ -77,7 +37,7 @@ export default async function previewFile (file: fileInfo)  {
         const previewContent = isPDF
             ? `<iframe src="${cachedUrl}" width="100%" height="100%"></iframe>`
             : isImage
-                ? `<img src="${cachedUrl}" alt="${file.filename}" />`
+                ? `<img src="${cachedUrl}" alt="${fileName}" />`
                 : isTextLike
                     ? `<pre><code id="code-block">Loading...</code></pre>`
                     : `<p id="message">Unsupported file type: "${`${ext.length > 0 ? ext : "Unknown"}`}".</p>`;
@@ -86,7 +46,7 @@ export default async function previewFile (file: fileInfo)  {
                           <!DOCTYPE html>
                           <html lang="en">
                           <head>
-                            <title>Preview - ${file.filename}</title>
+                            <title>Preview - ${fileName}</title>
                             <style>
                               html, body {
                                 height: 100%;
@@ -137,22 +97,20 @@ export default async function previewFile (file: fileInfo)  {
                           </head>
                           <body>
                             <div class="toolbar">
-                              <div>Previewing: ${file.filename}</div>
-                              <a href="${cachedUrl}" download="${file.filename}">Download</a>
+                              <div>Previewing: ${fileName}</div>
+                              <a href="${cachedUrl}" download="${fileName}">Download</a>
                             </div>
                             <div class="preview">
                               ${previewContent}
                             </div>
-                            ${
-            isTextLike 
-                ? `<script>
-                                     fetch("${cachedUrl}")
-                                       .then(res => res.text())
-                                       .then(code => {
-                                         document.getElementById("code-block").textContent = code;
-                                       });
-                                   </script>`
-                : `<script> console.log("HERE"); document.getElementById("message").textContent = "Unsupported File Type: " + {ext.length > 0 ? ext : "\"Unknown\""}</script>`
+                            ${isTextLike ? `<script>
+                                                fetch("${cachedUrl}")
+                                                  .then(res => res.text())
+                                                  .then(code => {
+                                                    document.getElementById("code-block").textContent = code;
+                                                  });
+                                            </script>`
+                                    : `<script> console.log("HERE"); document.getElementById("message").textContent = "Unsupported File Type: " + {ext.length > 0 ? ext : "\"Unknown\""}</script>`
         }
                           </body>
                           </html>

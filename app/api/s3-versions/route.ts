@@ -6,6 +6,44 @@ const BUCKET_NAME = output.storage.bucket_name;
 
 const REGION = output.auth.aws_region;
 
+/**
+ * API endpoint to retrieve all object versions for a given S3 key using AWS SDK v3.
+ * Expects temporary AWS credentials and a storage key in the request body.
+ *
+ * @param {NextRequest} req - The incoming POST request containing `credentials` and `key`.
+ * @returns {Promise<NextResponse>} A JSON response with a list of version metadata or an error message.
+ *
+ * Request Body:
+ * ```json
+ * {
+ *   "credentials": {
+ *     "accessKeyId": string,
+ *     "secretAccessKey": string,
+ *     "sessionToken": string
+ *   },
+ *   "key": string
+ * }
+ * ```
+ *
+ * Response Format:
+ * ```json
+ * {
+ *   "versions": [
+ *     {
+ *       "key": string,
+ *       "versionId": string,
+ *       "lastModified": string
+ *     },
+ *     ...
+ *   ]
+ * }
+ * ```
+ *
+ * Error Cases:
+ * - 401 if `credentials` are missing
+ * - 400 if `key` is not provided
+ * - 500 for internal server or S3 access issues
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

@@ -1,10 +1,15 @@
 import styled from "styled-components"
 import {useNotificationState} from "@/app/NotificationStateContext";
 import React from "react";
+
+/**
+ * Notification Viewer, currently only used to display file upload / download progress.
+ * @constructor
+ */
 export default function NotificationView() {
     const { activeNotifications, removeNotification,
     uploadQueue, uploadProgress,
-    completedUploads, showProgressPanel, setShowProgressPanel} = useNotificationState();
+    completedUploads, showProgressPanel, uploadTask, setShowProgressPanel} = useNotificationState();
 
 
 
@@ -46,7 +51,7 @@ export default function NotificationView() {
                                             : `Queued batch ${index + 1}`}
                                 </ProgressLabel>
                                 {isActive && (
-                                    <CancelButton title="Cancel Upload">
+                                    <CancelButton title="Cancel Upload" onClick={() => uploadTask.current.isCanceled = true}>
                                         ✖
                                     </CancelButton>
                                 )}

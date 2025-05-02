@@ -1,14 +1,21 @@
 import {generateClient} from "aws-amplify/data";
 import type {Schema} from "@/amplify/data/resource";
-import {fetchUserAttributes} from "aws-amplify/auth";
+import {fetchUserAttributes, getCurrentUser, fetchAuthSession} from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
+/**
+ * Creates a new user in the database using attributes fetched from the authenticated Cognito user.
+ * If the user already exists, this function should not be called.
+ *
+ * @returns {Promise<Schema["User"]["type"] | undefined>} - The newly created user record, or undefined on error.
+ */
 
 export async function createUserFromCognito() {
   try {
 
     const userAttributes = await fetchUserAttributes();
+
 
     const sub = userAttributes.sub as string;
     const name = userAttributes.preferred_username as string;
@@ -21,28 +28,44 @@ export async function createUserFromCognito() {
       userId: sub, // Using Cognito User ID as primary key
       username: name,
       email,
-      createdAt: now,
+      createdAt: now
     });
   } catch (error) {
     console.error("Error creating user from Cognito:", error);
   }
 }
 
+/**
+ * Retrieves a list of all users from the User model.
+ *
+ * @returns {Promise<Schema["User"]["type"][]>} - An array of user records from the database.
+ */
 export async function getUsers() {
   const user_list = await client.models.User.list();
   //console.log(user_list);
   return user_list;
 }
 
-
-export async function getCurrentUser() {
+/**
+ * Fetches the currently authenticated user's attributes from Cognito.
+ *
+ * @returns {Promise<{ userId: string; username: string; email: string; administrator?: string } | null>}
+ *          - The authenticated user's basic attributes, or null on error.
+ */
+export async function getActiveUser() {
   try {
-    const userAttributes = await fetchUserAttributes();
+
+    const user = await getCurrentUser()
+    const userAttributes = (await client.models.User.get({
+      userId: user.userId
+    })).data;
+    if(!userAttributes) return
     return {
-      userId: userAttributes.sub,
-      username: userAttributes.preferred_username,
+      userId: userAttributes.userId,
+      username: userAttributes.username,
       email: userAttributes.email,
       administrator: userAttributes.administrator,
+      createdAt: userAttributes.createdAt
     };
   } catch (error) {
     console.error("Error fetching current user:", error);
@@ -50,6 +73,37 @@ export async function getCurrentUser() {
   }
 }
 
+export async function getUserByUserId(userId: string){
+  try {
+    const userAttributes = await client.models.User.get({
+      userId
+    },
+    {
+      selectionSet: ["userId", "username", "email"]
+    })
+    if(!userAttributes) return
+    return userAttributes.data
+  } catch (error) {
+    console.error(`Error fetching user with userId: ${userId}:`, error)
+  }
+
+}
+
+export async function getUsersNotAdmin(){
+  try {
+    const users = await client.models.User.list({
+      filter: {
+        administrator: {eq: false}
+      }
+    })
+    return users.data
+  } catch (error) {
+    console.error(`Could not fetch users that are not admin :`, error)
+  }
+}
+/*                    *
+ *    Future Work     *
+ *                    */
 //export async function isUserAdmin(userId: string) {
 //  try {
 //    const response = await client.models.User.get({ userId });

@@ -4,9 +4,15 @@ import styled from 'styled-components';
 
 interface Props {
   filename: string;
-  onResolve: (choice: 'overwrite' | 'version' | 'cancel', applyToAll: boolean) => void;
+  onResolve: (choice: 'rename' | 'overwrite' | 'version' | 'cancel', applyToAll: boolean) => void;
 }
 
+/**
+ * Simple modal which returns whether a user would like to rename, overwrite, version, or cancel the upload of a file
+ * @param filename
+ * @param onResolve
+ * @constructor
+ */
 export default function ConflictModal({ filename, onResolve }: Props) {
   const [applyAll, setApplyAll] = useState(false);
 
@@ -19,7 +25,7 @@ export default function ConflictModal({ filename, onResolve }: Props) {
           <input type="checkbox" checked={applyAll} onChange={() => setApplyAll(!applyAll)} />
           Apply to all
         </label>
-        <Button onClick={() => onResolve("overwrite", applyAll)}>Rename</Button>
+        <Button onClick={() => onResolve("rename", applyAll)}>Rename</Button>
         <Button onClick={() => onResolve("overwrite", applyAll)}>Overwrite</Button>
         <Button onClick={() => onResolve("version", applyAll)}>Create Version</Button>
         <Button onClick={() => onResolve("cancel", applyAll)}>Cancel</Button>

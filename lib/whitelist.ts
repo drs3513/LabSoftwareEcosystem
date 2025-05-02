@@ -14,7 +14,15 @@ export enum Role {
 
 export const roleHierarchy: readonly Role[] = [Role.NONE, Role.USER, Role.ADMIN, Role.HEAD];
 
-// Whitelist User (with Role)
+/**
+ * Adds a user to the project's whitelist with a given role.
+ * Includes audit metadata such as the email of the creator.
+ *
+ * @param {string} projectId - The project ID.
+ * @param {string} userId - The user ID to be whitelisted.
+ * @param {Role} role - The role to assign to the user.
+ * @returns {Promise<Schema["Whitelist"]["type"] | null>} - The created whitelist entry, or null on failure.
+ */
 export async function whitelistUser(projectId: string, userId: string, role: Role) {
   try {
     const currentUser = (await fetchUserAttributes());
@@ -40,7 +48,14 @@ export async function whitelistUser(projectId: string, userId: string, role: Rol
   }
 }
 
-// Remove User from Whitelist (Only if Lower Role)
+/**
+ * Removes a user from the whitelist if their role is lower than the current user.
+ *
+ * @param {string} projectId - The project ID.
+ * @param {string} userId - The ID of the user to remove.
+ * @param {Role} currentUserRole - The role of the user initiating the removal.
+ * @returns {Promise<boolean>} - True if removed, false otherwise.
+ */
 export async function removeWhitelistedUser(projectId: string, userId: string, currentUserRole: Role) {
   try {
     const whitelistId = `${projectId}-${userId}`;
@@ -61,7 +76,13 @@ export async function removeWhitelistedUser(projectId: string, userId: string, c
     return false;
   }
 }
-
+/**
+ * Downgrades a whitelisted user to the USER role.
+ *
+ * @param {string} projectId - The project ID.
+ * @param {string} userId - The user ID to downgrade.
+ * @returns {Promise<any>} - The updated whitelist entry or undefined on error.
+ */
 export async function revokeUserAdmin(projectId: string, userId: string) {
   const whitelistId = `${projectId}-${userId}`;
   try {
@@ -74,6 +95,13 @@ export async function revokeUserAdmin(projectId: string, userId: string) {
   }
 }
 
+/**
+ * Elevates a user's role in a project to ADMIN, if not already.
+ *
+ * @param {string} projectId - The project ID.
+ * @param {string} userId - The user ID to promote.
+ * @returns {Promise<any>} - The updated whitelist entry or undefined on error.
+ */
 export async function elevateUserToAdmin(projectId: string, userId: string) {
   const userRole = await getUserRole(projectId, userId);
   if (userRole === Role.ADMIN) {
@@ -90,8 +118,13 @@ export async function elevateUserToAdmin(projectId: string, userId: string) {
   }
 }
 
-// Check User Role
-
+/**
+ * Gets the role of a specific user within a project.
+ *
+ * @param {string} projectId - The project ID.
+ * @param {string} userId - The user ID.
+ * @returns {Promise<Role>} - The user's role in the project, or NONE if not found.
+ */
 export async function getUserRole(projectId: string, userId: string): Promise<Role> {
   try {
     const whitelistId = `${projectId}-${userId}`;
@@ -103,54 +136,13 @@ export async function getUserRole(projectId: string, userId: string): Promise<Ro
   }
 }
 
-
-//export async function listUsersBelowRole(projectId: string, role: Role) {
-//  try {
-//    // Slice the global roleHierarchy to the current role
-//    if (!roleHierarchy.includes(role)) {
-//      console.error("Invalid role provided.");
-//      return [];
-//    }
-//    if (role === Role.NONE) {
-//      console.error("Role is NONE, no users to list.");
-//      return [];
-//    }
-//    const slicedHierarchy = roleHierarchy.slice(0, roleHierarchy.indexOf(role));
-//
-//    // Fetch whitelist entries for project where role is below the current role
-//    const whitelistResponse = await client.models.Whitelist.list({
-//      filter: {
-//        projectId: { eq: projectId },
-//        or: slicedHierarchy.map((r) => ({
-//          role: { eq: r },
-//        })),
-//      },
-//    });
-//
-//    const whitelistEntries = whitelistResponse.data;
-//    if (!whitelistEntries || whitelistEntries.length === 0) {
-//      return [];
-//    }
-//
-//    // Get userIds from whitelist entries
-//    const userIds = whitelistEntries.map(entry => entry.userIds).filter(Boolean);
-//    // Find users with those userIds
-//    const userResponse = await client.models.User.list({
-//      filter: {
-//        or: userIds.map(id => ({ userId: { eq: id } }))
-//      }
-//    });
-//
-//    return userResponse.data ?? [];
-//
-//  } catch (error) {
-//    console.error("Error listing users:", error);
-//    return [];
-//  }
-//}
-//
-
-// Function to check if a user is whitelisted for a project
+/**
+ * Checks whether a user is whitelisted for a given project.
+ *
+ * @param {string} userId - The user's ID.
+ * @param {string} projectId - The project ID.
+ * @returns {Promise<boolean>} - True if whitelisted, false otherwise.
+ */
 export async function isUserWhitelistedForProject(userId: string, projectId: string): Promise<boolean> {
   try {
     const whitelistId = `${projectId}-${userId}`;
@@ -165,7 +157,13 @@ export async function isUserWhitelistedForProject(userId: string, projectId: str
   }
 }
 
-// List all users in a project based on their whitelist status
+/**
+ * Lists users who are either in or not in the specified project's whitelist.
+ *
+ * @param {string} projectId - The project ID.
+ * @param {boolean} inProject - True to list whitelisted users, false to list non-whitelisted users.
+ * @returns {Promise<Schema["User"]["type"][] | false>} - Array of users or false on error.
+ */
 export async function listUsersInProject(projectId: string, inProject: boolean) {
   try {
     const currentUsers =  await client.models.Whitelist.list({

@@ -15,7 +15,11 @@ const Body = styled.body`
     padding: 0;
 `
 
-
+/**
+ * Default page layout
+ * @param children
+ * @constructor
+ */
 export default function RootLayout({
   children,
 }: {
@@ -24,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en" style={{margin: 0}}>
       <Body style={{margin: 0}} id={"root"}>
-        <Authenticator>
+        <Authenticator hideSignUp>
           <GlobalStateProvider>
             <NotificationStateProvider>
               {children}
