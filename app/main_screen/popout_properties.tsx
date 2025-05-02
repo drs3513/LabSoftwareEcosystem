@@ -2,7 +2,7 @@ import React from "react";
 import styled from "styled-components";
 import Image from "next/image";
 import PopoutPanel from "./popout_panel";
-import { return_file_icon } from "./[pid]/[id]/file_panel"; 
+import return_file_icon from "./[pid]/[id]/file_panel";
 
 type FileProps = {
   fileId: string;
