@@ -4,7 +4,7 @@ import styled from "styled-components";
 import { useState, useEffect, useRef } from "react";
 import { whitelistUser, Role } from "@/lib/whitelist";
 import { createProject } from "@/lib/project";
-import { getCurrentUser } from "@/lib/user"
+import { getActiveUser } from "@/lib/user"
 import { useGlobalState } from "../GlobalStateContext";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import UserInfoPanel from "./popout_user_info_panel"
@@ -32,21 +32,19 @@ export default function TopBar() {
    */
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (openDropdown) {
         setOpenDropdown(undefined);
       }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("contextmenu", handleClickOutside)
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.addEventListener("contextmenu", handleClickOutside)
     };
-  }, []);
+  }, [openDropdown]);
 
-  async function fetchUserInfo(){
-    const user = await getCurrentUser()
-
-  }
 
   /**
    * Creates a project with the provided name

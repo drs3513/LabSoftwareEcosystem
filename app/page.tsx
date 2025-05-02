@@ -29,27 +29,10 @@ export default function App() {
       console.error("No user ID found in sign-in details.");
       return;
     }
+    router.push('/main_screen')
 
-    async function checkAndCreateUser() {
-      try {
-        const userAttributes = await fetchUserAttributes();
-        const userId = userAttributes.sub as string;
 
-        // Fetch user from DynamoDB
-        const existingUser = await client.models.User.get({ userId });
 
-        if (!existingUser.data){
-          await createUserFromCognito(); // Call only if the user does not exist
-        }
-
-        setLoading(false);
-        router.push('/main_screen')
-      } catch (error) {
-        console.error("Error checking/creating user:", error);
-      }
-    }
-
-    checkAndCreateUser();
   }, [user, router]);
 
   if (loading) return <p>Loading user data...</p>;

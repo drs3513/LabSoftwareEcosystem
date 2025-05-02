@@ -15,6 +15,13 @@ backend.auth.resources.authenticatedUserIamRole.addManagedPolicy(
   ManagedPolicy.fromAwsManagedPolicyName('AmazonS3FullAccess')
 );
 
+backend.auth.resources.groups["USER"].role.addManagedPolicy(
+    ManagedPolicy.fromAwsManagedPolicyName('AmazonS3FullAccess')
+)
+backend.auth.resources.groups["ADMINISTRATOR"].role.addManagedPolicy(
+    ManagedPolicy.fromAwsManagedPolicyName('AmazonS3FullAccess')
+)
+
 //  Customize Cognito User Pool password policy
 const { cfnUserPool } = backend.auth.resources.cfnResources;
 

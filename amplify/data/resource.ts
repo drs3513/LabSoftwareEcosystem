@@ -1,6 +1,7 @@
 import {type ClientSchema, a, defineData} from "@aws-amplify/backend";
-
-
+import { deleteUser } from "./deleteUser/resource"
+import { createUserInCognito } from "./createUser/resource"
+import {postAuthentication} from "../auth/postAuthentication/resource"
 const schema = a
   .schema({
     // User model
@@ -210,9 +211,27 @@ const schema = a
     project: a.belongsTo("Project", "projectId"),
   })
   .identifier(["whitelistId"]),
+  createUserInCognito: a
+      .mutation()
+      .arguments({
+          email: a.string().required()
+      })
+      .authorization((allow) => [allow.group("ADMINISTRATOR")])
+      .handler(a.handler.function(createUserInCognito))
+      .returns(a.json()),
 
+
+  deleteUserFromCognito: a
+      .mutation()
+      .arguments({
+          userId: a.string().required(),
+          username: a.string().required(),
+      })
+      .authorization((allow) => [allow.group("ADMINISTRATOR")])
+      .handler(a.handler.function(deleteUser))
+      .returns(a.json())
 }).authorization((allow) => [
-  allow.authenticated(),
+  allow.groups(["USER", "ADMINISTRATOR"]), allow.resource(postAuthentication), allow.resource(deleteUser)
 ]);
 export type Schema = ClientSchema<typeof schema>;
 
