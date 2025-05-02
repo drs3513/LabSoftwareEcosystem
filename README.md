@@ -58,6 +58,23 @@ The live deployment created as a result of this project may be found at [https:/
 Our up-to-date github page may be found at [https://github.com/drs3513/LabSoftwareEcosystem]
 
 
+##Live Deployment
+
+You may want to edit this software without having to fully deploy the site each time. This may be achieved through the following steps : 
+
+**1** Ensure that you have node.js installed
+
+**2** Open up the project in your favorite IDE.
+
+**3** Open two command prompts on the root of the project
+
+**4** In one command prompt, run 'npm install', this will ensure that you have the most up-to-date packages necessary.
+
+**5** Once 'npm install' has completed, in the second command prompt window, run 'npx ampx sandbox', this will create a sandbox environment hosted on AWS.
+
+**6** In your first command prompt window, run 'npm run dev', this will create a live deployment of your webpage, which dynamically reacts to your actions.
+
+
 ## Disclaimer
 
 All icons are either original, or edited versions of those which may be found at [https://lineicons.com/]
