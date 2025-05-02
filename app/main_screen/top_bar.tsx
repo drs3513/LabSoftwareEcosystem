@@ -32,16 +32,18 @@ export default function TopBar() {
    */
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (openDropdown) {
         setOpenDropdown(undefined);
       }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("contextmenu", handleClickOutside)
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.addEventListener("contextmenu", handleClickOutside)
     };
-  }, []);
+  }, [openDropdown]);
 
   async function fetchUserInfo(){
     const user = await getCurrentUser()

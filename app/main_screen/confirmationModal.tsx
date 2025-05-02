@@ -4,7 +4,7 @@ import styled from 'styled-components';
 
 interface Props {
     message: string;
-    onResolve: (choice: 'yes' | 'no') => void;
+    onResolve: (choice: 'Yes' | 'No') => void;
 }
 
 /**
@@ -17,8 +17,8 @@ export default function ConflictModal({ message, onResolve }: Props) {
         <ModalBackground>
             <ModalContainer>
                 <p>{message}</p>
-                <Button onClick={() => onResolve("yes")}>Accept</Button>
-                <Button onClick={() => onResolve("no")}>Reject</Button>
+                <Button onClick={() => onResolve("Yes")}>Accept</Button>
+                <Button onClick={() => onResolve("No")}>Reject</Button>
             </ModalContainer>
         </ModalBackground>
     );

@@ -387,16 +387,12 @@ const ViewContainer = styled.div`
 `
 
 const UserButton = styled(Button)`
-    
     margin-left: auto;
     margin-right: auto;
     margin-top: .5rem;
     margin-bottom: .5rem;
     display: flex;
     justify-content: center;
-    
-
-    
 `
 
 const UserList = styled.div`
