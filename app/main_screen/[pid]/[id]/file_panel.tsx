@@ -747,53 +747,67 @@ export default function FilePanel() {
   };
 
 
-  /**
-   * Fetches files which adhere to the previously defined search parameters.
-   */
-  async function fetchFilesWithSearch(){
-    setLoading(true);
-    if (!projectId) return;
-    const projectFiles = await searchFiles(projectId, searchTerm, tagSearchTerm)
+/**
+ * Fetches files which adhere to the previously defined search parameters.
+ * Groups by logicalId, picks latest version, and attaches version history.
+ */
+async function fetchFilesWithSearch() {
+  setLoading(true);
+  if (!projectId) return;
 
-    //builds array of files with extra information for display
-    //Extra information :
-    //'visible' : designates if a file is current visible,
-    // 'open' : designates if a file is currently open (it's unclear that this is required)
-    if(projectFiles){
-      let temp_files: Array<fileInfo> = []
-      for(let file of projectFiles) {
-        if(file) {
-          temp_files = [...temp_files,
-            {
-              fileId: file.fileId,
-              filename: file.filename,
-              logicalId: file.logicalId,
-              filepath: file.filepath,
-              storageId: file.storageId,
-              parentId: file.parentId,
-              size: file.size,
-              versionId: file.versionId,
-              ownerId: file.ownerId,
-              projectId: file.projectId,
-              createdAt: file.createdAt,
-              updatedAt: file.updatedAt,
-              isDeleted: file.isDeleted,
-              visible: true,
-              open: activeParentIds.some(parent => parent.id === file.fileId),
-              isDirectory: file.isDirectory? file.isDirectory : null
-            }]
-        }
-      }
-      setFiles(temp_files)
-      setLoading(false);
-      return temp_files
-
-    } else {
-      setSearch(false)
-      setLoading(false)
-    }
-
+  const projectFiles = await searchFiles(projectId, searchTerm, tagSearchTerm);
+  if (!projectFiles) {
+    setSearch(false);
+    setLoading(false);
+    return;
   }
+
+  const grouped: Record<string, typeof projectFiles> = {};
+
+  for (const file of projectFiles) {
+    if (!file || file.isDeleted) continue;
+
+    if (!grouped[file.logicalId]) {
+      grouped[file.logicalId] = [];
+    }
+    grouped[file.logicalId].push(file);
+  }
+
+  const groupedFiles: fileInfo[] = [];
+
+  for (const logicalId in grouped) {
+    const versions = grouped[logicalId].sort((a, b) =>
+      new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
+    );
+
+    const latest = versions[0];
+
+    groupedFiles.push({
+      fileId: latest.fileId,
+      logicalId: latest.logicalId,
+      filename: latest.filename,
+      filepath: latest.filepath,
+      parentId: latest.parentId,
+      storageId: latest.storageId,
+      size: latest.size,
+      versionId: latest.versionId,
+      ownerId: latest.ownerId,
+      projectId: latest.projectId,
+      createdAt: latest.createdAt,
+      updatedAt: latest.updatedAt,
+      visible: true,
+      isDeleted: latest.isDeleted,
+      open: activeParentIds.some((parent) => parent.id === latest.fileId),
+      isDirectory: latest.isDirectory ?? null,
+      versions,
+    });
+  }
+
+  setFiles(sort_files_with_path(groupedFiles));
+  setLoading(false);
+  return groupedFiles;
+}
+
 
   /**
    * useEffect() on any searchTerms the user have utilized in their search query, and whether or not the user is actively searching.
