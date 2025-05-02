@@ -2,7 +2,7 @@ import { util } from "@aws-appsync/utils";
 
 /**
  * Searches for documents by list of messageContents, and tagNames using substring match
- * @arguments : {messageContents: string[], tagNames: string[]}
+ * @arguments : {messageContents: string[], tagNames: string[], authorId: string[]}
  * @returns all found messages
  */
 export function request(ctx) {
@@ -14,7 +14,6 @@ export function request(ctx) {
             expressionValues: util.dynamodb.toMapValues({":projectId": ctx.arguments.projectId })
         },
         index: "messagesByProjectIdAndPagination"
-        //operation: "Scan"
     };
 }
 
