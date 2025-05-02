@@ -775,13 +775,16 @@ async function fetchFilesWithSearch() {
   const groupedFiles: fileInfo[] = [];
 
   for (const logicalId in grouped) {
-    const versions = grouped[logicalId].sort((a, b) =>
-      new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
-    );
+    const versions = grouped[logicalId]
+      .filter((v): v is NonNullable<typeof v> => v != null)
+      .sort((a, b) =>
+        new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
+      );
+
 
     const latest = versions[0];
-
-    groupedFiles.push({
+    if(latest){    
+      groupedFiles.push({
       fileId: latest.fileId,
       logicalId: latest.logicalId,
       filename: latest.filename,
@@ -800,6 +803,7 @@ async function fetchFilesWithSearch() {
       isDirectory: latest.isDirectory ?? null,
       versions,
     });
+    } 
   }
 
   setFiles(sort_files_with_path(groupedFiles));
