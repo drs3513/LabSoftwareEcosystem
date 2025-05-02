@@ -215,70 +215,6 @@ interface activeParent{
   id: string,
   depth: number
 }
-  /**
-   * Returns the associated .svg file for a given file, if file type is within the set of file types which an icon has
-   * been created for, returns that icon, else, returns a generic icon.
-   * @param fileName
-   */
-
-  export function return_file_icon(fileName: string){
-    const extension = fileName.split('.').pop()
-  switch(extension) {
-    case 'cpp': {
-      return icon_filecpp;
-    }
-    case 'html': {
-      return icon_filehtml;
-    }
-    case 'jpg': {
-      return icon_filejpg;
-    }
-    case 'js': {
-      return icon_filejs;
-    }
-    case 'json': {
-      return icon_filejson;
-    }
-    case 'mp4': {
-      return icon_filemp4;
-    }
-    case 'pdf': {
-      return icon_filepdf;
-    }
-    case 'png': {
-      return icon_filepng;
-    }
-    case 'py': {
-      return icon_filepy;
-    }
-    case 'svg': {
-      return icon_filesvg;
-    }
-    case 'tdp': {
-      return icon_filetdp;
-    }
-    case 'tds': {
-      return icon_filetds;
-    }
-    case 'tsx': {
-      return icon_filetsx;
-    }
-    case 'txt': {
-      return icon_filetxt;
-    }
-    case 'webp': {
-      return icon_filewebp;
-    }
-    case 'xml': {
-      return icon_filexml;
-    }
-    case 'zip': {
-      return icon_filezip;
-    }
-  }
-  return icon_filegeneric;
-}
-
 
 export default function FilePanel() {
 
@@ -380,6 +316,69 @@ export default function FilePanel() {
 
   const [activeRecyclingBins, setActiveRecyclingBins] = useState<{projectId: string, projectName: string, poke: boolean}[]>([])
 
+  /**
+   * Returns the associated .svg file for a given file, if file type is within the set of file types which an icon has
+   * been created for, returns that icon, else, returns a generic icon.
+   * @param fileName
+   */
+
+  function return_file_icon(fileName: string){
+    const extension = fileName.split('.').pop()
+    switch(extension) {
+      case 'cpp': {
+        return icon_filecpp;
+      }
+      case 'html': {
+        return icon_filehtml;
+      }
+      case 'jpg': {
+        return icon_filejpg;
+      }
+      case 'js': {
+        return icon_filejs;
+      }
+      case 'json': {
+        return icon_filejson;
+      }
+      case 'mp4': {
+        return icon_filemp4;
+      }
+      case 'pdf': {
+        return icon_filepdf;
+      }
+      case 'png': {
+        return icon_filepng;
+      }
+      case 'py': {
+        return icon_filepy;
+      }
+      case 'svg': {
+        return icon_filesvg;
+      }
+      case 'tdp': {
+        return icon_filetdp;
+      }
+      case 'tds': {
+        return icon_filetds;
+      }
+      case 'tsx': {
+        return icon_filetsx;
+      }
+      case 'txt': {
+        return icon_filetxt;
+      }
+      case 'webp': {
+        return icon_filewebp;
+      }
+      case 'xml': {
+        return icon_filexml;
+      }
+      case 'zip': {
+        return icon_filezip;
+      }
+    }
+    return icon_filegeneric;
+  }
 
   /**
    * Whenever a contextMenu is opened, creates eventListeners which wait until the user clicks anywhere other than the limited
@@ -2217,25 +2216,6 @@ async function fetchFilesWithSearch() {
     }
 
   }
-
-  /**
- * Displays the file properties panel with metadata such as filename, size, path,
- * owner information, and timestamps. Fetches the owner's username from the User model.
- *
- * @async
- * @function handleProperties
- * @param {string} fileId - The ID of the file for which properties are to be displayed.
- * @param {React.MouseEvent} e - The mouse event triggered by a right-click or similar action.
- *
- * @returns {Promise<void>}
- *
- * @remarks
- * - Prevents the default context menu behavior.
- * - Locates the file using the provided fileId.
- * - Fetches the file owner's username via the `User.get` query.
- * - Updates the `filePropertiesPanel` state to render the floating properties window.
- * - Adjusts the panel’s position to slightly offset from the cursor.
- */
 
   async function handleProperties(fileId: string, e: React.MouseEvent) {
     e.preventDefault();
