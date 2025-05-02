@@ -54,6 +54,10 @@ control access to each project.
 
 The live deployment created as a result of this project may be found at [https://main.d1hofgr0dblvu2.amplifyapp.com]
 
+
+Our up-to-date github page may be found at [https://github.com/drs3513/LabSoftwareEcosystem]
+
+
 ## Disclaimer
 
 All icons are either original, or edited versions of those which may be found at [https://lineicons.com/]
