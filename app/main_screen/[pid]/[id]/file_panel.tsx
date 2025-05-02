@@ -777,8 +777,18 @@ async function fetchFilesWithSearch() {
 
   for (const logicalId in grouped) {
     const versions = grouped[logicalId].sort((a, b) =>
-      new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
-    );
+    {
+      if(a && b){
+        new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
+      } else if (a){
+        new Date(a.updatedAt!).getTime()
+      } else if (b){
+        new Date(b.updatedAt!).getTime()
+      } else {
+        0
+      }
+
+    });
 
     const latest = versions[0];
 
