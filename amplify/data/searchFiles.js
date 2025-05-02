@@ -42,18 +42,3 @@ export function response(ctx) {
                     file.filename.toLowerCase().includes(fileName.toLowerCase()))))).filter((file) => file.isDeleted === 0)
 }
 
-/*
-ctx.arguments.tagNames.length === 0 ||
-            (file.tags && file.tags.length !== 0 &&
-                ctx.arguments.tagNames.some((searchTagName) =>
-                file.tags.some((fileTagName) =>
-                    fileTagName.includes(searchTagName)))))
-        &&
- */
-
-/*
-((file) =>
-        ((ctx.arguments.fileNames.length === 0 ||
-            ctx.arguments.fileNames.some((fileName) =>
-                file.filename.includes(fileName)))))
- */

@@ -19,7 +19,8 @@ import {
   createFolder,
   fetchCachedUrl,
     getPathForFile,
-    getFile
+    getFile,
+    renamefile
 } from "@/lib/file";
 import styled from "styled-components";
 import {Nullable} from "@aws-amplify/data-schema";
@@ -66,6 +67,7 @@ import icon_filetxt from "/assets/icons/file-icon-24x24-txt.svg";
 import icon_filewebp from "/assets/icons/file-icon-24x24-webp.svg";
 import icon_filexml from "/assets/icons/file-icon-24x24-xml.svg";
 import icon_filezip from "/assets/icons/file-icon-24x24-zip.svg";
+import FilePropertiesPanel from '../../popout_properties';
 
 
 
@@ -163,6 +165,8 @@ type FileVersion = Pick<
   "size" | "versionId" | "ownerId" | "projectId" | "createdAt" | "updatedAt"
 >;
 
+
+
 /**
  * Data required for a file object
  */
@@ -211,9 +215,85 @@ interface activeParent{
   id: string,
   depth: number
 }
+  /**
+   * Returns the associated .svg file for a given file, if file type is within the set of file types which an icon has
+   * been created for, returns that icon, else, returns a generic icon.
+   * @param fileName
+   */
+
+  export function return_file_icon(fileName: string){
+    const extension = fileName.split('.').pop()
+  switch(extension) {
+    case 'cpp': {
+      return icon_filecpp;
+    }
+    case 'html': {
+      return icon_filehtml;
+    }
+    case 'jpg': {
+      return icon_filejpg;
+    }
+    case 'js': {
+      return icon_filejs;
+    }
+    case 'json': {
+      return icon_filejson;
+    }
+    case 'mp4': {
+      return icon_filemp4;
+    }
+    case 'pdf': {
+      return icon_filepdf;
+    }
+    case 'png': {
+      return icon_filepng;
+    }
+    case 'py': {
+      return icon_filepy;
+    }
+    case 'svg': {
+      return icon_filesvg;
+    }
+    case 'tdp': {
+      return icon_filetdp;
+    }
+    case 'tds': {
+      return icon_filetds;
+    }
+    case 'tsx': {
+      return icon_filetsx;
+    }
+    case 'txt': {
+      return icon_filetxt;
+    }
+    case 'webp': {
+      return icon_filewebp;
+    }
+    case 'xml': {
+      return icon_filexml;
+    }
+    case 'zip': {
+      return icon_filezip;
+    }
+  }
+  return icon_filegeneric;
+}
+
 
 export default function FilePanel() {
 
+
+  const [filePropertiesPanel, setFilePropertiesPanel] = useState<{
+    fileId: string;
+    filename: string;
+    size: number;
+    filepath: string;
+    ownerId: string;
+    createdAt: string;
+    updatedAt: string;
+    posX: number;
+    posY: number;
+  } | null>(null);
 
   const routerSearchParams = useSearchParams()
   const router = useRouter()
@@ -300,69 +380,6 @@ export default function FilePanel() {
 
   const [activeRecyclingBins, setActiveRecyclingBins] = useState<{projectId: string, projectName: string, poke: boolean}[]>([])
 
-  /**
-   * Returns the associated .svg file for a given file, if file type is within the set of file types which an icon has
-   * been created for, returns that icon, else, returns a generic icon.
-   * @param fileName
-   */
-
-  function return_file_icon(fileName: string){
-    const extension = fileName.split('.').pop()
-    switch(extension) {
-      case 'cpp': {
-        return icon_filecpp;
-      }
-      case 'html': {
-        return icon_filehtml;
-      }
-      case 'jpg': {
-        return icon_filejpg;
-      }
-      case 'js': {
-        return icon_filejs;
-      }
-      case 'json': {
-        return icon_filejson;
-      }
-      case 'mp4': {
-        return icon_filemp4;
-      }
-      case 'pdf': {
-        return icon_filepdf;
-      }
-      case 'png': {
-        return icon_filepng;
-      }
-      case 'py': {
-        return icon_filepy;
-      }
-      case 'svg': {
-        return icon_filesvg;
-      }
-      case 'tdp': {
-        return icon_filetdp;
-      }
-      case 'tds': {
-        return icon_filetds;
-      }
-      case 'tsx': {
-        return icon_filetsx;
-      }
-      case 'txt': {
-        return icon_filetxt;
-      }
-      case 'webp': {
-        return icon_filewebp;
-      }
-      case 'xml': {
-        return icon_filexml;
-      }
-      case 'zip': {
-        return icon_filezip;
-      }
-    }
-    return icon_filegeneric;
-  }
 
   /**
    * Whenever a contextMenu is opened, creates eventListeners which wait until the user clicks anywhere other than the limited
@@ -730,53 +747,67 @@ export default function FilePanel() {
   };
 
 
-  /**
-   * Fetches files which adhere to the previously defined search parameters.
-   */
-  async function fetchFilesWithSearch(){
-    setLoading(true);
-    if (!projectId) return;
-    const projectFiles = await searchFiles(projectId, searchTerm, tagSearchTerm)
+/**
+ * Fetches files which adhere to the previously defined search parameters.
+ * Groups by logicalId, picks latest version, and attaches version history.
+ */
+async function fetchFilesWithSearch() {
+  setLoading(true);
+  if (!projectId) return;
 
-    //builds array of files with extra information for display
-    //Extra information :
-    //'visible' : designates if a file is current visible,
-    // 'open' : designates if a file is currently open (it's unclear that this is required)
-    if(projectFiles){
-      let temp_files: Array<fileInfo> = []
-      for(let file of projectFiles) {
-        if(file) {
-          temp_files = [...temp_files,
-            {
-              fileId: file.fileId,
-              filename: file.filename,
-              logicalId: file.logicalId,
-              filepath: file.filepath,
-              storageId: file.storageId,
-              parentId: file.parentId,
-              size: file.size,
-              versionId: file.versionId,
-              ownerId: file.ownerId,
-              projectId: file.projectId,
-              createdAt: file.createdAt,
-              updatedAt: file.updatedAt,
-              isDeleted: file.isDeleted,
-              visible: true,
-              open: activeParentIds.some(parent => parent.id === file.fileId),
-              isDirectory: file.isDirectory? file.isDirectory : null
-            }]
-        }
-      }
-      setFiles(temp_files)
-      setLoading(false);
-      return temp_files
-
-    } else {
-      setSearch(false)
-      setLoading(false)
-    }
-
+  const projectFiles = await searchFiles(projectId, searchTerm, tagSearchTerm);
+  if (!projectFiles) {
+    setSearch(false);
+    setLoading(false);
+    return;
   }
+
+  const grouped: Record<string, typeof projectFiles> = {};
+
+  for (const file of projectFiles) {
+    if (!file || file.isDeleted) continue;
+
+    if (!grouped[file.logicalId]) {
+      grouped[file.logicalId] = [];
+    }
+    grouped[file.logicalId].push(file);
+  }
+
+  const groupedFiles: fileInfo[] = [];
+
+  for (const logicalId in grouped) {
+    const versions = grouped[logicalId].sort((a, b) =>
+      new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime()
+    );
+
+    const latest = versions[0];
+
+    groupedFiles.push({
+      fileId: latest.fileId,
+      logicalId: latest.logicalId,
+      filename: latest.filename,
+      filepath: latest.filepath,
+      parentId: latest.parentId,
+      storageId: latest.storageId,
+      size: latest.size,
+      versionId: latest.versionId,
+      ownerId: latest.ownerId,
+      projectId: latest.projectId,
+      createdAt: latest.createdAt,
+      updatedAt: latest.updatedAt,
+      visible: true,
+      isDeleted: latest.isDeleted,
+      open: activeParentIds.some((parent) => parent.id === latest.fileId),
+      isDirectory: latest.isDirectory ?? null,
+      versions,
+    });
+  }
+
+  setFiles(sort_files_with_path(groupedFiles));
+  setLoading(false);
+  return groupedFiles;
+}
+
 
   /**
    * useEffect() on any searchTerms the user have utilized in their search query, and whether or not the user is actively searching.
@@ -2186,6 +2217,82 @@ export default function FilePanel() {
     }
 
   }
+
+  /**
+ * Displays the file properties panel with metadata such as filename, size, path,
+ * owner information, and timestamps. Fetches the owner's username from the User model.
+ *
+ * @async
+ * @function handleProperties
+ * @param {string} fileId - The ID of the file for which properties are to be displayed.
+ * @param {React.MouseEvent} e - The mouse event triggered by a right-click or similar action.
+ *
+ * @returns {Promise<void>}
+ *
+ * @remarks
+ * - Prevents the default context menu behavior.
+ * - Locates the file using the provided fileId.
+ * - Fetches the file owner's username via the `User.get` query.
+ * - Updates the `filePropertiesPanel` state to render the floating properties window.
+ * - Adjusts the panel’s position to slightly offset from the cursor.
+ */
+
+  async function handleProperties(fileId: string, e: React.MouseEvent) {
+    e.preventDefault();
+    const file = files.find(f => f.fileId === fileId);
+    if (!file) return;
+  
+    const userData = await client.models.User.get({ userId: file.ownerId });
+    const username = userData?.data?.username ?? file.ownerId;
+    setFilePropertiesPanel({
+      fileId: file.fileId,
+      filename: file.filename,
+      size: file.size,
+      filepath: file.filepath,
+      ownerId: username,
+      createdAt: file.createdAt,
+      updatedAt: file.updatedAt,
+      posX: e.clientX + 10,
+      posY: e.clientY + 10
+    });
+  }
+  
+  
+  
+
+  /**
+ * Prompts the user to rename a file and triggers a backend update with the new path and filename.
+ * Preserves the original file extension and updates the full file path accordingly.
+ *
+ * @param {string} fileId - The unique ID of the file being renamed.
+ * @param {string} versionId - The version ID associated with the file.
+ * @param {string} path - The current full file path (including the filename).
+ *
+ * @remarks
+ * - The function parses the filename and retains its original extension.
+ * - The user is prompted for a new name (excluding the extension).
+ * - The file path and filename are updated via the `renamefile` function.
+ */
+
+  function handleRename(fileId: string, versionId: string, path: string) {
+    const originalname = path.split("/").pop() || "";
+    const extension = originalname.includes(".") ? originalname.substring(originalname.lastIndexOf(".")) : "";
+    const nameOnly = originalname.replace(/\.[^/.]+$/, ""); // remove extension
+  
+    const input = window.prompt("Enter new file name:", nameOnly);
+    if (!input) return;
+  
+    const newFilename = input + extension;
+  
+    const pathParts = path.split("/");
+    pathParts.pop(); // Remove old filename
+    pathParts.push(newFilename); // Add new filename
+    const newPath = pathParts.join("/");
+  
+    renamefile(fileId, projectId as string, versionId, newPath, newFilename);
+  }
+  
+  
   /**
    * Function: isParentPickedUp
    * Returns: boolean
@@ -2415,6 +2522,12 @@ export default function FilePanel() {
                     <ContextMenuItem onMouseOver={() => {setContextMenuTagPopout(true)}}>
                       Tags
                     </ContextMenuItem>
+                    <ContextMenuItem onClick={ (e)=> handleProperties(contextMenu.fileId!, e)}>
+                      Properties
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={ ()=> handleRename(contextMenu.fileId!, contextMenu.versionId!, contextMenu.filePath!)}>
+                      Rename
+                    </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDownload(contextMenu.storagePath!, contextMenu.fileName!,contextMenu.fileId!)}>
                       Download
                     </ContextMenuItem>
@@ -2485,6 +2598,12 @@ export default function FilePanel() {
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => setMessageThread({id: contextMenu.fileId!!, label: contextMenu.filePath!!.split("/").pop()!!, path: projectName.current!! + contextMenu.filePath!!, type: 0})}>
                       Open Chat
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={ (e)=> handleProperties(contextMenu.fileId!,e)}>
+                      Properties
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={ ()=> handleRename(contextMenu.fileId!, contextMenu.versionId!, contextMenu.filePath!)}>
+                      Rename
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => handleDelete(contextMenu.fileId!!)}>
                       Delete Folder
@@ -2565,7 +2684,20 @@ export default function FilePanel() {
             onDownloadVersion={handleDownloadVersion}
           />
         )}
-
+    {filePropertiesPanel && (
+      <FilePropertiesPanel
+        fileId={filePropertiesPanel.fileId}
+        filename={filePropertiesPanel.filename}
+        size={filePropertiesPanel.size}
+        filepath={filePropertiesPanel.filepath}
+        ownerId={filePropertiesPanel.ownerId}
+        createdAt={filePropertiesPanel.createdAt}
+        updatedAt={filePropertiesPanel.updatedAt}
+        posX={filePropertiesPanel.posX}
+        posY={filePropertiesPanel.posY}
+        close={() => setFilePropertiesPanel(null)}
+      />
+    )}
 
   </>
   );

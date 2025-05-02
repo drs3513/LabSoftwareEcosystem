@@ -29,7 +29,6 @@ interface messageInfo {
   email?: string;
 }
 
-
 export default function ChatPanel() {
   const { projectId, userId, messageThread} = useGlobalState();
   const [messages, setMessages] = useState<messageInfo[]>([]);
@@ -73,8 +72,11 @@ export default function ChatPanel() {
       }
     }, [routerSearchParams, userId]);
 
-  
-  
+  /**
+ * Fetches messages for the current message thread (file or project).
+ * Sorts messages by creation time, enriches with user email, handles pagination,
+ * and updates the messages state.
+ */
   async function fetchMessages() {
     console.log("Fetching")
     if (!messageThread ) return;
@@ -84,9 +86,6 @@ export default function ChatPanel() {
     } else {
       response = await getMessagesByFileIdAndPagination(undefined, messageThread.id, nextToken)
     }
-
-
-
 
     if(nextToken !== null){
       setNextToken(null); // Reset nextToken
@@ -153,8 +152,12 @@ export default function ChatPanel() {
     }
   }
 
-  //fetching next messages when the user scrolls to the top of the chat
-  const handleScroll = async (e: React.UIEvent<HTMLDivElement>) => {
+/**
+ * Handles scroll events in the chat window.
+ * If the user scrolls to the top and more messages are available, fetches older messages.
+ *
+ * @param {React.UIEvent<HTMLDivElement>} e - Scroll event triggered in the chat panel.
+ */  const handleScroll = async (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop } = e.currentTarget;
     if (scrollTop === 0 && hasNextPage ) {
       ////console.log("Fetching more messages...");
@@ -162,6 +165,12 @@ export default function ChatPanel() {
     }
   };
 
+  /**
+ * Subscribes to changes in messages linked to a specific file ID.
+ * Triggers a message refresh on updates. Useful for real-time syncing.
+ *
+ * @returns {() => void} Cleanup function to unsubscribe from updates.
+ */
   const observeMessagesOnFileId = () => {
     const subscription = client.models.Message.observeQuery({
       filter: {
@@ -180,6 +189,12 @@ export default function ChatPanel() {
     return () => subscription.unsubscribe();
   };
 
+  /**
+ * Subscribes to changes in messages linked to a specific project ID.
+ * Triggers a message refresh on updates. Useful for real-time syncing.
+ *
+ * @returns {() => void} Cleanup function to unsubscribe from updates.
+ */
   const observeMessagesOnProjectId = () => {
     const subscription = client.models.Message.observeQuery({
       filter: {
@@ -198,13 +213,15 @@ export default function ChatPanel() {
     return () => subscription.unsubscribe();
   };
 
-
+/**
+ * Effect that runs whenever the messageThread changes.
+ * - Resets pagination token and clears messages.
+ * - Fetches initial messages for the new thread.
+ * - Subscribes to real-time message updates based on thread type.
+ * - Cleans up the subscription on component unmount or when the thread changes.
+ */
   useEffect(() => {
-
     if (messageThread) {
-
-
-
       console.log("Fetching messages for fileId:", messageThread.id);
       setNextToken(null); // Reset nextToken when fileId changes
       setMessages([]); // Clear messages when fileId changes
@@ -216,18 +233,27 @@ export default function ChatPanel() {
         const unsubscribe = observeMessagesOnProjectId();
         return () => unsubscribe();
       }
-
-
-
     }
-
-
   }, [messageThread]);
+
+  /**
+ * Effect that runs whenever messages are updated.
+ * Scrolls to the bottom of the chat panel to ensure the latest message is visible.
+ */
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-//fetching messages when found the search term
+
+
+/**
+ * Asynchronously fetches messages based on the current search terms and thread type.
+ * - Performs keyword and tag-based searches on either file or project threads.
+ * - Resolves usernames for each message author.
+ * - Updates the state with the search result or clears it if no matches.
+ *
+ * @returns {Promise<messageInfo[]>} An array of messageInfo objects or an empty array.
+ */
   async function fetchMessagesWithSearch() {
     //setLoading(true)
     if (!messageThread ) return;
@@ -262,7 +288,10 @@ export default function ChatPanel() {
       return []
     }
   }
-
+  /**
+   * Effect triggered when the `search` flag changes.
+   * If active, fetches filtered messages. Otherwise, fetch messages of the current file or project.
+   */
   useEffect(() => {
     console.log("ACK SEARCH")
     if (search) {
@@ -274,18 +303,28 @@ export default function ChatPanel() {
     }
   }, [search]);
 
+  /**
+   * Effect triggered when `refreshSearch` flag is true.
+   * Re-fetches filtered messages and resets the flag.
+   */
   useEffect(() => {
     if(search && refreshSearch) {
       fetchMessagesWithSearch()
       setRefreshSearch(false)
     }
-
   }, [refreshSearch])
 
+  /**
+   * Effect that scrolls the chat to the bottom whenever new messages are added.
+   */
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  /**
+ * Effect that adds event listeners to close the context menu and tag popout
+ * when clicking outside or moving the mouse away from them.
+ */
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
@@ -308,6 +347,13 @@ export default function ChatPanel() {
     };
   }, [contextMenu]);
 
+  /**
+   * Sends a new message to the server and updates the local message list.
+   * - Validates input and message thread presence.
+   * - Calls API to create message.
+   * - Fetches and attaches the author's username.
+   * - Appends new message to local state.
+   */
   const handleSendMessage = async () => {
     if (!input.trim()) {
       //console.log("Message input is empty. Aborting send.");
@@ -357,12 +403,23 @@ export default function ChatPanel() {
     }
   };
   
-
+  /**
+   * Handles the right-click context menu for a message.
+   * @param {React.MouseEvent} e - The mouse event.
+   * @param {string} messageId - The ID of the clicked message.
+   * @param {string} msguserId - The user ID of the message owner.
+   */
   const handleContextMenu = (e: React.MouseEvent, messageId: string, msguserId: string) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, messageId, msguserId });
   };
 
+  /**
+   * Updates a message's content if the user is authorized.
+   * @param {string} messageId - The ID of the message to update.
+   * @param {string} newContent - The new content to set.
+   * @param {string} messageuserId - The ID of the message's owner.
+   */
   const handleUpdateMessage = async (messageId: string, newContent: string, messageuserId: string)=> {
     setContextMenuTagPopout(false); // Close the tag popout if it's open
     if(messageuserId != userId){
@@ -385,6 +442,11 @@ export default function ChatPanel() {
     setContextMenu(null);
   };
 
+  /**
+   * Deletes a message by setting its content to an empty string and marking it as deleted.
+   * @param {string} messageId - The ID of the message to delete.
+   * @param {string} messageuserId - The ID of the message's owner.
+   */
   const handleDeleteMessage = async (messageId: string, messageuserId: string)=> {
     if(messageuserId != userId){
       alert("You do not have access to this message");
@@ -403,13 +465,20 @@ export default function ChatPanel() {
     setContextMenu(null);
   };
 
+  /**
+   * Handles the Enter key press when sending a message.
+   * @param {React.KeyboardEvent<HTMLInputElement>} e - The keyboard event.
+   */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleSendMessage();
     }
   };
-
-  //create a function called handleTagInput to handle the tag input and create a new tag for the message
+ 
+  /**
+   * Handles tagging a message when Enter is pressed in the tag input.
+   * @param {React.KeyboardEvent<HTMLInputElement>} e - The keyboard event.
+   */
   async function handleTagInput(e: React.KeyboardEvent<HTMLInputElement>) {
     if(e.key == "Enter" ) {
       if(contextMenuMessageId && projectId && (e.target as HTMLInputElement).value.length > 0){
@@ -425,18 +494,21 @@ export default function ChatPanel() {
 
   }
 
-  // Function to handle clearing the search input
+  /**
+   * Clears all search input and resets search-related state.
+   */
   const handleClearSearch = () => {
     setSearchInput(""); // Clear the input value
     setTagSearchTerm([]);
     setAuthorSearchTerm([]);
     setSearchTerm([]);
     setSearch(false);
-    //console.log("Search input cleared. Fetching original messages...");
-
   };
 
-  // Function to handle search input changes
+  /**
+   * Updates the search input value.
+   * @param {React.ChangeEvent<HTMLInputElement>} e - The input change event.
+   */
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if(e.target.value.length == 0){
       setSearch(false)
@@ -445,8 +517,11 @@ export default function ChatPanel() {
 
   };
 
-  //Step 3: create a function to handleSearch for searching messages
-
+  /**
+   * Executes a search on Enter key based on input terms.
+   * Supports tag (#), author (&), and content search.
+   * @param {React.KeyboardEvent<HTMLInputElement>} e - The keyboard event.
+   */
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
     console.log(e.key)
     if (e.key === "Enter") {
@@ -489,51 +564,66 @@ export default function ChatPanel() {
     }
   };
 
-  //fetching the tags for the message
+  /**
+   * Fetches tags associated with the currently selected message.
+   */
   async function fetchTagsForMessage() {
     if( !contextMenuMessageId) {
-      //console.log("No context menu message ID available. Aborting fetch.");
       setTags([]);
       return [];
     }
-    //console.log("Fetching tags for message ID:", contextMenuMessageId);
     // Fetch tags for the current message
     const messageTags = await getTagsForMessage(contextMenuMessageId);
     setTags(messageTags)
-    //console.log(tags)
   }
 
+  /**
+   * Subscribes to tag updates for the current message using Amplify's observeQuery.
+   * @returns {() => void} - A function to unsubscribe from the observer.
+   */
   const observeTags = () => {
     const subscription = client.models.Message.observeQuery({
       filter: {messageId: {eq: contextMenuMessageId ? contextMenuMessageId : undefined}},
       selectionSet: ["tags"]
     }).subscribe({
       next: async({items}) => {
-        //console.log("Called!", items.length, "tags fetched for message ID:", contextMenuMessageId);
         if(items.length === 0 || !items[0].tags){
           setTags([])
           return []
         }
         setTags(items[0].tags)
-
       }
     })
     return () => {
       subscription.unsubscribe();
     };
-
   }
 
+  /**
+   * Handles the submit action after editing a message's content.
+   * @param {string} id - The ID of the message.
+   * @param {string} newContent - The updated message content.
+   * @param {string} messageuserId - The ID of the message's author.
+   */
   useEffect(() => {
     if(contextMenuMessageId) {
-      //console.log("Context menu message ID changed, fetching tags...");
       fetchTagsForMessage()
       const unsubscribe = observeTags()
       return () => unsubscribe();
     }
   }, [contextMenuMessageId]);
 
-
+/**
+ * Handles the submission of an edited message.
+ * Closes the context menu and tag popout, checks if the user has permission to edit the message,
+ * and then calls the update function for the message if the user is authorized.
+ *
+ * @param {string} id - The ID of the message to be updated.
+ * @param {string} newContent - The new content of the message.
+ * @param {string} messageuserId - The ID of the user who owns the message.
+ * 
+ * @returns {void} This function doesn't return anything. It performs side effects like closing menus and updating the message.
+ */
   const handleEditSubmit = (id: string, newContent: string, messageuserId: string) => {
     setContextMenuTagPopout(false); // Close the tag popout if it's open
     if(messageuserId != userId){
@@ -541,16 +631,16 @@ export default function ChatPanel() {
       return;
     }
     setContextMenu(null); // Close the context menu
-    // call your backend or update messages state
     handleUpdateMessage(id, newContent, messageuserId); 
   };
 
-
-
-  // Function to handle deleting a tag
+  /**
+   * Deletes a tag from the tag list for the current message.
+   * @param {React.MouseEvent<HTMLButtonElement>} e - The button click event.
+   * @param {number} tagIndex - The index of the tag to delete.
+   */
   const handleDeleteTag = async ( e: React.MouseEvent<HTMLButtonElement>, tagIndex: number) => {
     e.stopPropagation(); // Prevent the context menu from closing
-    //console.log("Deleting tag with ID:", tagId);
     if(!contextMenuMessageId) return
     updateMessageTags(contextMenuMessageId, tags.filter((tag, i) => i !== tagIndex))
     setTags(tags.filter((tag, i) => i !== tagIndex));
@@ -561,9 +651,6 @@ export default function ChatPanel() {
 
   if(messageThread) {
     return (
-
-
-        //step 2: display the searching input to the top bar container and call the handleSearch function
         <ChatContainer onScroll={handleScroll}>
           <TopBarContainer>
             <MessagePanelHeader>
