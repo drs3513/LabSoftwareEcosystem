@@ -1,4 +1,4 @@
-import type { PostAuthenticationTriggerHandler } from 'aws-lambda';
+import type { PostConfirmationTriggerHandler } from 'aws-lambda';
 import {
     CognitoIdentityProviderClient,
     AdminAddUserToGroupCommand,
@@ -9,7 +9,7 @@ import { DataStore } from "aws-amplify/datastore"
 import { type Schema } from "../../data/resource";
 import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
-import { env } from "$amplify/env/post-authentication";
+import { env } from "$amplify/env/post-confirmation";
 
 const {resourceConfig, libraryOptions} = await getAmplifyDataClientConfig(
     env
@@ -23,12 +23,12 @@ const client = new CognitoIdentityProviderClient();
 
 
 // add user to group
-export const handler: PostAuthenticationTriggerHandler = async (event) => {
+export const handler: PostConfirmationTriggerHandler = async (event) => {
     const command_1 = new AdminListGroupsForUserCommand({
         Username: event.userName,
         UserPoolId: event.userPoolId
     })
-    console.log("AUTHENTICATION")
+    console.log("CONFIRMATION")
     const groups = await client.send(command_1)
 
     let adaptedGroups = undefined
@@ -74,13 +74,11 @@ export const handler: PostAuthenticationTriggerHandler = async (event) => {
             administrator: (adaptedGroups && adaptedGroups.includes("ADMINISTRATOR"))
         })
         console.log("Created User : " + createdUser)
-    } else{
+    } else if(!currentUser.data.administrator && adaptedGroups && adaptedGroups.includes("ADMINISTRATOR")){
         console.log("HERE!")
         const updatedUser = await dataClient.models.User.update({
             userId: event.request.userAttributes.sub,
-            username: event.request.userAttributes.preferred_username,
-            email: event.request.userAttributes.email,
-            administrator: adaptedGroups && adaptedGroups.includes("ADMINISTRATOR")
+            administrator: true
         })
         console.log(updatedUser)
     }
